@@ -139,6 +139,27 @@ export default function Inventory({ user, initialSubTab = 'products', onSubTabCh
   const [importFileName, setImportFileName] = useState<string>('');
   const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
 
+  // Autocomplete search states for Stock In & Stock Out
+  const [stockInSearchQuery, setStockInSearchQuery] = useState('');
+  const [showStockInDropdown, setShowStockInDropdown] = useState(false);
+  const [stockOutSearchQuery, setStockOutSearchQuery] = useState('');
+  const [showStockOutDropdown, setShowStockOutDropdown] = useState(false);
+
+  // Bulk Stock In CSV States
+  const [isBulkStockInModalOpen, setIsBulkStockInModalOpen] = useState(false);
+  const [parsedStockInItems, setParsedStockInItems] = useState<{
+    code: string;
+    name: string;
+    quantity: number;
+    supplier: string;
+    notes: string;
+    isValid: boolean;
+    productId: string;
+    validationError?: string;
+  }[] | null>(null);
+  const [bulkStockInFileName, setBulkStockInFileName] = useState('');
+  const [bulkStockInSuccessMessage, setBulkStockInSuccessMessage] = useState<string | null>(null);
+
   // Fine-grained permission helpers
   const canCreate = hasModulePermission(user, 'inventory', 'create');
   const canEdit = hasModulePermission(user, 'inventory', 'edit');
@@ -378,6 +399,220 @@ export default function Inventory({ user, initialSubTab = 'products', onSubTabCh
     setParsedProducts(null);
     setImportFileName('');
     setImportSuccessMessage(null);
+  };
+
+  const downloadBulkStockInTemplate = () => {
+    const headers = ['Product Code', 'Quantity', 'Supplier / Source', 'Additional Notes'];
+    const sampleRows = [
+      ['SOL-400', '20', 'Jinko Solar Ltd', 'Batch #9901'],
+      ['GEN-001', '5', 'Cummins Factory', 'PO #4928']
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...sampleRows.map(row => row.map(val => `"${val.replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'HYSAM_Bulk_Stock_In_Template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleBulkStockInFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setBulkStockInFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const lines: string[] = [];
+      let currentLine = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const nextChar = text[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            currentLine += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if ((char === '\r' || char === '\n') && !inQuotes) {
+          if (char === '\r' && nextChar === '\n') i++;
+          if (currentLine.trim()) lines.push(currentLine);
+          currentLine = '';
+        } else {
+          currentLine += char;
+        }
+      }
+      if (currentLine.trim()) lines.push(currentLine);
+
+      if (lines.length <= 1) {
+        alert('CSV file appears to be empty or missing data rows.');
+        return;
+      }
+
+      const parseRow = (rowStr: string): string[] => {
+        const cells: string[] = [];
+        let cell = '';
+        let inside = false;
+
+        for (let i = 0; i < rowStr.length; i++) {
+          const c = rowStr[i];
+          const next = rowStr[i + 1];
+
+          if (c === '"') {
+            if (inside && next === '"') {
+              cell += '"';
+              i++;
+            } else {
+              inside = !inside;
+            }
+          } else if (c === ',' && !inside) {
+            cells.push(cell.trim());
+            cell = '';
+          } else {
+            cell += c;
+          }
+        }
+        cells.push(cell.trim());
+        return cells;
+      };
+
+      const rawHeaders = parseRow(lines[0]).map(h => h.toLowerCase().trim().replace(/[^a-z0-9]/g, ''));
+      
+      const findHeaderIndex = (keys: string[]) => {
+        return rawHeaders.findIndex(h => keys.some(k => h.includes(k)));
+      };
+
+      const codeIdx = findHeaderIndex(['code', 'sku', 'productcode']);
+      const qtyIdx = findHeaderIndex(['qty', 'quantity', 'amount', 'units']);
+      const supplierIdx = findHeaderIndex(['supplier', 'source', 'vendor']);
+      const notesIdx = findHeaderIndex(['note', 'notes', 'reference']);
+
+      const parsed = lines.slice(1).map((rowStr) => {
+        const cells = parseRow(rowStr);
+        if (cells.length === 0 || (cells.length === 1 && !cells[0])) return null;
+
+        const rawCode = codeIdx >= 0 ? cells[codeIdx] : (cells[0] || '');
+        const rawQty = qtyIdx >= 0 ? cells[qtyIdx] : (cells[1] || '');
+        const rawSupplier = supplierIdx >= 0 ? cells[supplierIdx] : '';
+        const rawNotes = notesIdx >= 0 ? cells[notesIdx] : '';
+
+        const code = rawCode.trim();
+        const quantity = parseFloat(rawQty.replace(/[^0-9.]/g, '')) || 0;
+        const supplier = rawSupplier.trim();
+        const notes = rawNotes.trim();
+
+        if (!code) {
+          return {
+            code: 'N/A',
+            name: '',
+            quantity,
+            supplier,
+            notes,
+            isValid: false,
+            productId: '',
+            validationError: 'Missing product code'
+          };
+        }
+
+        const matchedProduct = products.find(p => p.code.toLowerCase().trim() === code.toLowerCase().trim() && !p.archived);
+        
+        let isValid = !!matchedProduct;
+        let validationError = !matchedProduct ? 'Product code not found in active catalog' : undefined;
+
+        if (isValid && quantity <= 0) {
+          isValid = false;
+          validationError = 'Quantity must be greater than zero';
+        }
+
+        return {
+          code,
+          name: matchedProduct ? matchedProduct.name : '',
+          quantity,
+          supplier,
+          notes,
+          isValid,
+          productId: matchedProduct ? matchedProduct.id : '',
+          validationError
+        };
+      }).filter(Boolean);
+
+      setParsedStockInItems(parsed as any);
+    };
+
+    reader.readAsText(file);
+  };
+
+  const handleConfirmBulkStockIn = () => {
+    if (!parsedStockInItems || parsedStockInItems.length === 0) return;
+
+    const validItems = parsedStockInItems.filter(p => p.isValid);
+    if (validItems.length === 0) {
+      alert('No valid items to stock in. Please fix errors and upload again.');
+      return;
+    }
+
+    let totalQtyAdded = 0;
+    let currentProductsList = [...products];
+    const newLogs: InventoryLog[] = [];
+
+    validItems.forEach(item => {
+      currentProductsList = currentProductsList.map(p => {
+        if (p.id === item.productId) {
+          return { ...p, currentStock: p.currentStock + item.quantity, updatedAt: new Date().toISOString() };
+        }
+        return p;
+      });
+
+      const fullNote = [item.supplier ? `Supplier: ${item.supplier}` : '', item.notes].filter(Boolean).join(' | ');
+      const newLog: InventoryLog = {
+        id: Math.random().toString(36).substr(2, 9),
+        productId: item.productId,
+        type: 'stock-in',
+        quantity: item.quantity,
+        userId: user.id,
+        notes: fullNote || 'Bulk Stock In CSV Entry',
+        timestamp: new Date().toISOString()
+      };
+      newLogs.push(newLog);
+      totalQtyAdded += item.quantity;
+    });
+
+    const existingLogs = storage.getLogs();
+    storage.saveLogs([...newLogs, ...existingLogs]);
+    storage.saveProducts(currentProductsList);
+
+    storage.logActivity({
+      type: 'stock-update',
+      description: `Bulk Stock In CSV Import: +${totalQtyAdded} units across ${validItems.length} products received by ${user.name}`,
+      userId: user.id,
+      userName: user.name
+    });
+
+    setProducts(currentProductsList);
+    setAllLogs(storage.getLogs());
+    setBulkStockInSuccessMessage(`Successfully received +${totalQtyAdded} units across ${validItems.length} products!`);
+    storage.sync();
+  };
+
+  const resetBulkStockInState = () => {
+    setIsBulkStockInModalOpen(false);
+    setParsedStockInItems(null);
+    setBulkStockInFileName('');
+    setBulkStockInSuccessMessage(null);
   };
 
   const brands = useMemo(() => {
@@ -871,6 +1106,15 @@ export default function Inventory({ user, initialSubTab = 'products', onSubTabCh
           <h2 className="text-2xl font-black text-slate-900 tracking-tight">INVENTORY MANAGEMENT</h2>
           <p className="text-slate-500 text-xs font-medium mt-0.5">Centralized warehouse catalog, Stock In receiving, and Stock Out dispatches</p>
         </div>
+        {activeTab === 'stock-in' && canStockIn && (
+          <button
+            onClick={() => setIsBulkStockInModalOpen(true)}
+            className="bg-accent-theme hover:bg-accent-theme-hover text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-colors cursor-pointer shadow-sm self-start md:self-auto"
+          >
+            <Upload size={16} />
+            Bulk Stock In (CSV)
+          </button>
+        )}
       </div>
 
       {/* Sub-Navigation Tabs under Inventory */}
@@ -1282,22 +1526,99 @@ export default function Inventory({ user, initialSubTab = 'products', onSubTabCh
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                       Select Target Product
                     </label>
-                    <select
-                      value={stockInProductId}
-                      onChange={(e) => setStockInProductId(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 bg-layout-theme-bg border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-accent-theme cursor-pointer"
-                    >
-                      <option value="">Select product to receive stock...</option>
-                      {products.filter(p => !p.archived).map(p => {
-                        const stock = storage.calculateClosingStock(p.id);
-                        return (
-                          <option key={p.id} value={p.id}>
-                            [{p.code}] {p.name} ({p.brand}) — Current: {stock} units
-                          </option>
+                    <div className="relative">
+                      {(() => {
+                        const selectedProduct = products.find(p => p.id === stockInProductId);
+                        return selectedProduct ? (
+                          <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                            <div>
+                              <span className="text-slate-400 font-mono mr-2">[{selectedProduct.code}]</span>
+                              <span>{selectedProduct.name} ({selectedProduct.brand})</span>
+                              <span className="ml-2.5 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
+                                Current Stock: {storage.calculateClosingStock(selectedProduct.id)}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStockInProductId('');
+                                setStockInSearchQuery('');
+                              }}
+                              className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="relative">
+                              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                              <input
+                                type="text"
+                                placeholder="Type product name, brand or code to search..."
+                                value={stockInSearchQuery}
+                                onChange={(e) => {
+                                  setStockInSearchQuery(e.target.value);
+                                  setShowStockInDropdown(true);
+                                }}
+                                onFocus={() => setShowStockInDropdown(true)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-layout-theme-bg border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-accent-theme outline-none transition-all font-bold"
+                              />
+                            </div>
+                            {showStockInDropdown && (
+                              <>
+                                <div className="fixed inset-0 z-20" onClick={() => setShowStockInDropdown(false)} />
+                                <div className="absolute left-0 right-0 mt-1.5 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-30 divide-y divide-slate-100">
+                                  {products
+                                    .filter(p => !p.archived)
+                                    .filter(p => {
+                                      const q = stockInSearchQuery.toLowerCase().trim();
+                                      if (!q) return true;
+                                      return p.name.toLowerCase().includes(q) ||
+                                             p.code.toLowerCase().includes(q) ||
+                                             p.brand.toLowerCase().includes(q);
+                                    })
+                                    .slice(0, 15)
+                                    .map(p => {
+                                      const stock = storage.calculateClosingStock(p.id);
+                                      return (
+                                        <button
+                                          key={p.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setStockInProductId(p.id);
+                                            setShowStockInDropdown(false);
+                                          }}
+                                          className="w-full text-left px-4 py-3 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center justify-between cursor-pointer"
+                                        >
+                                          <div>
+                                            <span className="font-mono text-indigo-600 mr-2">[{p.code}]</span>
+                                            {p.name} ({p.brand})
+                                          </div>
+                                          <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-mono font-bold">
+                                            Stock: {stock}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  {products.filter(p => !p.archived).filter(p => {
+                                    const q = stockInSearchQuery.toLowerCase().trim();
+                                    if (!q) return true;
+                                    return p.name.toLowerCase().includes(q) ||
+                                           p.code.toLowerCase().includes(q) ||
+                                           p.brand.toLowerCase().includes(q);
+                                  }).length === 0 && (
+                                    <div className="p-3.5 text-center text-xs text-slate-400 font-semibold">
+                                      No matching active products found
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </>
                         );
-                      })}
-                    </select>
+                      })()}
+                    </div>
                   </div>
 
                   <div>
@@ -1493,22 +1814,105 @@ export default function Inventory({ user, initialSubTab = 'products', onSubTabCh
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                       Select Target Product
                     </label>
-                    <select
-                      value={stockOutProductId}
-                      onChange={(e) => setStockOutProductId(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 bg-layout-theme-bg border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
-                    >
-                      <option value="">Select product to dispatch...</option>
-                      {products.filter(p => !p.archived).map(p => {
-                        const stock = storage.calculateClosingStock(p.id);
-                        return (
-                          <option key={p.id} value={p.id} disabled={stock <= 0}>
-                            [{p.code}] {p.name} — Current: {stock} units {stock <= 0 ? '(OUT OF STOCK)' : ''}
-                          </option>
+                    <div className="relative">
+                      {(() => {
+                        const selectedProduct = products.find(p => p.id === stockOutProductId);
+                        return selectedProduct ? (
+                          <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                            <div>
+                              <span className="text-slate-400 font-mono mr-2">[{selectedProduct.code}]</span>
+                              <span>{selectedProduct.name} ({selectedProduct.brand})</span>
+                              <span className="ml-2.5 px-2 py-0.5 bg-rose-50 text-rose-700 rounded text-[10px] font-bold">
+                                Current Stock: {storage.calculateClosingStock(selectedProduct.id)}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStockOutProductId('');
+                                setStockOutSearchQuery('');
+                              }}
+                              className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="relative">
+                              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                              <input
+                                type="text"
+                                placeholder="Type product name, brand or code to search..."
+                                value={stockOutSearchQuery}
+                                onChange={(e) => {
+                                  setStockOutSearchQuery(e.target.value);
+                                  setShowStockOutDropdown(true);
+                                }}
+                                onFocus={() => setShowStockOutDropdown(true)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-layout-theme-bg border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 outline-none transition-all font-bold"
+                              />
+                            </div>
+                            {showStockOutDropdown && (
+                              <>
+                                <div className="fixed inset-0 z-20" onClick={() => setShowStockOutDropdown(false)} />
+                                <div className="absolute left-0 right-0 mt-1.5 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-30 divide-y divide-slate-100">
+                                  {products
+                                    .filter(p => !p.archived)
+                                    .filter(p => {
+                                      const q = stockOutSearchQuery.toLowerCase().trim();
+                                      if (!q) return true;
+                                      return p.name.toLowerCase().includes(q) ||
+                                             p.code.toLowerCase().includes(q) ||
+                                             p.brand.toLowerCase().includes(q);
+                                    })
+                                    .slice(0, 15)
+                                    .map(p => {
+                                      const stock = storage.calculateClosingStock(p.id);
+                                      const outOfStock = stock <= 0;
+                                      return (
+                                        <button
+                                          key={p.id}
+                                          type="button"
+                                          disabled={outOfStock}
+                                          onClick={() => {
+                                            setStockOutProductId(p.id);
+                                            setShowStockOutDropdown(false);
+                                          }}
+                                          className={`w-full text-left px-4 py-3 hover:bg-slate-50 text-xs font-bold flex items-center justify-between cursor-pointer ${
+                                            outOfStock ? 'opacity-50 cursor-not-allowed bg-slate-50/50' : 'text-slate-700'
+                                          }`}
+                                        >
+                                          <div>
+                                            <span className="font-mono text-rose-600 mr-2">[{p.code}]</span>
+                                            {p.name} ({p.brand})
+                                          </div>
+                                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                                            outOfStock ? 'bg-rose-50 text-rose-750' : 'bg-slate-100 text-slate-500'
+                                          }`}>
+                                            Stock: {stock} {outOfStock ? '(OUT OF STOCK)' : ''}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  {products.filter(p => !p.archived).filter(p => {
+                                    const q = stockOutSearchQuery.toLowerCase().trim();
+                                    if (!q) return true;
+                                    return p.name.toLowerCase().includes(q) ||
+                                           p.code.toLowerCase().includes(q) ||
+                                           p.brand.toLowerCase().includes(q);
+                                  }).length === 0 && (
+                                    <div className="p-3.5 text-center text-xs text-slate-400 font-semibold">
+                                      No matching active products found
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </>
                         );
-                      })}
-                    </select>
+                      })()}
+                    </div>
                   </div>
 
                   <div>
@@ -2285,6 +2689,190 @@ export default function Inventory({ user, initialSubTab = 'products', onSubTabCh
                 >
                   <Upload size={16} />
                   Import {parsedProducts.filter(p => p.isValid).length} Products
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CSV Bulk Stock In Modal */}
+      {isBulkStockInModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in" id="csv-bulk-stock-in-modal">
+          <div className="bg-card-theme-bg rounded-3xl p-0 max-w-3xl w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] border border-slate-100">
+            <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-accent-theme rounded-xl flex items-center justify-center text-white shadow-md">
+                  <FileSpreadsheet size={22} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Bulk Stock In Import</h3>
+                  <p className="text-xs text-slate-400">Upload CSV file to increment stock quantities across multiple products</p>
+                </div>
+              </div>
+              <button 
+                onClick={resetBulkStockInState}
+                className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                id="close-bulk-stock-in-modal-btn"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {bulkStockInSuccessMessage ? (
+                <div className="p-6 bg-accent-theme-light border border-accent-theme-light rounded-2xl text-center space-y-4">
+                  <div className="w-16 h-16 bg-accent-theme-light text-accent-theme rounded-full flex items-center justify-center mx-auto shadow-sm">
+                    <CheckCircle size={36} />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-bold text-accent-theme-dark">Bulk Stock In Completed</h4>
+                    <p className="text-sm text-accent-theme-hover mt-1 font-medium">{bulkStockInSuccessMessage}</p>
+                  </div>
+                  <button
+                    onClick={resetBulkStockInState}
+                    className="px-6 py-2.5 bg-accent-theme text-white font-bold text-sm rounded-xl hover:bg-accent-theme-hover transition-all shadow-md cursor-pointer"
+                    id="finish-bulk-stock-in-btn"
+                  >
+                    Done & Close
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="p-4 bg-primary-theme-light/70 border border-primary-theme-light rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <FileText className="text-primary-theme shrink-0 mt-0.5" size={20} />
+                      <div>
+                        <div className="text-xs font-bold text-primary-theme-dark">Need a stock-in starting template?</div>
+                        <p className="text-xs text-primary-theme-hover mt-0.5">Download our pre-formatted CSV template with standard column headers for restocking.</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={downloadBulkStockInTemplate}
+                      className="px-3.5 py-2 bg-primary-theme hover:bg-primary-theme-hover text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2 shrink-0 cursor-pointer"
+                      id="download-bulk-stock-in-template-btn"
+                    >
+                      <Download size={14} />
+                      Download Template CSV
+                    </button>
+                  </div>
+
+                  {!parsedStockInItems ? (
+                    <div className="border-2 border-dashed border-slate-200 hover:border-primary-theme rounded-2xl p-8 text-center bg-layout-theme-bg/50 hover:bg-primary-theme-light/30 transition-all group">
+                      <input 
+                        type="file" 
+                        accept=".csv, text/csv"
+                        onChange={handleBulkStockInFileUpload}
+                        className="hidden" 
+                        id="bulk-stock-in-csv-file-input"
+                      />
+                      <label 
+                        htmlFor="bulk-stock-in-csv-file-input"
+                        className="cursor-pointer flex flex-col items-center justify-center space-y-3"
+                      >
+                        <div className="w-14 h-14 bg-card-theme-bg rounded-2xl flex items-center justify-center text-primary-theme shadow-md group-hover:scale-110 transition-transform border border-slate-100">
+                          <Upload size={28} />
+                        </div>
+                        <div>
+                          <span className="text-sm font-bold text-slate-800 group-hover:text-primary-theme block">
+                            Click to select CSV file or drag and drop
+                          </span>
+                          <span className="text-xs text-slate-400 mt-1 block">
+                            Supported headers: Product Code (SKU), Quantity, Supplier / Source, Additional Notes
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-layout-theme-bg rounded-2xl border border-slate-200">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">File Loaded:</span>
+                          <span className="text-xs font-bold text-slate-800 bg-card-theme-bg px-2.5 py-1 rounded-lg border border-slate-200">{bulkStockInFileName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 bg-accent-theme-light text-accent-theme-dark text-xs font-bold rounded-lg">
+                            {parsedStockInItems.filter(p => p.isValid).length} Ready to Stock In
+                          </span>
+                          {parsedStockInItems.some(p => !p.isValid) && (
+                            <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-xs font-bold rounded-lg">
+                              {parsedStockInItems.filter(p => !p.isValid).length} Blocked (Error)
+                            </span>
+                          )}
+                          <button
+                            onClick={() => { setParsedStockInItems(null); setBulkStockInFileName(''); }}
+                            className="text-xs font-bold text-slate-500 hover:text-slate-800 underline ml-2 cursor-pointer"
+                          >
+                            Change File
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-60 overflow-y-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0">
+                            <tr>
+                              <th className="px-3 py-2">Product Code</th>
+                              <th className="px-3 py-2">Matched Name</th>
+                              <th className="px-3 py-2 text-center">Qty to Add</th>
+                              <th className="px-3 py-2">Supplier</th>
+                              <th className="px-3 py-2">Notes</th>
+                              <th className="px-3 py-2 text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {parsedStockInItems.map((item, idx) => (
+                              <tr key={idx} className={!item.isValid ? 'bg-rose-50/60' : 'hover:bg-layout-theme-bg'}>
+                                <td className="px-3 py-2 font-mono font-bold text-slate-700">{item.code}</td>
+                                <td className="px-3 py-2 font-bold text-slate-800">
+                                  {item.name || <span className="text-rose-500 italic">Not Found</span>}
+                                </td>
+                                <td className="px-3 py-2 text-center font-mono font-bold text-slate-800">+{item.quantity}</td>
+                                <td className="px-3 py-2 text-slate-500">{item.supplier || <span className="text-slate-400 italic">N/A</span>}</td>
+                                <td className="px-3 py-2 text-slate-500">{item.notes || <span className="text-slate-400 italic">N/A</span>}</td>
+                                <td className="px-3 py-2 text-center">
+                                  {!item.isValid ? (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">
+                                        <AlertCircle size={10} /> BLOCKED
+                                      </span>
+                                      <span className="text-[9px] text-rose-500 font-bold max-w-[120px] text-center leading-tight">
+                                        {item.validationError}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] font-bold text-accent-theme-hover bg-accent-theme-light px-2 py-0.5 rounded-full">
+                                      Ready
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {!bulkStockInSuccessMessage && parsedStockInItems && (
+              <div className="p-6 bg-layout-theme-bg border-t border-slate-100 flex items-center justify-between">
+                <button
+                  onClick={resetBulkStockInState}
+                  className="px-4 py-2.5 border border-slate-200 text-slate-600 font-bold text-sm rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmBulkStockIn}
+                  disabled={!parsedStockInItems.some(p => p.isValid)}
+                  className="px-6 py-2.5 bg-accent-theme hover:bg-accent-theme-hover disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-accent-theme-light flex items-center gap-2 cursor-pointer"
+                  id="confirm-bulk-stock-in-submit-btn"
+                >
+                  <Upload size={16} />
+                  Stock In {parsedStockInItems.filter(p => p.isValid).length} Products
                 </button>
               </div>
             )}
