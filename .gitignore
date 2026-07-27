@@ -32,4 +32,9 @@ build/
 coverage/
 db.json
 composer.phar
+/database/database.sqlite
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
 
