@@ -38,13 +38,8 @@ class BackupController extends Controller
         return response()->json($backups);
     }
 
-    public function create()
+    public static function generateBackup($createdBy)
     {
-        $admin = $this->checkAdmin();
-        if (!$admin) {
-            return response()->json(['error' => 'Forbidden.'], 403);
-        }
-
         // 1. Gather all database tables data
         $data = [
             'users' => User::all()->toArray(),
@@ -65,29 +60,61 @@ class BackupController extends Controller
         ];
 
         $json = json_encode($backupContent, JSON_PRETTY_PRINT);
-        $filename = 'backup_' . now()->format('Y-m-d_H-i-s') . '.json';
+        $prefix = str_replace(' ', '_', strtolower($createdBy));
+        $filename = 'backup_' . $prefix . '_' . now()->format('Y-m-d_H-i-s') . '.json';
 
         // 2. Save file inside storage/app/backups/
         Storage::disk('local')->put('backups/' . $filename, $json);
 
         // 3. Log backup in database
         $backup = Backup::create([
-            'id' => 'BK-' . now()->timestamp,
+            'id' => 'BK-' . now()->timestamp . '-' . mt_rand(10, 99),
             'filename' => $filename,
             'size' => strlen($json),
-            'created_by' => $admin->name,
+            'created_by' => $createdBy,
         ]);
 
         // 4. Log in activities
         Activity::create([
-            'id' => 'act-' . round(microtime(true) * 1000),
+            'id' => 'act-' . round(microtime(true) * 1000) . '-' . mt_rand(100, 999),
             'type' => 'activities',
-            'description' => "Database backup created: {$filename}",
-            'userId' => $admin->id,
-            'userName' => $admin->name,
+            'description' => "Database backup created: {$filename} (By {$createdBy})",
+            'userId' => 'system',
+            'userName' => $createdBy,
             'timestamp' => now()->toIso8601String(),
         ]);
 
+        // 5. Prune backups older than 7 days
+        $sevenDaysAgo = now()->subDays(7);
+        $oldBackups = Backup::where('created_at', '<', $sevenDaysAgo)->get();
+        foreach ($oldBackups as $ob) {
+            $path = 'backups/' . $ob->filename;
+            if (Storage::disk('local')->exists($path)) {
+                Storage::disk('local')->delete($path);
+            }
+            $ob->delete();
+
+            Activity::create([
+                'id' => 'act-' . round(microtime(true) * 1000) . '-' . mt_rand(100, 999),
+                'type' => 'activities',
+                'description' => "Auto-pruned old backup file: {$ob->filename} (Older than 7 days)",
+                'userId' => 'system',
+                'userName' => 'System',
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        }
+
+        return $backup;
+    }
+
+    public function create()
+    {
+        $admin = $this->checkAdmin();
+        if (!$admin) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
+        $backup = self::generateBackup($admin->name);
         return response()->json($backup);
     }
 
