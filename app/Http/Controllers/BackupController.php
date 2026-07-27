@@ -51,6 +51,7 @@ class BackupController extends Controller
             'inventory_logs' => InventoryLog::all()->toArray(),
             'activities' => Activity::all()->toArray(),
             'settings' => Setting::all()->toArray(),
+            'custom_roles' => \App\Models\CustomRole::all()->toArray(),
         ];
 
         $backupContent = [
@@ -255,6 +256,7 @@ class BackupController extends Controller
                 InventoryLog::query()->delete();
                 Activity::query()->delete();
                 Setting::query()->delete();
+                \App\Models\CustomRole::query()->delete();
 
                 // Restore Users
                 if (isset($data['users']) && is_array($data['users'])) {
@@ -325,6 +327,19 @@ class BackupController extends Controller
                             $set['categories'] = json_encode($set['categories']);
                         }
                         Setting::create($set);
+                    }
+                }
+
+                // Restore Custom Roles
+                if (isset($data['custom_roles']) && is_array($data['custom_roles'])) {
+                    foreach ($data['custom_roles'] as $r) {
+                        if (is_array($r['modulePermissions'])) {
+                            $r['modulePermissions'] = json_encode($r['modulePermissions']);
+                        }
+                        if (is_array($r['allowedModules'])) {
+                            $r['allowedModules'] = json_encode($r['allowedModules']);
+                        }
+                        \App\Models\CustomRole::create($r);
                     }
                 }
             });

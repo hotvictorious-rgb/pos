@@ -775,6 +775,7 @@ export default function App() {
                         { key: 'payments', label: 'Payment Transactions', ...verificationResult.tables.payments },
                         { key: 'users', label: 'Users & Staff', ...verificationResult.tables.users },
                         { key: 'logs', label: 'Inventory Movement Logs', ...verificationResult.tables.logs },
+                        { key: 'roles', label: 'Custom User Roles', ...verificationResult.tables.roles },
                       ].map((tbl) => (
                         <tr key={tbl.key} className="hover:bg-slate-50/60">
                           <td className="px-3.5 py-2.5 font-bold text-slate-800">{tbl.label}</td>

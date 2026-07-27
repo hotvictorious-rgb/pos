@@ -143,6 +143,7 @@ export const storage = {
     const localPayments = storage.getPayments().length;
     const localUsers = storage.getUsers().length;
     const localLogs = storage.getLogs().length;
+    const localRoles = storage.getCustomRoles().length;
 
     const serverSales = Array.isArray(serverData?.sales) ? serverData.sales.length : 0;
     const serverReturns = Array.isArray(serverData?.returns) ? serverData.returns.length : 0;
@@ -150,6 +151,7 @@ export const storage = {
     const serverPayments = Array.isArray(serverData?.payments) ? serverData.payments.length : 0;
     const serverUsers = Array.isArray(serverData?.users) ? serverData.users.length : 0;
     const serverLogs = Array.isArray(serverData?.logs) ? serverData.logs.length : 0;
+    const serverRoles = Array.isArray(serverData?.custom_roles) ? serverData.custom_roles.length : 0;
 
     const makeTable = (local: number, server: number): TableVerification => ({
       localCount: local,
@@ -164,8 +166,9 @@ export const storage = {
     const paymentsTable = makeTable(localPayments, serverPayments);
     const usersTable = makeTable(localUsers, serverUsers);
     const logsTable = makeTable(localLogs, serverLogs);
+    const rolesTable = makeTable(localRoles, serverRoles);
 
-    const matchAll = salesTable.match && returnsTable.match && productsTable.match && paymentsTable.match && usersTable.match && logsTable.match;
+    const matchAll = salesTable.match && returnsTable.match && productsTable.match && paymentsTable.match && usersTable.match && logsTable.match && rolesTable.match;
 
     const discrepantList: string[] = [];
     if (!salesTable.match) discrepantList.push(`Sales (App: ${localSales} vs DB: ${serverSales})`);
@@ -174,13 +177,14 @@ export const storage = {
     if (!paymentsTable.match) discrepantList.push(`Payments (App: ${localPayments} vs DB: ${serverPayments})`);
     if (!usersTable.match) discrepantList.push(`Users (App: ${localUsers} vs DB: ${serverUsers})`);
     if (!logsTable.match) discrepantList.push(`Logs (App: ${localLogs} vs DB: ${serverLogs})`);
+    if (!rolesTable.match) discrepantList.push(`Custom Roles (App: ${localRoles} vs DB: ${serverRoles})`);
 
     const result: SyncVerificationResult = {
       timestamp: new Date().toISOString(),
       status: matchAll ? 'verified' : 'discrepancy',
       hasDiscrepancy: !matchAll,
       message: matchAll
-        ? 'All core database tables (Sales, Returns, Inventory, Payments, Users, Logs) are verified in exact sync.'
+        ? 'All core database tables (Sales, Returns, Inventory, Payments, Users, Logs, Custom Roles) are verified in exact sync.'
         : `Record count discrepancy flagged: ${discrepantList.join('; ')}`,
       tables: {
         sales: salesTable,
@@ -188,7 +192,8 @@ export const storage = {
         products: productsTable,
         payments: paymentsTable,
         users: usersTable,
-        logs: logsTable
+        logs: logsTable,
+        roles: rolesTable
       }
     };
 
@@ -247,7 +252,8 @@ export const storage = {
         logs: storage.getLogs(),
         activities: storage.getActivities(),
         returns: storage.getReturns(),
-        settings: storage.getSettings()
+        settings: storage.getSettings(),
+        custom_roles: storage.getCustomRoles()
       };
 
       // 2. Push local changes first so the server has the latest client updates
@@ -289,6 +295,7 @@ export const storage = {
         const localLogs = storage.getLogs();
         const localActivities = storage.getActivities();
         const localReturns = storage.getReturns();
+        const localCustomRoles = storage.getCustomRoles();
 
         const mergedUsers = mergeLists(localUsers, serverData.users);
         const mergedProducts = mergeLists(localProducts, serverData.products);
@@ -297,6 +304,7 @@ export const storage = {
         const mergedLogs = mergeLists(localLogs, serverData.logs);
         const mergedActivities = mergeLists(localActivities, serverData.activities);
         const mergedReturns = mergeLists(localReturns, serverData.returns);
+        const mergedCustomRoles = mergeLists(localCustomRoles, serverData.custom_roles);
 
         // Update local storage with merged results
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(mergedUsers));
@@ -306,6 +314,7 @@ export const storage = {
         localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(mergedLogs));
         localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(mergedActivities));
         localStorage.setItem(STORAGE_KEYS.RETURNS, JSON.stringify(mergedReturns));
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_ROLES, JSON.stringify(mergedCustomRoles));
         
         if (serverData.settings) {
           localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(serverData.settings));

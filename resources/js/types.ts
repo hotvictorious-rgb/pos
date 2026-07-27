@@ -183,5 +183,6 @@ export interface SyncVerificationResult {
     payments: TableVerification;
     users: TableVerification;
     logs: TableVerification;
+    roles: TableVerification;
   };
 }

@@ -78,6 +78,7 @@ class DataController extends Controller
         $returns = SalesReturn::all();
         $activities = Activity::all();
         $settings = $this->getSettings();
+        $customRoles = \App\Models\CustomRole::all();
 
         return response()->json([
             'users' => $users,
@@ -87,7 +88,8 @@ class DataController extends Controller
             'logs' => $logs,
             'returns' => $returns,
             'activities' => $activities,
-            'settings' => $settings
+            'settings' => $settings,
+            'custom_roles' => $customRoles
         ]);
     }
 
@@ -102,9 +104,9 @@ class DataController extends Controller
 
         // Server-side RBAC (Role-Based Access Control) Protection
         if ($currentUser->role !== 'admin') {
-            // 1. Non-admins cannot modify users or settings
-            if (isset($payload['users']) || isset($payload['settings'])) {
-                return response()->json(['error' => 'Forbidden. Only administrators can modify users or settings.'], 403);
+            // 1. Non-admins cannot modify users, settings, or custom roles
+            if (isset($payload['users']) || isset($payload['settings']) || isset($payload['custom_roles'])) {
+                return response()->json(['error' => 'Forbidden. Only administrators can modify users, settings, or custom roles.'], 403);
             }
 
             // 2. Non-admins cannot delete products
@@ -326,6 +328,27 @@ class DataController extends Controller
                     ]
                 );
             }
+
+            // 9. Sync Custom Roles
+            if (isset($payload['custom_roles']) && is_array($payload['custom_roles'])) {
+                $ids = collect($payload['custom_roles'])->pluck('id')->all();
+                \App\Models\CustomRole::whereNotIn('id', $ids)->delete();
+                foreach ($payload['custom_roles'] as $r) {
+                    \App\Models\CustomRole::updateOrCreate(
+                        ['id' => $r['id']],
+                        [
+                            'label' => $r['label'] ?? '',
+                            'description' => $r['description'] ?? null,
+                            'badgeBg' => $r['badgeBg'] ?? null,
+                            'badgeText' => $r['badgeText'] ?? null,
+                            'badgeBorder' => $r['badgeBorder'] ?? null,
+                            'isSystem' => $r['isSystem'] ?? false,
+                            'modulePermissions' => $r['modulePermissions'] ?? null,
+                            'allowedModules' => $r['allowedModules'] ?? null,
+                        ]
+                    );
+                }
+            }
         });
 
         return response()->json(['status' => 'ok']);
@@ -350,6 +373,7 @@ class DataController extends Controller
             InventoryLog::query()->delete();
             Activity::query()->delete();
             Product::query()->delete();
+            \App\Models\CustomRole::query()->delete();
 
             Product::create([
                 'id' => 'p1',
