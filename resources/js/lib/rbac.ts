@@ -201,6 +201,9 @@ export function hasModulePermission(
  * Check if a user can view/access a top-level module
  */
 export function canAccessModule(roleOrUser: UserRole | User, moduleId: string): boolean {
+  if (['stock-in', 'stock-out', 'movement-logs'].includes(moduleId)) {
+    return hasModulePermission(roleOrUser, 'inventory', 'view');
+  }
   return hasModulePermission(roleOrUser, moduleId, 'view');
 }
 

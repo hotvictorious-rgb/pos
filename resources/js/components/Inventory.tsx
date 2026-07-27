@@ -1169,32 +1169,7 @@ export default function Inventory({ user, initialSubTab = 'products', onSubTabCh
                             
                             {!product.archived ? (
                               <>
-                                {canStockIn && (
-                                  <button 
-                                    onClick={() => {
-                                      setSelectedProduct(product);
-                                      setLogType('stock-in');
-                                      setIsLogOpen(true);
-                                    }}
-                                    className="p-1.5 text-accent-theme hover:bg-accent-theme-light rounded-lg transition-colors cursor-pointer"
-                                    title="Quick Stock In"
-                                  >
-                                    <Plus size={16} />
-                                  </button>
-                                )}
-                                {canStockOut && (
-                                  <button 
-                                    onClick={() => {
-                                      setSelectedProduct(product);
-                                      setLogType('stock-out');
-                                      setIsLogOpen(true);
-                                    }}
-                                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                    title="Quick Stock Out"
-                                  >
-                                    <Minus size={16} />
-                                  </button>
-                                )}
+
                                 {canEdit && (
                                   <button 
                                     onClick={() => handleStartEdit(product)}

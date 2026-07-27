@@ -52,7 +52,7 @@ import Settings from './components/Settings';
 import Login from './components/Login';
 import CalculatorDropdown from './components/CalculatorDropdown';
 
-type Tab = 'dashboard' | 'inventory' | 'sales' | 'payments' | 'deliveries' | 'activities' | 'users' | 'settings';
+type Tab = 'dashboard' | 'inventory' | 'stock-in' | 'stock-out' | 'movement-logs' | 'sales' | 'payments' | 'deliveries' | 'activities' | 'users' | 'settings';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -332,7 +332,10 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'inventory', label: 'Inventory', icon: Package },
+    { id: 'inventory', label: 'Products Catalog', icon: Package },
+    { id: 'stock-in', label: 'Stock In', icon: ArrowUpRight },
+    { id: 'stock-out', label: 'Stock Out', icon: ArrowDownLeft },
+    { id: 'movement-logs', label: 'Movement History', icon: Clock },
     { id: 'sales', label: 'Sales & Returns', icon: ShoppingCart },
     { id: 'payments', label: 'Payments & Ledger', icon: CreditCard },
     { id: 'deliveries', label: 'Deliveries', icon: Truck },
@@ -340,13 +343,6 @@ export default function App() {
     { id: 'users', label: 'User Management', icon: UsersIcon },
     { id: 'settings', label: 'App Settings', icon: SettingsIcon }
   ].filter(item => user && canAccessModule(user, item.id));
-
-  const inventorySubItems = [
-    { id: 'products', label: 'Products Catalog', icon: Package, color: 'text-primary-theme' },
-    { id: 'stock-in', label: 'Stock In', icon: ArrowUpRight, color: 'text-accent-theme' },
-    { id: 'stock-out', label: 'Stock Out', icon: ArrowDownLeft, color: 'text-rose-400' },
-    { id: 'movement-logs', label: 'Movement History', icon: Clock, color: 'text-purple-400' },
-  ] as const;
 
   const formattedDate = currentTime.toLocaleDateString(undefined, {
     weekday: 'short',
@@ -381,70 +377,21 @@ export default function App() {
 
           <nav className="space-y-1">
             {navItems.map((item) => {
-              const isInventory = item.id === 'inventory';
               const isActive = activeTab === item.id;
 
               return (
-                <div key={item.id} className="space-y-1">
-                  <button
-                    onClick={() => {
-                      if (isInventory) {
-                        if (activeTab !== 'inventory') {
-                          setActiveTab('inventory');
-                          setIsInventoryExpanded(true);
-                        } else {
-                          setIsInventoryExpanded(!isInventoryExpanded);
-                        }
-                      } else {
-                        setActiveTab(item.id as Tab);
-                      }
-                    }}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all font-medium text-sm cursor-pointer ${
-                      isActive 
-                        ? 'bg-primary-theme text-sidebar-theme-text shadow-md shadow-primary-theme-dark/30 font-bold' 
-                        : 'text-sidebar-theme-text/60 hover:bg-sidebar-theme-hover hover:text-sidebar-theme-text'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <item.icon size={18} />
-                      <span>{item.label}</span>
-                    </div>
-                    {isInventory && (
-                      <ChevronDown 
-                        size={16} 
-                        className={`transition-transform duration-200 ${
-                          isInventoryExpanded ? 'rotate-180 text-sidebar-theme-text' : 'text-sidebar-theme-text/60'
-                        }`} 
-                      />
-                    )}
-                  </button>
-
-                  {/* Sub-menu Slice under Inventory */}
-                  {isInventory && isInventoryExpanded && (
-                    <div className="ml-4 pl-3 border-l border-sidebar-theme-border space-y-1 py-1">
-                      {inventorySubItems.map((sub) => {
-                        const isSubActive = activeTab === 'inventory' && inventorySubTab === sub.id;
-                        return (
-                          <button
-                            key={sub.id}
-                            onClick={() => {
-                              setActiveTab('inventory');
-                              setInventorySubTab(sub.id);
-                            }}
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                              isSubActive
-                                ? 'bg-sidebar-theme-hover text-sidebar-theme-text font-bold border border-sidebar-theme-border/80 shadow-sm'
-                                : 'text-sidebar-theme-text/60 hover:bg-sidebar-theme-hover/60 hover:text-slate-200'
-                            }`}
-                          >
-                            <sub.icon size={14} className={sub.color || (isSubActive ? 'text-primary-theme' : 'text-sidebar-theme-text/60')} />
-                            <span>{sub.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id as Tab)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm cursor-pointer ${
+                    isActive 
+                      ? 'bg-primary-theme text-sidebar-theme-text shadow-md shadow-primary-theme-dark/30 font-bold' 
+                      : 'text-sidebar-theme-text/60 hover:bg-sidebar-theme-hover hover:text-sidebar-theme-text'
+                  }`}
+                >
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                </button>
               );
             })}
           </nav>
@@ -572,72 +519,24 @@ export default function App() {
             <div className="flex-1 overflow-y-auto p-6 space-y-8 flex flex-col justify-between">
               <nav className="space-y-2">
                 {navItems.map((item) => {
-                  const isInventory = item.id === 'inventory';
                   const isActive = activeTab === item.id;
 
                   return (
-                    <div key={item.id} className="space-y-1">
-                      <button
-                        onClick={() => {
-                          if (isInventory) {
-                            if (activeTab !== 'inventory') {
-                              setActiveTab('inventory');
-                              setIsInventoryExpanded(true);
-                            } else {
-                              setIsInventoryExpanded(!isInventoryExpanded);
-                            }
-                          } else {
-                            setActiveTab(item.id as Tab);
-                            setIsMobileMenuOpen(false);
-                          }
-                        }}
-                        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-base font-medium transition-colors ${
-                          isActive 
-                            ? 'bg-primary-theme text-sidebar-theme-text font-bold' 
-                            : 'text-sidebar-theme-text/60 hover:bg-sidebar-theme-hover/50 hover:text-sidebar-theme-text'
-                        }`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <item.icon size={20} />
-                          <span>{item.label}</span>
-                        </div>
-                        {isInventory && (
-                          <ChevronDown 
-                            size={18} 
-                            className={`transition-transform duration-200 ${
-                              isInventoryExpanded ? 'rotate-180 text-sidebar-theme-text' : 'text-sidebar-theme-text/60'
-                            }`} 
-                          />
-                        )}
-                      </button>
-
-                      {/* Sub-menu Slice under Inventory for Mobile */}
-                      {isInventory && isInventoryExpanded && (
-                        <div className="ml-6 pl-3 border-l border-sidebar-theme-border space-y-1 py-1">
-                          {inventorySubItems.map((sub) => {
-                            const isSubActive = activeTab === 'inventory' && inventorySubTab === sub.id;
-                            return (
-                              <button
-                                key={sub.id}
-                                onClick={() => {
-                                  setActiveTab('inventory');
-                                  setInventorySubTab(sub.id);
-                                  setIsMobileMenuOpen(false);
-                                }}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                                  isSubActive
-                                    ? 'bg-sidebar-theme-hover text-sidebar-theme-text font-bold border border-sidebar-theme-border'
-                                    : 'text-sidebar-theme-text/60 hover:bg-sidebar-theme-hover/60 hover:text-slate-200'
-                                }`}
-                              >
-                                <sub.icon size={16} className={sub.color || (isSubActive ? 'text-primary-theme' : 'text-sidebar-theme-text/60')} />
-                                <span>{sub.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id as Tab);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl text-base font-medium transition-colors cursor-pointer ${
+                        isActive 
+                          ? 'bg-primary-theme text-sidebar-theme-text font-bold' 
+                          : 'text-sidebar-theme-text/60 hover:bg-sidebar-theme-hover/50 hover:text-sidebar-theme-text'
+                      }`}
+                    >
+                      <item.icon size={20} />
+                      <span>{item.label}</span>
+                    </button>
                   );
                 })}
               </nav>
@@ -760,8 +659,41 @@ export default function App() {
               {activeTab === 'inventory' && canAccessModule(user, 'inventory') && (
                 <Inventory 
                   user={user} 
-                  initialSubTab={inventorySubTab} 
-                  onSubTabChange={(tab) => setInventorySubTab(tab)} 
+                  initialSubTab="products" 
+                  onSubTabChange={(tab) => {
+                    if (tab === 'products') setActiveTab('inventory');
+                    else setActiveTab(tab as any);
+                  }}
+                />
+              )}
+              {activeTab === 'stock-in' && canAccessModule(user, 'stock-in') && (
+                <Inventory 
+                  user={user} 
+                  initialSubTab="stock-in" 
+                  onSubTabChange={(tab) => {
+                    if (tab === 'products') setActiveTab('inventory');
+                    else setActiveTab(tab as any);
+                  }}
+                />
+              )}
+              {activeTab === 'stock-out' && canAccessModule(user, 'stock-out') && (
+                <Inventory 
+                  user={user} 
+                  initialSubTab="stock-out" 
+                  onSubTabChange={(tab) => {
+                    if (tab === 'products') setActiveTab('inventory');
+                    else setActiveTab(tab as any);
+                  }}
+                />
+              )}
+              {activeTab === 'movement-logs' && canAccessModule(user, 'movement-logs') && (
+                <Inventory 
+                  user={user} 
+                  initialSubTab="movement-logs" 
+                  onSubTabChange={(tab) => {
+                    if (tab === 'products') setActiveTab('inventory');
+                    else setActiveTab(tab as any);
+                  }}
                 />
               )}
               {activeTab === 'sales' && canAccessModule(user, 'sales') && <Sales user={user} />}
