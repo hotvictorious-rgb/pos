@@ -259,7 +259,14 @@ export default function Payments({ user }: PaymentsProps) {
     });
   }, [rawLedgerEntries, dateFilter, startDate, endDate, typeFilter, methodFilter, search]);
 
-  // 3. Financial Metrics Calculations for Filtered View
+  // 2.5 Ledger entries filtered ONLY by Date (for stable overall summary cards)
+  const dateFilteredLedgerEntries = useMemo(() => {
+    return rawLedgerEntries.filter(entry => {
+      return matchesDateFilter(entry.timestamp, dateFilter, startDate, endDate);
+    });
+  }, [rawLedgerEntries, dateFilter, startDate, endDate]);
+
+  // 3. Financial Metrics Calculations for Date-Filtered View
   const financialMetrics = useMemo(() => {
     let totalCollected = 0;
     let totalCollectedCount = 0;
@@ -270,7 +277,7 @@ export default function Payments({ user }: PaymentsProps) {
     let totalRefunds = 0;
     let refundsCount = 0;
 
-    filteredLedgerEntries.forEach(entry => {
+    dateFilteredLedgerEntries.forEach(entry => {
       if (entry.type === 'refund') {
         totalRefunds += entry.amount;
         refundsCount++;
@@ -302,7 +309,7 @@ export default function Payments({ user }: PaymentsProps) {
       refundsCount,
       netBalance
     };
-  }, [filteredLedgerEntries]);
+  }, [dateFilteredLedgerEntries]);
 
   // 4. Pending Installment Collections Logic
   const getSaleBalance = (sale: Sale) => {
