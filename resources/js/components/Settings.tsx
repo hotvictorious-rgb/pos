@@ -16,7 +16,11 @@ import {
   ShieldCheck,
   Settings as SettingsIcon,
   Bell,
-  Calendar
+  Calendar,
+  Database,
+  Upload,
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { storage } from '../lib/storage';
 import { AppSettings, User } from '../types';
@@ -31,6 +35,131 @@ export default function Settings({ user }: SettingsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newCategory, setNewCategory] = useState('');
+
+  const [backups, setBackups] = useState<any[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
+  const [creatingBackup, setCreatingBackup] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState<string | null>(null);
+  const [deletingBackup, setDeletingBackup] = useState<string | null>(null);
+  const [uploadingBackup, setUploadingBackup] = useState(false);
+
+  const fetchBackups = async () => {
+    setLoadingBackups(true);
+    try {
+      const res = await fetch('/api/backups');
+      if (res.ok) {
+        const data = await res.json();
+        setBackups(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch backups:', e);
+    } finally {
+      setLoadingBackups(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBackups();
+  }, []);
+
+  const handleCreateBackup = async () => {
+    setCreatingBackup(true);
+    try {
+      const res = await fetch('/api/backups', { method: 'POST' });
+      if (res.ok) {
+        window.dispatchEvent(new CustomEvent('hysam-show-toast', { 
+          detail: { message: 'Database backup created successfully!', type: 'success' } 
+        }));
+        fetchBackups();
+      } else {
+        alert('Failed to create backup.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error creating backup.');
+    } finally {
+      setCreatingBackup(false);
+    }
+  };
+
+  const handleRestoreBackup = async (id: string, filename: string) => {
+    if (!window.confirm(`Are you sure you want to restore the system state from "${filename}"? All current unsaved local changes and database records will be replaced!`)) {
+      return;
+    }
+    setRestoringBackup(id);
+    try {
+      const res = await fetch(`/api/backups/${id}/restore`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Database successfully restored. The application will now reload to apply the data.');
+        window.location.reload();
+      } else {
+        alert(data.error || 'Failed to restore backup.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error restoring backup.');
+    } finally {
+      setRestoringBackup(null);
+    }
+  };
+
+  const handleDeleteBackup = async (id: string, filename: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete backup "${filename}"?`)) {
+      return;
+    }
+    setDeletingBackup(id);
+    try {
+      const res = await fetch(`/api/backups/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        window.dispatchEvent(new CustomEvent('hysam-show-toast', { 
+          detail: { message: 'Backup file deleted.', type: 'success' } 
+        }));
+        fetchBackups();
+      } else {
+        alert('Failed to delete backup.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error deleting backup.');
+    } finally {
+      setDeletingBackup(null);
+    }
+  };
+
+  const handleUploadBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm(`Are you sure you want to upload and restore "${file.name}"? All current data will be replaced!`)) {
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingBackup(true);
+    const formData = new FormData();
+    formData.append('backup_file', file);
+
+    try {
+      const res = await fetch('/api/backups/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Backup successfully uploaded and restored. The application will now reload.');
+        window.location.reload();
+      } else {
+        alert(data.error || 'Failed to upload and restore backup.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error uploading backup file.');
+    } finally {
+      setUploadingBackup(false);
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     const handleTriggerSave = () => {
@@ -329,6 +458,130 @@ export default function Settings({ user }: SettingsProps) {
                 >
                   <Plus size={20} />
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Backup & Recovery Module */}
+          <div className="bg-card-theme-bg rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6">
+            <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-layout-theme-bg/50">
+              <div className="flex items-center gap-3">
+                <Database className="text-primary-theme" size={20} />
+                <h3 className="font-bold text-slate-900">Database Backup & Recovery</h3>
+              </div>
+              <button
+                type="button"
+                onClick={handleCreateBackup}
+                disabled={creatingBackup}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {creatingBackup ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Plus size={14} />
+                )}
+                Create Backup
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Create database backups to restore your business suite state at any time. You can download backups locally, or upload a previously downloaded backup JSON file to restore the database.
+              </p>
+
+              {/* Upload & Restore Form */}
+              <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-700">Upload & Restore Backup File</h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Restore the application state by uploading a JSON backup file.</p>
+                </div>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".json"
+                    id="upload-backup-input"
+                    onChange={handleUploadBackup}
+                    className="hidden"
+                    disabled={uploadingBackup}
+                  />
+                  <label
+                    htmlFor="upload-backup-input"
+                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 inline-flex items-center"
+                  >
+                    {uploadingBackup ? (
+                      <div className="w-3.5 h-3.5 border-2 border-slate-700/30 border-t-slate-700 rounded-full animate-spin mr-1.5" />
+                    ) : (
+                      <Upload size={14} className="mr-1.5" />
+                    )}
+                    Upload Backup (.json)
+                  </label>
+                </div>
+              </div>
+
+              {/* Backups List */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Available Backups</h4>
+                {loadingBackups ? (
+                  <div className="py-8 flex items-center justify-center text-slate-400 gap-2">
+                    <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                    <span className="text-xs font-medium">Loading backups...</span>
+                  </div>
+                ) : backups.length === 0 ? (
+                  <div className="py-8 text-center border border-dashed border-slate-200 rounded-xl text-slate-400">
+                    <p className="text-xs font-medium">No backups created yet.</p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200/60 rounded-xl overflow-hidden divide-y divide-slate-100">
+                    {backups.map((b) => (
+                      <div key={b.id} className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-slate-50/50 transition-colors">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-slate-800 break-all">{b.filename}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400 font-medium">
+                            <span>Size: {(b.size / 1024).toFixed(2)} KB</span>
+                            <span>•</span>
+                            <span>Created By: {b.created_by}</span>
+                            <span>•</span>
+                            <span>{new Date(b.created_at).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <a
+                            href={`/api/backups/${b.id}/download`}
+                            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-all"
+                            title="Download Backup JSON"
+                          >
+                            <Download size={15} />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreBackup(b.id, b.filename)}
+                            disabled={restoringBackup !== null}
+                            className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all"
+                            title="Restore Database to this Point"
+                          >
+                            {restoringBackup === b.id ? (
+                              <div className="w-3.5 h-3.5 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+                            ) : (
+                              <RefreshCw size={15} />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBackup(b.id, b.filename)}
+                            disabled={deletingBackup !== null}
+                            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all"
+                            title="Delete Backup File"
+                          >
+                            {deletingBackup === b.id ? (
+                              <div className="w-3.5 h-3.5 border-2 border-rose-600/30 border-t-rose-600 rounded-full animate-spin" />
+                            ) : (
+                              <Trash2 size={15} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
