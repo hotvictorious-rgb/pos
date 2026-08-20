@@ -445,6 +445,13 @@
                     In <strong>🚚 Shop Transfers</strong> or the Reports tab, click <strong>🖨️ Waybill</strong> next to any transfer to print an official delivery note with signature boxes for the dispatch officer, carrier driver, and storekeeper.
                 </p>
             </div>
+
+            <div class="step-box">
+                <strong style="color: #f87171;">7. Secure Sign In & Topbar One-Click Log Out</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    All workers must sign in at <strong>/login</strong> using their work email and password. When closing shift or stepping away from the computer, click <strong>🚪 Log Out</strong> at the top right to lock the session and protect financial data.
+                </p>
+            </div>
         </div>
     </div>
 

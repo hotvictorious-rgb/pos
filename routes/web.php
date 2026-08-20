@@ -30,8 +30,10 @@ Route::prefix('install')->name('installer.')->group(function () {
 });
 
 // ─────────────────────────────────────────────────────────
-// AUTH & LOGOUT
+// AUTHENTICATION & SESSIONS
 // ─────────────────────────────────────────────────────────
+Route::get('/login',  [AuthController::class, 'showLogin'])->name('login');
+Route::post('/login', [AuthController::class, 'webLogin'])->name('login.post');
 Route::match(['get', 'post'], '/logout', [AuthController::class, 'webLogout'])->name('logout');
 
 // ─────────────────────────────────────────────────────────

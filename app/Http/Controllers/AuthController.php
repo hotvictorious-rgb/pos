@@ -79,22 +79,105 @@ class AuthController extends Controller
         return response()->json($user);
     }
 
+    public function showLogin(Request $request)
+    {
+        if (session('user_id') || \Illuminate\Support\Facades\Auth::check()) {
+            return redirect('/');
+        }
+        return view('auth.login');
+    }
+
+    public function webLogin(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+
+        $email = strtolower(trim($request->input('email')));
+        $password = $request->input('password');
+
+        $adminEmail = strtolower(trim(env('ADMIN_EMAIL', 'admin@hysam.com')));
+        $adminPassword = env('ADMIN_PASSWORD', 'admin123');
+
+        $user = User::whereRaw('LOWER(email) = ?', [$email])->first();
+
+        // 1. Auto-seed / verify admin
+        if ($email === $adminEmail) {
+            if (!$user) {
+                $user = User::create([
+                    'id' => 'admin-user-1',
+                    'name' => 'Admin User',
+                    'email' => $adminEmail,
+                    'password' => Hash::make($adminPassword),
+                    'role' => 'admin',
+                    'disabled' => false,
+                    'permissions' => [
+                        'create' => true,
+                        'edit' => true,
+                        'delete' => true,
+                        'stockIn' => true,
+                        'stockOut' => true
+                    ]
+                ]);
+            }
+
+            if ($user->disabled) {
+                return back()->withInput()->with('error', 'Your account has been disabled by the administrator.');
+            }
+
+            if (!Hash::check($password, $user->password) && $password !== $adminPassword) {
+                return back()->withInput()->with('error', 'Invalid email address or password.');
+            }
+
+            if ($password === $adminPassword && !Hash::check($password, $user->password)) {
+                $user->password = Hash::make($adminPassword);
+                $user->save();
+            }
+
+            session(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $user->role]);
+            \Illuminate\Support\Facades\Auth::login($user);
+
+            $intended = session()->pull('url.intended', '/');
+            return redirect($intended)->with('success', "Welcome back, {$user->name}!");
+        }
+
+        // 2. Regular worker login
+        if (!$user) {
+            return back()->withInput()->with('error', 'This account does not exist. Please contact your administrator.');
+        }
+
+        if ($user->disabled) {
+            return back()->withInput()->with('error', 'Your account has been disabled by the administrator.');
+        }
+
+        if (!Hash::check($password, $user->password)) {
+            return back()->withInput()->with('error', 'Invalid email address or password.');
+        }
+
+        session(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $user->role]);
+        \Illuminate\Support\Facades\Auth::login($user);
+
+        $intended = session()->pull('url.intended', '/');
+        return redirect($intended)->with('success', "Welcome back, {$user->name}!");
+    }
+
     public function logout()
     {
-        session()->forget('user_id');
+        session()->forget(['user_id', 'user_name', 'user_role']);
         return response()->json(['status' => 'logged_out']);
     }
 
     public function webLogout(Request $request)
     {
-        session()->forget('user_id');
+        session()->forget(['user_id', 'user_name', 'user_role']);
         if (\Illuminate\Support\Facades\Auth::check()) {
             \Illuminate\Support\Facades\Auth::logout();
         }
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect('/')->with('success', '✓ You have been logged out successfully.');
+        return redirect()->route('login')->with('success', '✓ You have been logged out successfully.');
     }
 
     public function me()

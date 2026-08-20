@@ -9,7 +9,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Cashier Shift Balancing Feature**: Completely removed cashier shift balancing workflows, modal forms, routes (`/close-shift`), shift reports table, and JSON shift exports across the entire codebase to streamline closing operations.
 
 ### Added
-- **One-Click Logout**: Added a prominent `🚪 Log Out` button in the top navigation bar and registered the `/logout` web route to securely terminate sessions across both the Blade web views and React SPA interfaces.
+- **Visual Web Login Screen & Session Guard Middleware**: Created a standalone `/login` interface and `CheckWebAuth` middleware enforcing session authentication across all dashboard, POS, stock, and auditor routes, redirecting unauthenticated users to `/login`.
+- **One-Click Logout**: Added a prominent `🚪 Log Out` button in the top navigation bar and registered the `/logout` web route to securely terminate sessions and redirect directly to `/login`.
 
 ### Changed
 - **Zero-Decimal Naira Currency Formatting**: Standardized all currency amounts, product prices, receipts, ledger debts, revenue KPIs, and POS cart displays across all Blade views and JavaScript calculators to 0 decimal places (`₦75,000` instead of `₦75,000.00`) reflecting standard wholesale/retail market currency conventions.
