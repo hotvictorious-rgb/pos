@@ -368,6 +368,9 @@
             </a>
 
             <div class="menu-category">Sales & Customer Debts</div>
+            <a href="{{ route('transactions.index') }}" class="nav-item {{ request()->routeIs('transactions.*') ? 'active' : '' }}">
+                <span>📑</span> <span>Sales History</span>
+            </a>
             <a href="{{ route('pos.returns') }}" class="nav-item {{ request()->routeIs('pos.returns') ? 'active' : '' }}">
                 <span>🔄</span> <span>Returns & Refunds</span>
             </a>

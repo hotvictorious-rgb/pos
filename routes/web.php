@@ -116,6 +116,10 @@ Route::prefix('debts')->name('debts.')->group(function () {
     Route::post('/pay/{id}',    [DebtController::class, 'recordPayment'])->name('pay');
 });
 
+// 7. Transactions History & Audit Trail
+Route::get('/transactions', [\App\Http\Controllers\Web\TransactionController::class, 'index'])->name('transactions.index');
+
+
 // 7. Workers & Role Permissions Hub
 Route::prefix('users')->name('users.')->group(function () {
     Route::get('/',                       [\App\Http\Controllers\Web\UserController::class, 'index'])->name('index');

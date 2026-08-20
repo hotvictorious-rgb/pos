@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+- **Transactions & Sales History Hub** (`/transactions`):
+  - Advanced multi-criteria filter engine: quick date presets (Today, Yesterday, This Week, This Month), custom date range, payment status (Fully Paid vs Part-Payment Debt), delivery/handover status (Supplied vs Unsupplied), and staff/cashier dropdown.
+  - Aggregated real-time metrics: Total Invoices, Gross Sales, Cash/POS Collected, and Outstanding Debts.
+  - Detailed line-item modal drawer and direct printable receipt shortcuts.
 - **Header Enhancements**:
   - **Live Digital Date & Clock**: Real-time ticking calendar and digital clock in Nigerian local time format (`Thu, 20 Aug 2026 | 12:35:10 PM`).
   - **Interactive Quick POS Calculator**: One-click topbar calculator widget with standard arithmetic (`+`, `-`, `*`, `/`, `%`, `00`), error handling, and high-visibility digital display for quick counter tallying.
