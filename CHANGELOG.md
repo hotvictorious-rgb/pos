@@ -5,25 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ---
 
+### Removed
+- **Cashier Shift Balancing Feature**: Completely removed cashier shift balancing workflows, modal forms, routes (`/close-shift`), shift reports table, and JSON shift exports across the entire codebase to streamline closing operations.
+
 ### Changed
 - **Header Brand Title**: Updated sidebar/header brand subtitle from "Nwaniba POS & Stock" to generic "POS & Stock".
 
 ### Fixed
 - **Product Stock Levels Eloquent Relation**: Defined missing `stockLevels()` has-many relationship in `Product` model resolving 500 error in structured JSON catalog export.
 - **PHP 8.4 Type Hint Compatibility**: Corrected `double` type hint to `float` in `StockService::recordCustomerPayment`.
-- **Reports Shift Model Binding**: Resolved `Class "App\Models\ShiftLog" not found` in `ReportController` by binding to the correct `CashierShift` Eloquent model.
 - **Transfer Dispatch & Sales Item Key Resolution**: Fixed `Undefined array key "productId"` in `StockService` by gracefully resolving both camelCase `productId` and snake_case `product_id` keys in `initiateTransfer`, `recordSale`, and `recordSaleReturn`.
 
 ### Testing & Verification
-- **8-Tier Comprehensive Audit Verification Suite** (`verify_system_suite.php`):
+- **7-Tier Comprehensive Audit Verification Suite** (`verify_system_suite.php`):
   - Tier 1: Immediate delivery sale math & customer debt generation ($100\%$ exact).
   - Tier 2: Delayed pickup stock buffer segregation & physical dispatch ($100\%$ exact).
   - Tier 3: Inter-branch transfer dispatch, in-transit buffer, and verification count ($100\%$ exact).
   - Tier 4: Customer debt ledger calculations & partial repayments ($100\%$ exact).
   - Tier 5: Sales returns & shelf physical stock restitution ($100\%$ exact).
-  - Tier 6: End-of-day cashier shift cash balancing formulas ($100\%$ exact).
-  - Tier 7: Full database relational integrity & zero-corruption scan ($100\%$ clean).
-  - Tier 8: Full HTTP 200 verification across all 28 web pages, filter decks, CSV/JSON export streams, and reports.
+  - Tier 6: Full database relational integrity & zero-corruption scan ($100\%$ clean).
+  - Tier 7: Full HTTP 200 verification across all 27 web pages, filter decks, CSV/JSON export streams, and reports.
 
 ### Security & Governance
 - **Central Catalog Authority Enforcement**: Restricted product creation, master price editing, CSV bulk imports, and archiving strictly to `admin` (Auditor / Super Admin). Branch Managers and Sales & Stock staff can add stock quantities (`Stock In`) for catalog items while keeping product definitions centralized and tamper-proof.

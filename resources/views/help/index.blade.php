@@ -193,9 +193,9 @@
             </div>
 
             <div class="step-box">
-                <strong style="color: #f87171;">4. Damaged Goods & Shift Close</strong>
+                <strong style="color: #f87171;">4. Damaged Goods & Daily Review</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Record damaged items under <em>Damaged Goods</em> and enter total physical drawer cash in the <em>Auditor Hub</em> at end of day.
+                    Record damaged or broken items under <em>Damaged Goods</em> and review daily sales and debt recovery totals in the <em>Reports Hub</em> at closing time.
                 </p>
             </div>
         </div>
@@ -244,9 +244,9 @@
             </div>
 
             <div class="step-box">
-                <strong style="color: #93c5fd;">5. End-of-Day (EOD) Cash Drawer Balancing</strong>
+                <strong style="color: #93c5fd;">5. Daily Sales & Receipts Audit</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    At closing time, count all the cash in your drawer. Enter the total in the <strong>🚨 Auditor Control Hub</strong> under *Close Cashier Shift*.
+                    Review your completed sales and customer receipts anytime under <strong>📜 Sales History</strong> to verify your total daily revenue collected.
                 </p>
             </div>
         </div>

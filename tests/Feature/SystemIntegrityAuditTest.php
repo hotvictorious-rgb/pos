@@ -242,7 +242,6 @@ class SystemIntegrityAuditTest extends TestCase
             '/reports/export-csv/debtors',
             '/reports/export-json/sales',
             '/reports/export-json/stock',
-            '/reports/export-json/shift_logs',
             '/users',
             '/help',
             '/settings',

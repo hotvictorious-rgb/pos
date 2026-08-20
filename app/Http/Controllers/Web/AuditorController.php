@@ -10,7 +10,6 @@ use App\Models\Transfer;
 use App\Models\Sale;
 use App\Models\Customer;
 use App\Models\Activity;
-use App\Models\CashierShift;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -55,10 +54,7 @@ class AuditorController extends Controller
         $unsuppliedSales = Sale::with('items')->where('deliveryStatus', 'UNSUPPLIED')->get();
         $unsuppliedValue = $unsuppliedSales->sum('totalAmount');
 
-        // 5. Recent Cashier Shifts / Balancing
-        $recentShifts = CashierShift::with('warehouse')->orderBy('created_at', 'desc')->take(10)->get();
-
-        // 6. Immutable Activity Audit Log
+        // 5. Immutable Activity Audit Log
         $recentActivities = Activity::orderBy('timestamp', 'desc')->take(25)->get();
 
         return view('auditor.index', compact(
@@ -69,52 +65,7 @@ class AuditorController extends Controller
             'debtors',
             'unsuppliedSales',
             'unsuppliedValue',
-            'recentShifts',
             'recentActivities'
         ));
-    }
-
-    /**
-     * Cashier End-of-Day Shift Close & Cash Count Balancing.
-     */
-    public function closeShift(Request $request)
-    {
-        $request->validate([
-            'warehouse_id' => 'required',
-            'counted_cash' => 'required|numeric|min:0',
-        ]);
-
-        $warehouseId = (int) $request->warehouse_id;
-        $countedCash = (float) $request->counted_cash;
-        $userId = Auth::id() ?? 'CASHIER-1';
-        $userName = Auth::user()->name ?? 'Cashier';
-
-        // Calculate expected cash from sales today for this shop
-        $todaySales = Sale::where('userId', $userId)
-            ->whereDate('created_at', today())
-            ->get();
-
-        $cashSales = $todaySales->sum('cashAmount');
-        $posSales = $todaySales->sum('posAmount');
-        $expectedCash = $cashSales;
-        $difference = $countedCash - $expectedCash;
-
-        CashierShift::create([
-            'warehouse_id' => $warehouseId,
-            'cashier_id' => $userId,
-            'cashier_name' => $userName,
-            'opening_float' => 0,
-            'cash_sales' => $cashSales,
-            'pos_sales' => $posSales,
-            'expected_cash' => $expectedCash,
-            'counted_cash' => $countedCash,
-            'difference' => $difference,
-            'status' => abs($difference) > 0 ? 'AUDITED' : 'CLOSED',
-            'auditor_notes' => $difference < 0 ? "SHORTAGE OF ₦" . abs($difference) : ($difference > 0 ? "OVERAGE OF ₦" . $difference : "BALANCED"),
-            'opened_at' => today(),
-            'closed_at' => now(),
-        ]);
-
-        return redirect()->route('auditor.index')->with('success', '✓ Shift Closed and Cash Balancing submitted to Auditor!');
     }
 }

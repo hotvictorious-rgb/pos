@@ -281,7 +281,6 @@
         <button class="rep-tab-btn" onclick="showReport('repTransfers', this)">🚚 Transfers & Waybills ({{ $transfers->count() }})</button>
         <button class="rep-tab-btn" onclick="showReport('repDebts', this)">💳 Debtors Aging ({{ $debtors->count() }})</button>
         <button class="rep-tab-btn" onclick="showReport('repDamages', this)">📉 Damaged Stock ({{ $adjustments->count() }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repShifts', this)">⚖️ Cashier Shift Logs</button>
         <button class="rep-tab-btn" onclick="showReport('repAi', this)">🤖 AI Export Hub</button>
     </div>
 
@@ -578,59 +577,7 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- TAB 6: CASHIER SHIFT BALANCING -->
-    <!-- ========================================================================= -->
-    <div id="repShifts" class="report-section">
-        <div class="card">
-            <div class="export-bar">
-                <h3 style="font-size: 1.15rem; font-weight: 800;">Cashier End-of-Day Shift Balancing Logs</h3>
-                <a href="{{ route('reports.export.json', 'shift_logs') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">
-                    🤖 Export JSON
-                </a>
-            </div>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Cashier Name</th>
-                            <th>Expected Cash (₦)</th>
-                            <th>Physical Counted (₦)</th>
-                            <th>Shortage / Overage</th>
-                            <th>Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($shiftLogs as $sh)
-                        @php $diff = (float) $sh->counted_cash - (float) $sh->expected_cash; @endphp
-                        <tr>
-                            <td style="font-size: 0.75rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($sh->created_at)) }}</td>
-                            <td><strong>{{ $sh->cashier_name ?? $sh->user_name ?? 'Cashier' }}</strong></td>
-                            <td>₦{{ number_format($sh->expected_cash, 2) }}</td>
-                            <td style="font-weight: 800; color: #4ade80;">₦{{ number_format($sh->counted_cash, 2) }}</td>
-                            <td>
-                                @if($diff < 0)
-                                    <span class="badge badge-danger">🚨 SHORTAGE ₦{{ number_format(abs($diff), 2) }}</span>
-                                @elseif($diff > 0)
-                                    <span class="badge badge-info">OVERAGE +₦{{ number_format($diff, 2) }}</span>
-                                @else
-                                    <span class="badge badge-success">✓ EXACT BALANCE</span>
-                                @endif
-                            </td>
-                            <td>{{ $sh->auditor_notes ?? $sh->notes ?? 'Shift closed' }}</td>
-                        </tr>
-                        @empty
-                        <tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">No shift logs recorded yet.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- ========================================================================= -->
-    <!-- TAB 7: AI DATA EXPORT HUB -->
+    <!-- TAB 6: AI DATA EXPORT HUB -->
     <!-- ========================================================================= -->
     <div id="repAi" class="report-section">
         <div class="card">

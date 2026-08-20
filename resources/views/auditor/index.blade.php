@@ -43,12 +43,9 @@
                 <h2 style="font-size: 1.6rem; font-weight: 800; color: #fca5a5;">Auditor Anti-Theft & Control Hub</h2>
             </div>
             <p style="font-size: 0.9rem; color: #cbd5e1;">
-                Real-time stock reconciliation, transfer discrepancy detection, and cashier shift auditing.
+                Real-time stock reconciliation, transfer discrepancy detection, and unsupplied sales tracking.
             </p>
         </div>
-        <button class="btn btn-warning" onclick="openModal('modalShiftClose')">
-            💵 Perform End-of-Day Cash Balancing
-        </button>
     </div>
 
     <!-- 1. Theft & Discrepancy Alert Radar -->
@@ -160,65 +157,7 @@
         </div>
     </div>
 
-    <!-- 3. Cashier Shifts & Drawer Balancing Ledger -->
-    <div class="card" style="margin-bottom: 2rem;">
-        <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1.25rem;">
-            💵 Cashier End-of-Day Drawer Audits
-        </h3>
-
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date & Time</th>
-                        <th>Shop Branch</th>
-                        <th>Cashier</th>
-                        <th>Expected Cash</th>
-                        <th>Counted Cash</th>
-                        <th>Difference</th>
-                        <th>Audit Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($recentShifts as $shift)
-                    <tr>
-                        <td>{{ date('d M Y, h:i A', strtotime($shift->closed_at ?? $shift->created_at)) }}</td>
-                        <td>{{ $shift->warehouse->name ?? 'Shop' }}</td>
-                        <td><strong>{{ $shift->cashier_name }}</strong></td>
-                        <td>₦{{ number_format($shift->expected_cash, 2) }}</td>
-                        <td>₦{{ number_format($shift->counted_cash, 2) }}</td>
-                        <td>
-                            @if($shift->difference < 0)
-                                <span style="font-weight: 800; color: #f87171;">
-                                    -₦{{ number_format(abs($shift->difference), 2) }} (SHORTAGE)
-                                </span>
-                            @elseif($shift->difference > 0)
-                                <span style="font-weight: 800; color: #4ade80;">
-                                    +₦{{ number_format($shift->difference, 2) }} (OVERAGE)
-                                </span>
-                            @else
-                                <span style="color: #4ade80; font-weight: 700;">✓ BALANCED (₦0.00)</span>
-                            @endif
-                        </td>
-                        <td>
-                            <span class="badge {{ $shift->difference != 0 ? 'badge-danger' : 'badge-success' }}">
-                                {{ $shift->status }}
-                            </span>
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                            No cashier shift audits recorded yet.
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 4. Immutable Activity Audit Log -->
+    <!-- 3. Immutable Activity Audit Log -->
     <div class="card">
         <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1.25rem;">
             📜 System Activity Audit Log (Immutable)
@@ -255,38 +194,6 @@
                     @endforelse
                 </tbody>
             </table>
-        </div>
-    </div>
-
-    <!-- Modal: Cashier End-of-Day Balancing -->
-    <div id="modalShiftClose" class="modal-backdrop" style="display: none;">
-        <div class="modal">
-            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">💵 End-of-Day Cash Balancing</h3>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-                Count all physical currency notes in the cash drawer at shift close.
-            </p>
-
-            <form method="POST" action="{{ route('auditor.close.shift') }}">
-                @csrf
-                <div class="form-group">
-                    <label>Select Shop Branch</label>
-                    <select name="warehouse_id" required>
-                        @foreach($warehouses as $wh)
-                            <option value="{{ $wh->id }}">{{ $wh->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Actual Cash Counted in Drawer (₦)</label>
-                    <input type="number" name="counted_cash" min="0" step="any" placeholder="e.g. 85000" required>
-                </div>
-
-                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
-                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalShiftClose')">Cancel</button>
-                    <button type="submit" class="btn btn-success" style="flex: 1;">✓ Submit Drawer Balancing</button>
-                </div>
-            </form>
         </div>
     </div>
 

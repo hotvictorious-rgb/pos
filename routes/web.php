@@ -121,7 +121,6 @@ Route::prefix('reports')->name('reports.')->group(function () {
 // 5. Auditor Anti-Theft & Reconciliation Hub
 Route::prefix('auditor')->name('auditor.')->group(function () {
     Route::get('/',             [AuditorController::class, 'index'])->name('index');
-    Route::post('/close-shift', [AuditorController::class, 'closeShift'])->name('close.shift');
 });
 
 // 6. Debt & Part-Payment Recovery Hub

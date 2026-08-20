@@ -12,7 +12,6 @@ use App\Models\Customer;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Transfer;
-use App\Models\CashierShift;
 use App\Models\StockAdjustment;
 use App\Models\CustomerLedger;
 use App\Services\StockService;
@@ -20,7 +19,7 @@ use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 
 echo "====================================================================\n";
-echo "   HYSAM VENTURES - 8-TIER BUSINESS LOGIC & MATHEMATICAL AUDIT\n";
+echo "   HYSAM VENTURES - 7-TIER BUSINESS LOGIC & MATHEMATICAL AUDIT\n";
 echo "====================================================================\n\n";
 
 $stockService = app(StockService::class);
@@ -65,7 +64,7 @@ $proofs = [];
 // -----------------------------------------------------------------------------
 // PROOF 1: Immediate Delivery Sale Mathematical Accuracy
 // -----------------------------------------------------------------------------
-echo "[1/8] Testing Immediate Delivery Sale & Mathematical Formulas...\n";
+echo "[1/7] Testing Immediate Delivery Sale & Mathematical Formulas...\n";
 $qty = 4;
 $unitPrice = 75000.00;
 $totalAmount = $qty * $unitPrice; // 300,000.00
@@ -118,7 +117,7 @@ if ($sale1->totalAmount == $totalAmount && $sale1->paidAmount == $paidAmount && 
 // -----------------------------------------------------------------------------
 // PROOF 2: Delayed Pickup (Unsupplied Stock Segregation & Subsequent Dispatch)
 // -----------------------------------------------------------------------------
-echo "[2/8] Testing Delayed Pickup (Unsupplied Stock Segregation & Subsequent Dispatch)...\n";
+echo "[2/7] Testing Delayed Pickup (Unsupplied Stock Segregation & Subsequent Dispatch)...\n";
 $pickupQty = 6;
 $initialStockA = $stockA1;
 $pickupTotal = $pickupQty * $unitPrice;
@@ -170,14 +169,14 @@ if ($stockA2->physical_stock == $initialStockA && $stockA2->allocated_stock == $
         echo "   -> FAIL\n";
     }
 } else {
-    $errors[] = "PROOF 2 FAILED: Physical shelf stock changed before pickup!";
+    $errors[] = "PROOF 2 FAILED: Physical shelf stock changed before pickup! Physical: {$stockA2->physical_stock}, Allocated: {$stockA2->allocated_stock}";
     echo "   -> FAIL\n";
 }
 
 // -----------------------------------------------------------------------------
 // PROOF 3: Inter-Branch Transfer Dispatch & Receiving Count
 // -----------------------------------------------------------------------------
-echo "[3/8] Testing Inter-Branch Transfers (In-Transit & Verification Count)...\n";
+echo "[3/7] Testing Inter-Branch Transfers (In-Transit & Verification Count)...\n";
 $transQty = 10;
 $originPre = StockLevel::where('product_id', $product->id)->where('warehouse_id', $warehouseA->id)->value('physical_stock');
 $destPre = StockLevel::where('product_id', $product->id)->where('warehouse_id', $warehouseB->id)->value('physical_stock');
@@ -221,7 +220,7 @@ if ($originPost == ($originPre - $transQty) && $destTransit == $destPre && $dest
 // -----------------------------------------------------------------------------
 // PROOF 4: Customer Debt Ledger & Repayment
 // -----------------------------------------------------------------------------
-echo "[4/8] Testing Customer Debt Ledger & Repayment Math...\n";
+echo "[4/7] Testing Customer Debt Ledger & Repayment Math...\n";
 $customer1->refresh();
 $debtPre = (float) $customer1->total_debt;
 $payment = 40000.00;
@@ -250,7 +249,7 @@ if ($debtPost == ($debtPre - $payment)) {
 // -----------------------------------------------------------------------------
 // PROOF 5: Sales Returns & Shelf Stock Restitution
 // -----------------------------------------------------------------------------
-echo "[5/8] Testing Sales Returns & Physical Shelf Restitution...\n";
+echo "[5/7] Testing Sales Returns & Physical Shelf Restitution...\n";
 $stockBeforeReturn = StockLevel::where('product_id', $product->id)->where('warehouse_id', $warehouseA->id)->value('physical_stock');
 $returnQty = 1;
 $refundAmount = $returnQty * $unitPrice;
@@ -278,63 +277,25 @@ if ($stockAfterReturn == ($stockBeforeReturn + $returnQty)) {
 }
 
 // -----------------------------------------------------------------------------
-// PROOF 6: End-of-Day Cashier Shift Balancing Math
+// PROOF 6: Database Relational Integrity Scan
 // -----------------------------------------------------------------------------
-echo "[6/8] Testing Cashier End-of-Day Shift Balancing Math...\n";
-$openingFloat = 10000.00;
-$cashSales = 150000.00;
-$posSales = 80000.00;
-$transferSales = 50000.00;
-$debtRecovered = 40000.00;
-$expectedCash = $openingFloat + $cashSales + $debtRecovered; // 200,000.00
-$countedCash = 200000.00;
-$difference = $countedCash - $expectedCash; // 0.00
-
-$shift = CashierShift::create([
-    'warehouse_id' => $warehouseA->id,
-    'cashier_id' => 1,
-    'cashier_name' => 'Grace Cashier',
-    'opening_float' => $openingFloat,
-    'cash_sales' => $cashSales,
-    'pos_sales' => $posSales,
-    'transfer_sales' => $transferSales,
-    'debt_recovered' => $debtRecovered,
-    'expected_cash' => $expectedCash,
-    'counted_cash' => $countedCash,
-    'difference' => $difference,
-    'status' => 'CLOSED',
-    'opened_at' => now()->subHours(8),
-    'closed_at' => now(),
-]);
-
-if ($shift->expected_cash == $expectedCash && $shift->difference == 0.00) {
-    $proofs[] = "✓ PROOF 6 PASSED: Shift balancing math exact (Opening Float ₦" . number_format($openingFloat, 2) . " + Cash Sales ₦" . number_format($cashSales, 2) . " + Debt Collected ₦" . number_format($debtRecovered, 2) . " = Expected Cash ₦" . number_format($expectedCash, 2) . ", Difference: ₦0.00).";
-    echo "   -> PASS\n";
-} else {
-    $errors[] = "PROOF 6 FAILED on cashier shift balancing.";
-    echo "   -> FAIL\n";
-}
-
-// -----------------------------------------------------------------------------
-// PROOF 7: Database Relational Integrity Scan
-// -----------------------------------------------------------------------------
-echo "[7/8] Performing Database Integrity & Consistency Scan...\n";
+echo "[6/7] Performing Database Integrity & Consistency Scan...\n";
 $orphanedSaleItems = SaleItem::whereNotIn('saleId', Sale::pluck('id'))->count();
 $negativeStockCount = StockLevel::where('physical_stock', '<', 0)->count();
 $unlinkedStockLevels = StockLevel::whereNotIn('product_id', Product::pluck('id'))->count();
 
 if ($orphanedSaleItems === 0 && $negativeStockCount === 0 && $unlinkedStockLevels === 0) {
-    $proofs[] = "✓ PROOF 7 PASSED: Database Relational Integrity is 100% clean (0 orphaned sale items, 0 negative stock levels, 0 broken foreign relationships).";
+    $proofs[] = "✓ PROOF 6 PASSED: Database Relational Integrity is 100% clean (0 orphaned sale items, 0 negative stock levels, 0 broken foreign relationships).";
     echo "   -> PASS\n";
 } else {
-    $errors[] = "PROOF 7 FAILED: Database inconsistencies found! Orphaned items: {$orphanedSaleItems}, Negative stocks: {$negativeStockCount}";
+    $errors[] = "PROOF 6 FAILED: Database inconsistencies found! Orphaned items: {$orphanedSaleItems}, Negative stocks: {$negativeStockCount}";
     echo "   -> FAIL\n";
 }
 
 // -----------------------------------------------------------------------------
-// PROOF 8: HTTP Endpoints & Reports Multi-Filter Execution
+// PROOF 7: HTTP Endpoints & Reports Multi-Filter Execution
 // -----------------------------------------------------------------------------
-echo "[8/8] Testing Web Controllers, Filter Engine, and Export Endpoints...\n";
+echo "[7/7] Testing Web Controllers, Filter Engine, and Export Endpoints...\n";
 $testUrls = [
     '/',
     '/pos',
@@ -360,7 +321,6 @@ $testUrls = [
     '/reports/export-csv/debtors',
     '/reports/export-json/sales',
     '/reports/export-json/stock',
-    '/reports/export-json/shift_logs',
     '/users',
     '/help',
     '/settings',
@@ -379,19 +339,19 @@ foreach ($testUrls as $url) {
 }
 
 if ($httpPassed === count($testUrls)) {
-    $proofs[] = "✓ PROOF 8 PASSED: All " . count($testUrls) . " core web pages, multi-criteria filters, CSV exports, JSON exports, and business reports returned HTTP 200 OK.";
+    $proofs[] = "✓ PROOF 7 PASSED: All " . count($testUrls) . " core web pages, multi-criteria filters, CSV exports, JSON exports, and business reports returned HTTP 200 OK.";
     echo "   -> PASS (" . count($testUrls) . "/" . count($testUrls) . " routes OK)\n";
 }
 
 echo "\n====================================================================\n";
-echo "   8-TIER SYSTEM AUDIT PROOF REPORT\n";
+echo "   7-TIER SYSTEM AUDIT PROOF REPORT\n";
 echo "====================================================================\n";
 foreach ($proofs as $p) {
     echo "{$p}\n";
 }
 
 if (empty($errors)) {
-    echo "\n🌟 FINAL VERDICT: 100% OF ALL 8 AUDIT TIERS PASSED WITH ZERO ERRORS.\n";
+    echo "\n🌟 FINAL VERDICT: 100% OF ALL 7 AUDIT TIERS PASSED WITH ZERO ERRORS.\n";
     echo "ALL MATHEMATICAL FORMULAS, CLOSING STOCK FORMULAS, DEBT BALANCES, AND BUSINESS LOGIC ARE VERIFIED PROVABLY ACCURATE.\n";
 } else {
     echo "\n❌ ERRORS DETECTED:\n";
