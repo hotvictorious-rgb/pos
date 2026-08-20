@@ -17,9 +17,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
   - Updated Workers Management modal with `💼 Sales & Stock Officer (Combined)` option.
   - Added dedicated training track in `/help` for solo shop attendants.
 - **Printable Inter-Branch Transfer Waybills** (`/stock/waybill/{id}`): Official printable delivery manifest with sender/destination branch details, product breakdown, and physical signature boxes for dispatch officer, carrier driver, and storekeeper.
-- **Reports & AI Data Export Hub** (`/reports`):
-  - Multi-tab reports dashboard: Sales & Revenue, Physical Stock & Valuations, Transfers & Logistical Discrepancies, Debtors Ledger, Damaged Stock Write-offs, and Activity Audit Logs.
-  - One-click **CSV (Excel/Google Sheets)** and structured **JSON (for AI Prompt/Script Analysis)** exports across all operational data.
+- **Enriched Executive Business Intelligence & Reports Hub** (`/reports`):
+  - **Global Multi-Criteria Filter Deck**: Quick date presets (Today, Yesterday, This Week, This Month, This Year, All Time), custom date ranges, Cashier/Staff picker, Payment status (Paid vs Debt), and Handover status (Delivered vs Pickup).
+  - **6-Card Executive KPI Deck**: Total Filtered Revenue, Cash Realized, New Debts Created, Physical Stock Asset Value, Transfer Discrepancy Units, and Damaged Goods Losses.
+  - **Rankings & Insights Deck**: Top 5 best-selling products by revenue/volume and top staff by sales volume.
+  - **7 Tabbed Report Tables**: Sales & Invoices, Multi-Branch Stock & Valuation Health, Transfers & Waybills, Debtors Aging (0-7d, 8-30d, 30+d critical), Damaged Stock, Cashier Shift Balancing, and AI Export Cards.
+  - **Structured CSV and JSON Data Exports**: Formatted datasets for Excel, PowerBI, and AI prompt analysis.
 - **Role-Based Training Center & User Guides** (`/help`):
   - Organized user guides into 4 tailored role tracks: **💰 Cashier / Sales Officer**, **📦 Storekeeper / Inventory Lead**, **🏢 Branch Manager**, and **🛡️ Auditor / Super Admin**.
   - Interactive top tabs allowing workers to filter and view duties, operational steps, and FAQs specific to their job role.
