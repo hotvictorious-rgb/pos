@@ -388,6 +388,9 @@
             <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
                 <span>⚙️</span> <span>System Settings</span>
             </a>
+            <a href="{{ route('help.index') }}" class="nav-item {{ request()->routeIs('help.*') ? 'active' : '' }}" style="color: #93c5fd;">
+                <span>📖</span> <span>User Guide & FAQs</span>
+            </a>
         </nav>
 
         <div class="sidebar-footer">

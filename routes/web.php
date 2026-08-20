@@ -136,5 +136,11 @@ Route::prefix('settings')->name('settings.')->group(function () {
     Route::post('/warehouse/toggle/{id}', [\App\Http\Controllers\Web\SettingController::class, 'toggleWarehouse'])->name('warehouse.toggle');
 });
 
+// 9. User Guide & Training Center
+Route::get('/help', function () {
+    return view('help.index');
+})->name('help.index');
+
+
 
 

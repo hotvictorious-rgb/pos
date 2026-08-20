@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+- **User Guide & Training Center** (`/help`):
+  - Interactive training hub with visual step-by-step illustrations for Inter-Branch Transfers, POS Bargaining, Part-Payments, Sales Returns, Damaged Goods, and Auditor Shifts.
+  - Comprehensive FAQ accordions explaining the Golden Law of Physical Closing Stock and anti-theft accountability.
 - **Transactions & Sales History Hub** (`/transactions`):
   - Advanced multi-criteria filter engine: quick date presets (Today, Yesterday, This Week, This Month), custom date range, payment status (Fully Paid vs Part-Payment Debt), delivery/handover status (Supplied vs Unsupplied), and staff/cashier dropdown.
   - Aggregated real-time metrics: Total Invoices, Gross Sales, Cash/POS Collected, and Outstanding Debts.
