@@ -9,6 +9,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Transfer Dispatch & Sales Item Key Resolution**: Fixed `Undefined array key "productId"` in `StockService` by gracefully resolving both camelCase `productId` and snake_case `product_id` keys in `initiateTransfer`, `recordSale`, and `recordSaleReturn`.
 
 ### Added
+- **Combined Sales & Stock Role (`sales_stock`)**:
+  - Implemented single-staff branch attendant role combining POS selling, price bargaining, customer debts, supplier goods receipt, accepting transfer shipments, and damaged stock logging.
+  - Updated Workers Management modal with `💼 Sales & Stock Officer (Combined)` option.
+  - Added dedicated training track in `/help` for solo shop attendants.
 - **Printable Inter-Branch Transfer Waybills** (`/stock/waybill/{id}`): Official printable delivery manifest with sender/destination branch details, product breakdown, and physical signature boxes for dispatch officer, carrier driver, and storekeeper.
 - **Reports & AI Data Export Hub** (`/reports`):
   - Multi-tab reports dashboard: Sales & Revenue, Physical Stock & Valuations, Transfers & Logistical Discrepancies, Debtors Ledger, Damaged Stock Write-offs, and Activity Audit Logs.

@@ -50,11 +50,12 @@
         <h4 style="font-size: 0.85rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; margin-bottom: 0.5rem;">
             🛡️ Role Permission Hierarchy:
         </h4>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; font-size: 0.85rem; color: #cbd5e1;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.85rem; color: #cbd5e1;">
             <div>• <strong style="color: #f87171;">Auditor:</strong> Full access to profits, audits, stock resets, theft alerts.</div>
             <div>• <strong style="color: #60a5fa;">Manager:</strong> Branch sales, dispatching transfers, daily shop reports.</div>
-            <div>• <strong style="color: #fbbf24;">Storekeeper:</strong> Supplier goods receipt, inter-shop transfer counts.</div>
-            <div>• <strong style="color: #4ade80;">Cashier:</strong> POS sales, collecting cash/POS, recording part-payments.</div>
+            <div>• <strong style="color: #c084fc;">Sales & Stock:</strong> Combined role for solo shop attendants (POS + Stock In/Out).</div>
+            <div>• <strong style="color: #fbbf24;">Storekeeper:</strong> Supplier goods receipt, inter-shop transfer counts only.</div>
+            <div>• <strong style="color: #4ade80;">Cashier:</strong> POS sales, collecting cash/POS, customer debts only.</div>
         </div>
     </div>
 
@@ -72,18 +73,24 @@
                         $roleClass = match($u->role) {
                             'admin' => 'role-badge-admin',
                             'manager' => 'role-badge-manager',
+                            'sales_stock' => 'role-badge-manager',
                             'storekeeper' => 'role-badge-storekeeper',
                             default => 'role-badge-cashier',
                         };
                         $roleIcon = match($u->role) {
                             'admin' => '🛡️',
                             'manager' => '🏢',
+                            'sales_stock' => '💼',
                             'storekeeper' => '📦',
                             default => '💰',
                         };
+                        $roleTitle = match($u->role) {
+                            'sales_stock' => 'SALES & STOCK',
+                            default => strtoupper($u->role),
+                        };
                     @endphp
-                    <span class="badge {{ $roleClass }}">
-                        {{ $roleIcon }} {{ strtoupper($u->role) }}
+                    <span class="badge {{ $roleClass }}" style="{{ $u->role === 'sales_stock' ? 'background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7;' : '' }}">
+                        {{ $roleIcon }} {{ $roleTitle }}
                     </span>
                 </div>
 
@@ -152,7 +159,8 @@
                         <label>Assign Role & Authority</label>
                         <select name="role" required>
                             <option value="cashier">💰 Cashier / Sales Officer</option>
-                            <option value="storekeeper">📦 Storekeeper</option>
+                            <option value="sales_stock">💼 Sales & Stock Officer (Combined)</option>
+                            <option value="storekeeper">📦 Storekeeper (Inventory Only)</option>
                             <option value="manager">🏢 Branch Manager</option>
                             <option value="admin">🛡️ Auditor / Super Admin</option>
                         </select>

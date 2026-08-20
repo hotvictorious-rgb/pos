@@ -100,10 +100,54 @@
 
     <!-- Role Selection Tabs -->
     <div class="role-tabs">
-        <button class="role-tab-btn active" onclick="showRoleGuide('roleCashier', this)">💰 Cashier / Sales Officer</button>
-        <button class="role-tab-btn" onclick="showRoleGuide('roleStorekeeper', this)">📦 Storekeeper / Inventory Lead</button>
+        <button class="role-tab-btn active" onclick="showRoleGuide('roleCashier', this)">💰 Cashier (Sales Only)</button>
+        <button class="role-tab-btn" onclick="showRoleGuide('roleSalesStock', this)">💼 Sales & Stock (Combined)</button>
+        <button class="role-tab-btn" onclick="showRoleGuide('roleStorekeeper', this)">📦 Storekeeper (Stock Only)</button>
         <button class="role-tab-btn" onclick="showRoleGuide('roleManager', this)">🏢 Branch Manager</button>
         <button class="role-tab-btn" onclick="showRoleGuide('roleAuditor', this)">🛡️ Auditor / Super Admin</button>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- COMBO: SALES & STOCK OFFICER GUIDE -->
+    <!-- ========================================================================= -->
+    <div id="roleSalesStock" class="guide-section">
+        <div class="duty-card" style="border-left: 6px solid #a855f7;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                <span style="font-size: 2rem;">💼</span>
+                <div>
+                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #c084fc;">Sales & Stock Officer (Solo Shop Attendant)</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Ideal for branches with 1 staff who handles POS selling, customer cash, and receiving stock deliveries on ground.</p>
+                </div>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #4ade80;">1. Selling & Price Bargaining on POS</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Tap products to cart $\rightarrow$ Edit unit price in cart for bargaining $\rightarrow$ Collect Cash/Transfer/Debt $\rightarrow$ Print Receipt.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #60a5fa;">2. Receiving Stock & Accepting Incoming Transfers</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    When supplier or depot driver arrives, go to <strong>🚚 Shop Transfers</strong> $\rightarrow$ Tap <strong>"✅ Accept & Count Goods"</strong> $\rightarrow$ Count physical cartons offloaded $\rightarrow$ Confirm into stock.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #fbbf24;">3. Customer Debt Recovery & Delayed Pickup Delivery</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Collect debt installments under <em>Customer Debts</em> and release delayed orders under <em>Pickup Orders</em> when customer vehicle arrives.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #f87171;">4. Damaged Goods & Shift Close</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Record damaged items under <em>Damaged Goods</em> and enter total physical drawer cash in the <em>Auditor Hub</em> at end of day.
+                </p>
+            </div>
+        </div>
     </div>
 
     <!-- ========================================================================= -->

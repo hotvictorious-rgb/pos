@@ -42,9 +42,10 @@ class UserController extends Controller
         $role = $request->role;
         $permissions = match($role) {
             'admin' => ['all' => true],
-            'manager' => ['pos' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true],
-            'storekeeper' => ['stockIn' => true, 'transfer' => true, 'count' => true],
-            'cashier' => ['pos' => true, 'debts' => true],
+            'manager' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true],
+            'sales_stock' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'debts' => true, 'returns' => true, 'adjustments' => true],
+            'storekeeper' => ['stockIn' => true, 'transfer' => true, 'count' => true, 'products' => true, 'adjustments' => true],
+            'cashier' => ['pos' => true, 'debts' => true, 'products' => true],
             default => ['pos' => true],
         };
 
