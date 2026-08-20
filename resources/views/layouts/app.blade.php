@@ -338,7 +338,7 @@
             <div class="brand-icon">📦</div>
             <div class="brand-text">
                 <h1>Hysam Ventures</h1>
-                <p>Nwaniba POS & Stock</p>
+                <p>POS & Stock</p>
             </div>
         </div>
 
