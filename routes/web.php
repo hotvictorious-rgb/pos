@@ -95,6 +95,7 @@ Route::prefix('products')->name('products.')->group(function () {
 // 4. Stock Hub (Goods In, Transfers, Dispatch, Adjustments)
 Route::prefix('stock')->name('stock.')->group(function () {
     Route::get('/',                     [StockController::class, 'index'])->name('index');
+    Route::get('/transfers',            [StockController::class, 'transfersList'])->name('transfers');
     Route::post('/in',                  [StockController::class, 'stockIn'])->name('in');
     Route::post('/transfer-out',        [StockController::class, 'transferOut'])->name('transfer.out');
     Route::post('/transfer-in/{id}',    [StockController::class, 'transferIn'])->name('transfer.in');

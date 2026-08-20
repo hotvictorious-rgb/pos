@@ -140,11 +140,34 @@ class StockController extends Controller
         );
 
         if ($transfer->status === 'DISCREPANCY') {
-            return redirect()->route('stock.index')->with('warning', "⚠️ Transfer Received with DISCREPANCY! Missing items flagged to Auditor.");
+            return redirect()->route('stock.transfers')->with('warning', "⚠️ Transfer Received with DISCREPANCY! Missing items flagged to Auditor.");
         }
 
-        return redirect()->route('stock.index')->with('success', "✓ Transfer #{$transfer->transfer_no} successfully verified and added to shop physical count!");
+        return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} successfully verified and added to shop physical count!");
     }
+
+    /**
+     * Dedicated Transfers Management Hub (Accept & Dispatch).
+     */
+    public function transfersList()
+    {
+        $pendingTransfers = Transfer::with(['source', 'destination', 'items'])
+            ->where('status', 'DISPATCHED')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $completedTransfers = Transfer::with(['source', 'destination', 'items'])
+            ->whereIn('status', ['RECEIVED', 'DISCREPANCY'])
+            ->orderBy('received_at', 'desc')
+            ->take(20)
+            ->get();
+
+        $warehouses = Warehouse::where('is_active', true)->get();
+        $allProducts = Product::where('archived', false)->get();
+
+        return view('stock.transfers', compact('pendingTransfers', 'completedTransfers', 'warehouses', 'allProducts'));
+    }
+
 
     /**
      * View list of Unsupplied Goods awaiting customer pickup.

@@ -360,6 +360,9 @@
             <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
                 <span>📦</span> <span>Stock In / Out</span>
             </a>
+            <a href="{{ route('stock.transfers') }}" class="nav-item {{ request()->routeIs('stock.transfers') ? 'active' : '' }}">
+                <span>🚚</span> <span>Shop Transfers</span>
+            </a>
             <a href="{{ route('stock.unsupplied') }}" class="nav-item {{ request()->routeIs('stock.unsupplied') ? 'active' : '' }}">
                 <span>⏳</span> <span>Pickup Orders</span>
             </a>
