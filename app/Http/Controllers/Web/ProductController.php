@@ -14,20 +14,56 @@ use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     /**
-     * Display all products with stock breakdown across all shops.
+     * Display all products with multi-criteria filters & stock breakdown across all shops.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::where('archived', false)->orderBy('name')->get();
-        $warehouses = Warehouse::where('is_active', true)->get();
+        $query = Product::where('archived', false);
 
-        // Attach per-branch physical stocks
-        $products->map(function ($p) use ($warehouses) {
+        if ($request->filled('category')) {
+            $query->where('category', $request->category);
+        }
+
+        if ($request->filled('min_price')) {
+            $query->where('unitPrice', '>=', (float) $request->min_price);
+        }
+
+        if ($request->filled('max_price')) {
+            $query->where('unitPrice', '<=', (float) $request->max_price);
+        }
+
+        if ($request->filled('search')) {
+            $s = trim($request->search);
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                  ->orWhere('code', 'like', "%{$s}%")
+                  ->orWhere('brand', 'like', "%{$s}%");
+            });
+        }
+
+        $warehouses = Warehouse::where('is_active', true)->get();
+        $products = $query->orderBy('name')->get();
+
+        // Attach per-branch physical stocks and calculate total
+        $products = $products->map(function ($p) use ($warehouses) {
             $p->branch_stocks = StockLevel::where('product_id', $p->id)->pluck('physical_stock', 'warehouse_id')->toArray();
+            $p->total_physical_stock = array_sum($p->branch_stocks);
             return $p;
         });
 
-        $categories = $products->pluck('category')->filter()->unique()->values();
+        // Stock status filter
+        if ($request->filled('stock_status')) {
+            $status = $request->stock_status;
+            if ($status === 'OUT_OF_STOCK') {
+                $products = $products->filter(fn($p) => $p->total_physical_stock <= 0)->values();
+            } elseif ($status === 'LOW_STOCK') {
+                $products = $products->filter(fn($p) => $p->total_physical_stock > 0 && $p->total_physical_stock <= ($p->minStockLevel ?? 5))->values();
+            } elseif ($status === 'IN_STOCK') {
+                $products = $products->filter(fn($p) => $p->total_physical_stock > ($p->minStockLevel ?? 5))->values();
+            }
+        }
+
+        $categories = Product::distinct()->pluck('category')->filter()->values();
 
         return view('products.index', compact('products', 'warehouses', 'categories'));
     }
@@ -277,5 +313,74 @@ class ProductController extends Controller
         ]);
 
         return redirect()->route('products.index')->with('success', "✓ Bulk import complete! Added {$importedCount} new products, updated {$updatedCount} existing items.");
+    }
+
+    /**
+     * Export Products Catalog to CSV for Excel / Google Sheets.
+     */
+    public function exportCsv(Request $request)
+    {
+        $fileName = "hysam_products_catalog_" . date('Y_m_d_His') . ".csv";
+
+        return response()->stream(function () {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['SKU / Code', 'Product Name', 'Category', 'Brand', 'Size', 'Selling Price (NGN)', 'Min Stock Alert', 'Total Physical Stock', 'Asset Value (NGN)']);
+
+            $products = Product::where('archived', false)->orderBy('category')->orderBy('name')->get();
+            foreach ($products as $p) {
+                $stock = StockLevel::where('product_id', $p->id)->sum('physical_stock');
+                fputcsv($handle, [
+                    $p->code,
+                    $p->name,
+                    $p->category,
+                    $p->brand ?? 'Standard',
+                    $p->size ?? '',
+                    $p->unitPrice,
+                    $p->minStockLevel,
+                    $stock,
+                    $stock * (float) $p->unitPrice
+                ]);
+            }
+            fclose($handle);
+        }, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+        ]);
+    }
+
+    /**
+     * Export Products Catalog to Structured JSON format for AI analysis.
+     */
+    public function exportJson(Request $request)
+    {
+        $fileName = "hysam_products_catalog_" . date('Y_m_d_His') . ".json";
+
+        $products = Product::with('stockLevels')->where('archived', false)->get()->map(function ($p) {
+            return [
+                'id' => $p->id,
+                'code' => $p->code,
+                'name' => $p->name,
+                'category' => $p->category,
+                'brand' => $p->brand,
+                'size' => $p->size,
+                'unitPrice' => (float) $p->unitPrice,
+                'minStockLevel' => (int) $p->minStockLevel,
+                'total_physical_stock' => $p->stockLevels->sum('physical_stock'),
+                'total_asset_value' => $p->stockLevels->sum('physical_stock') * (float) $p->unitPrice,
+                'branch_stock_breakdown' => $p->stockLevels->pluck('physical_stock', 'warehouse_id'),
+            ];
+        });
+
+        return response()->json([
+            'metadata' => [
+                'business' => 'Hysam Ventures Ltd',
+                'report' => 'Master Products & Price Catalog',
+                'generated_at' => now()->toIso8601String(),
+                'total_skus' => $products->count(),
+            ],
+            'products' => $products,
+        ], 200, [
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+        ], JSON_PRETTY_PRINT);
     }
 }

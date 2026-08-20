@@ -273,6 +273,15 @@
         </div>
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
+                <span>❓ Can I filter and export the products catalog?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Yes! In <strong>🛍️ Products Catalog</strong>, you can filter items by <strong>Stock Health</strong> (In Stock, Low Stock, Out of Stock), <strong>Category</strong>, <strong>Price Range</strong>, or <strong>Keyword Search</strong>. You can export the entire catalog as <strong>📥 CSV (for Excel)</strong>, <strong>🤖 JSON (for AI analysis)</strong>, or click <strong>🖨️ Print Price List</strong>.
+            </div>
+        </div>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
                 <span>❓ What if a customer brings money later to pay their debt?</span>
                 <span class="faq-toggle">▼</span>
             </div>

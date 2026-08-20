@@ -64,6 +64,15 @@
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <a href="{{ route('products.export.csv') }}" class="btn btn-secondary" style="font-size: 0.85rem;">
+                📥 Export CSV
+            </a>
+            <a href="{{ route('products.export.json') }}" class="btn btn-secondary" style="font-size: 0.85rem; color: #93c5fd;">
+                🤖 Export JSON (AI)
+            </a>
+            <button onclick="window.print()" class="btn btn-secondary" style="font-size: 0.85rem;">
+                🖨️ Print Price List
+            </button>
             @if($isAdmin)
                 <a href="{{ route('products.template.csv') }}" class="btn btn-secondary" style="font-size: 0.85rem;">
                     📄 CSV Template
@@ -82,13 +91,67 @@
         </div>
     </div>
 
+    <!-- 1. MULTI-CRITERIA FILTER BAR -->
+    <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 18px; padding: 1.25rem; margin-bottom: 1.5rem;">
+        <form method="GET" action="{{ route('products.index') }}">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center;">
+                <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted);">STOCK HEALTH:</span>
+                <a href="{{ route('products.index', array_merge(request()->except('stock_status'), ['stock_status' => ''])) }}" 
+                   class="badge {{ !request('stock_status') ? 'badge-primary' : 'badge-secondary' }}" style="padding: 0.4rem 0.85rem; text-decoration: none;">
+                   All ({{ $products->count() }})
+                </a>
+                <a href="{{ route('products.index', array_merge(request()->except('stock_status'), ['stock_status' => 'IN_STOCK'])) }}" 
+                   class="badge {{ request('stock_status') === 'IN_STOCK' ? 'badge-success' : 'badge-secondary' }}" style="padding: 0.4rem 0.85rem; text-decoration: none;">
+                   🟢 In Stock
+                </a>
+                <a href="{{ route('products.index', array_merge(request()->except('stock_status'), ['stock_status' => 'LOW_STOCK'])) }}" 
+                   class="badge {{ request('stock_status') === 'LOW_STOCK' ? 'badge-warning' : 'badge-secondary' }}" style="padding: 0.4rem 0.85rem; text-decoration: none;">
+                   🟡 Low Stock (≤ 5 units)
+                </a>
+                <a href="{{ route('products.index', array_merge(request()->except('stock_status'), ['stock_status' => 'OUT_OF_STOCK'])) }}" 
+                   class="badge {{ request('stock_status') === 'OUT_OF_STOCK' ? 'badge-danger' : 'badge-secondary' }}" style="padding: 0.4rem 0.85rem; text-decoration: none;">
+                   🔴 Out of Stock (0 units)
+                </a>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; align-items: end;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Category</label>
+                    <select name="category">
+                        <option value="">-- All Categories --</option>
+                        @foreach($categories as $cat)
+                            <option value="{{ $cat }}" {{ request('category') === $cat ? 'selected' : '' }}>{{ $cat }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Min Price (₦)</label>
+                    <input type="number" name="min_price" value="{{ request('min_price') }}" placeholder="e.g. 1000">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Max Price (₦)</label>
+                    <input type="number" name="max_price" value="{{ request('max_price') }}" placeholder="e.g. 80000">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Search Name / SKU</label>
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="e.g. Rice, Oil, PEAK">
+                </div>
+
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1; padding: 0.65rem;">🔍 Apply Filters</button>
+                    <a href="{{ route('products.index') }}" class="btn btn-secondary" style="padding: 0.65rem;">Reset</a>
+                </div>
+            </div>
+        </form>
+    </div>
+
     <!-- Products Table with Multi-Branch Stocks -->
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
-            <h3 style="font-size: 1.25rem; font-weight: 800;">All Active Items ({{ $products->count() }})</h3>
-            <div style="max-width: 300px; width: 100%;">
-                <input type="text" id="prodSearch" placeholder="🔍 Search product or SKU..." onkeyup="filterProdTable()">
-            </div>
+            <h3 style="font-size: 1.25rem; font-weight: 800;">Catalog Inventory List ({{ $products->count() }} items)</h3>
         </div>
 
         <div class="table-wrap">
@@ -103,6 +166,7 @@
                             <th style="color: #60a5fa;">{{ $wh->name }}</th>
                         @endforeach
                         <th>Total Stock</th>
+                        <th>Stock Health</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -124,9 +188,19 @@
                             </td>
                         @endforeach
                         <td>
-                            <span style="font-size: 1.15rem; font-weight: 800; color: {{ $p->currentStock > 5 ? '#4ade80' : '#f87171' }};">
-                                {{ $p->currentStock }} units
+                            @php $totStock = $p->total_physical_stock ?? $p->currentStock; @endphp
+                            <span style="font-size: 1.15rem; font-weight: 800; color: {{ $totStock > 5 ? '#4ade80' : ($totStock > 0 ? '#fbbf24' : '#f87171') }};">
+                                {{ $totStock }} units
                             </span>
+                        </td>
+                        <td>
+                            @if($totStock <= 0)
+                                <span class="badge badge-danger">OUT OF STOCK</span>
+                            @elseif($totStock <= ($p->minStockLevel ?? 5))
+                                <span class="badge badge-warning">LOW (≤ {{ $p->minStockLevel ?? 5 }})</span>
+                            @else
+                                <span class="badge badge-success">IN STOCK</span>
+                            @endif
                         </td>
                         <td>
                             @if($isAdmin)

@@ -16,6 +16,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Central Catalog Authority Enforcement**: Restricted product creation, master price editing, CSV bulk imports, and archiving strictly to `admin` (Auditor / Super Admin). Branch Managers and Sales & Stock staff can add stock quantities (`Stock In`) for catalog items while keeping product definitions centralized and tamper-proof.
 
 ### Added
+- **Products Catalog Multi-Filter Deck & Multi-Format Exports** (`/products`):
+  - **Stock Health & Criteria Filters**: Filter products by Stock Health pills (`🟢 In Stock`, `🟡 Low Stock ≤ 5`, `🔴 Out of Stock 0`), Category, Min/Max Price (₦), and keyword search.
+  - **Multi-Format Exports**: Export catalog to **CSV (for Excel / Sheets)**, **JSON (for AI Prompting)**, and printable Master Price List.
 - **Bulk CSV Product Import & Sample Template** (`/products/import/csv` & `/products/template/csv`):
   - Added bulk product import engine supporting automatic SKU generation, category/brand mapping, price updating, and initial physical stock distribution to branches.
   - Added one-click downloadable sample CSV template with standard columns: `name, code, category, brand, size, unitPrice, minStockLevel, initial_stock`.

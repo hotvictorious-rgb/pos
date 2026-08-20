@@ -88,6 +88,8 @@ Route::prefix('pos')->name('pos.')->group(function () {
 Route::prefix('products')->name('products.')->group(function () {
     Route::get('/',                     [\App\Http\Controllers\Web\ProductController::class, 'index'])->name('index');
     Route::get('/template/csv',         [\App\Http\Controllers\Web\ProductController::class, 'downloadCsvTemplate'])->name('template.csv');
+    Route::get('/export/csv',           [\App\Http\Controllers\Web\ProductController::class, 'exportCsv'])->name('export.csv');
+    Route::get('/export/json',          [\App\Http\Controllers\Web\ProductController::class, 'exportJson'])->name('export.json');
     Route::post('/import/csv',          [\App\Http\Controllers\Web\ProductController::class, 'importCsv'])->name('import.csv');
     Route::post('/',                    [\App\Http\Controllers\Web\ProductController::class, 'store'])->name('store');
     Route::post('/{id}',                [\App\Http\Controllers\Web\ProductController::class, 'update'])->name('update');
