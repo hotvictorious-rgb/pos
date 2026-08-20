@@ -105,6 +105,57 @@
         <button class="role-tab-btn" onclick="showRoleGuide('roleStorekeeper', this)">📦 Storekeeper (Stock Only)</button>
         <button class="role-tab-btn" onclick="showRoleGuide('roleManager', this)">🏢 Branch Manager</button>
         <button class="role-tab-btn" onclick="showRoleGuide('roleAuditor', this)">🛡️ Auditor / Super Admin</button>
+        <button class="role-tab-btn" onclick="showRoleGuide('roleViewer', this)">👑 Executive Owner (View-Only)</button>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW-ONLY: EXECUTIVE OWNER GUIDE -->
+    <!-- ========================================================================= -->
+    <div id="roleViewer" class="guide-section">
+        <div class="duty-card" style="border-left: 6px solid #eab308;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                <span style="font-size: 2rem;">👑</span>
+                <div>
+                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #facc15;">Executive Owner (View-Only / Silent Auditor)</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Designed for Business Owners and Investors who want full visibility into money, stock, and reports from their phone without altering data.</p>
+                </div>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #4ade80;">1. Live Remote Monitoring of Multi-Branch Sales</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    View real-time daily sales revenue, cash in drawer, POS collections, and outstanding customer debt across all shop branches simultaneously.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #60a5fa;">2. Multi-Branch Inventory Valuation (₦)</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    See the total physical stock count on ground in each shop branch and the total gross monetary value of your entire inventory.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #fbbf24;">3. Inter-Branch Logistics & In-Transit Tracking</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Monitor shipments moving between branches, verify driver names, and view official printable waybills with staff signatures.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #f87171;">4. Theft & Variance Radar</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Review any discrepancies in real-time — missing transfer goods, damaged stock write-offs, or cashier cash drawer shortages.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #c084fc;">5. Zero Risk of Accidental Edits</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    All action buttons (deleting, editing prices, creating users, changing stock) are safely disabled for this role, so you can browse freely from any mobile device without accidental clicks.
+                </p>
+            </div>
+        </div>
     </div>
 
     <!-- ========================================================================= -->

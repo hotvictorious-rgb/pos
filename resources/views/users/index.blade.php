@@ -52,9 +52,10 @@
         </h4>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.85rem; color: #cbd5e1;">
             <div>• <strong style="color: #f87171;">Auditor:</strong> Full access to profits, audits, stock resets, theft alerts.</div>
+            <div>• <strong style="color: #fbbf24;">👑 Owner (View-Only):</strong> Silent executive view of all sales, stock, and reports without write access.</div>
             <div>• <strong style="color: #60a5fa;">Manager:</strong> Branch sales, dispatching transfers, daily shop reports.</div>
             <div>• <strong style="color: #c084fc;">Sales & Stock:</strong> Combined role for solo shop attendants (POS + Stock In/Out).</div>
-            <div>• <strong style="color: #fbbf24;">Storekeeper:</strong> Supplier goods receipt, inter-shop transfer counts only.</div>
+            <div>• <strong style="color: #38bdf8;">Storekeeper:</strong> Supplier goods receipt, inter-shop transfer counts only.</div>
             <div>• <strong style="color: #4ade80;">Cashier:</strong> POS sales, collecting cash/POS, customer debts only.</div>
         </div>
     </div>
@@ -72,6 +73,7 @@
                     @php
                         $roleClass = match($u->role) {
                             'admin' => 'role-badge-admin',
+                            'viewer' => 'role-badge-admin',
                             'manager' => 'role-badge-manager',
                             'sales_stock' => 'role-badge-manager',
                             'storekeeper' => 'role-badge-storekeeper',
@@ -79,17 +81,24 @@
                         };
                         $roleIcon = match($u->role) {
                             'admin' => '🛡️',
+                            'viewer' => '👑',
                             'manager' => '🏢',
                             'sales_stock' => '💼',
                             'storekeeper' => '📦',
                             default => '💰',
                         };
                         $roleTitle = match($u->role) {
+                            'viewer' => 'OWNER (VIEW-ONLY)',
                             'sales_stock' => 'SALES & STOCK',
                             default => strtoupper($u->role),
                         };
+                        $roleStyle = match($u->role) {
+                            'viewer' => 'background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308;',
+                            'sales_stock' => 'background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7;',
+                            default => '',
+                        };
                     @endphp
-                    <span class="badge {{ $roleClass }}" style="{{ $u->role === 'sales_stock' ? 'background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7;' : '' }}">
+                    <span class="badge {{ $roleClass }}" style="{{ $roleStyle }}">
                         {{ $roleIcon }} {{ $roleTitle }}
                     </span>
                 </div>
@@ -163,6 +172,7 @@
                             <option value="storekeeper">📦 Storekeeper (Inventory Only)</option>
                             <option value="manager">🏢 Branch Manager</option>
                             <option value="admin">🛡️ Auditor / Super Admin</option>
+                            <option value="viewer">👑 Executive Owner (View-Only / Silent Auditor)</option>
                         </select>
                     </div>
 

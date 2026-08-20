@@ -9,6 +9,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Transfer Dispatch & Sales Item Key Resolution**: Fixed `Undefined array key "productId"` in `StockService` by gracefully resolving both camelCase `productId` and snake_case `product_id` keys in `initiateTransfer`, `recordSale`, and `recordSaleReturn`.
 
 ### Added
+- **Executive Owner (View-Only / Silent Auditor) Role (`viewer`)**:
+  - Implemented read-only executive role for business owners and investors to monitor multi-branch sales, inventory valuations, debt levels, transfer logistics, and reports from any device without write permissions.
+  - Added gold badge styling in Workers hub and dedicated training track in `/help`.
 - **Combined Sales & Stock Role (`sales_stock`)**:
   - Implemented single-staff branch attendant role combining POS selling, price bargaining, customer debts, supplier goods receipt, accepting transfer shipments, and damaged stock logging.
   - Updated Workers Management modal with `💼 Sales & Stock Officer (Combined)` option.
