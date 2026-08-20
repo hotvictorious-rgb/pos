@@ -419,15 +419,19 @@
                 </div>
             </div>
 
-            <!-- Right: Quick Calculator & Operator -->
-            <div style="display: flex; align-items: center; gap: 1rem;">
+            <!-- Right: Quick Calculator, Operator & Logout -->
+            <div style="display: flex; align-items: center; gap: 0.85rem;">
                 <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.85rem; background: rgba(31,41,55,0.9); border-color: #4b5563; color: #f3f4f6;" onclick="toggleCalculator()">
                     🧮 Calculator
                 </button>
 
                 <div style="font-size: 0.85rem; color: var(--text-muted);">
-                    Operator: <strong style="color: #f3f4f6;">{{ auth()->user()->name ?? 'Auditor / Lead' }}</strong>
+                    Operator: <strong style="color: #f3f4f6;">{{ auth()->user()->name ?? session('user_name', 'Auditor / Lead') }}</strong>
                 </div>
+
+                <a href="{{ route('logout') }}" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; background: rgba(220,38,38,0.15); border-color: rgba(220,38,38,0.4); color: #fca5a5; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sign out of system">
+                    <span>🚪</span> <span>Log Out</span>
+                </a>
             </div>
         </header>
 

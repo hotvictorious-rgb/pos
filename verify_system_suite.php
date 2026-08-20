@@ -324,6 +324,7 @@ $testUrls = [
     '/users',
     '/help',
     '/settings',
+    '/logout',
 ];
 
 $httpPassed = 0;

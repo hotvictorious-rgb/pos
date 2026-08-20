@@ -30,6 +30,11 @@ Route::prefix('install')->name('installer.')->group(function () {
 });
 
 // ─────────────────────────────────────────────────────────
+// AUTH & LOGOUT
+// ─────────────────────────────────────────────────────────
+Route::match(['get', 'post'], '/logout', [AuthController::class, 'webLogout'])->name('logout');
+
+// ─────────────────────────────────────────────────────────
 // API ROUTES (session-aware, CSRF exempt)
 // ─────────────────────────────────────────────────────────
 Route::prefix('api')->group(function () {

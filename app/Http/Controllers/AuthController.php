@@ -85,6 +85,18 @@ class AuthController extends Controller
         return response()->json(['status' => 'logged_out']);
     }
 
+    public function webLogout(Request $request)
+    {
+        session()->forget('user_id');
+        if (\Illuminate\Support\Facades\Auth::check()) {
+            \Illuminate\Support\Facades\Auth::logout();
+        }
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect('/')->with('success', '✓ You have been logged out successfully.');
+    }
+
     public function me()
     {
         $userId = session('user_id');
