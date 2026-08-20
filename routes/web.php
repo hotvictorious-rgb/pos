@@ -5,6 +5,15 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DataController;
 use App\Http\Controllers\BackupController;
 use App\Http\Controllers\Installer\InstallerController;
+use App\Http\Controllers\Web\PosController;
+use App\Http\Controllers\Web\StockController;
+use App\Http\Controllers\Web\AuditorController;
+use App\Http\Controllers\Web\DebtController;
+use App\Models\Product;
+use App\Models\Warehouse;
+use App\Models\Sale;
+use App\Models\Customer;
+use App\Models\Transfer;
 
 // ─────────────────────────────────────────────────────────
 // INSTALLER ROUTES (accessible before the app is installed)
@@ -42,9 +51,55 @@ Route::prefix('api')->group(function () {
 });
 
 // ─────────────────────────────────────────────────────────
-// BLADE ADMIN PANEL (served after install)
+// INTERACTIVE USER-FRIENDLY BLADE WEB APP
 // ─────────────────────────────────────────────────────────
+
+// 1. Dashboard (Main Visual Menu)
 Route::get('/', function () {
-    return view('dashboard');
+    $totalProducts = Product::where('archived', false)->count();
+    $totalWarehouses = Warehouse::where('is_active', true)->count();
+    $todaySalesCount = Sale::whereDate('created_at', today())->count();
+    $todaySalesAmount = Sale::whereDate('created_at', today())->sum('totalAmount');
+    $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')->count();
+    $totalDebt = Customer::sum('total_debt');
+    $discrepancyCount = Transfer::where('status', 'DISCREPANCY')->count();
+
+    return view('dashboard', compact(
+        'totalProducts',
+        'totalWarehouses',
+        'todaySalesCount',
+        'todaySalesAmount',
+        'unsuppliedCount',
+        'totalDebt',
+        'discrepancyCount'
+    ));
 })->name('dashboard');
 
+// 2. Visual Point of Sale (POS)
+Route::prefix('pos')->name('pos.')->group(function () {
+    Route::get('/',             [PosController::class, 'index'])->name('index');
+    Route::post('/checkout',    [PosController::class, 'checkout'])->name('checkout');
+    Route::get('/receipt/{id}', [PosController::class, 'receipt'])->name('receipt');
+});
+
+// 3. Stock Hub (Goods In, Transfers, Dispatch)
+Route::prefix('stock')->name('stock.')->group(function () {
+    Route::get('/',                     [StockController::class, 'index'])->name('index');
+    Route::post('/in',                  [StockController::class, 'stockIn'])->name('in');
+    Route::post('/transfer-out',        [StockController::class, 'transferOut'])->name('transfer.out');
+    Route::post('/transfer-in/{id}',    [StockController::class, 'transferIn'])->name('transfer.in');
+    Route::get('/unsupplied',           [StockController::class, 'unsuppliedList'])->name('unsupplied');
+    Route::post('/dispatch/{saleId}',   [StockController::class, 'dispatchConfirm'])->name('dispatch');
+});
+
+// 4. Auditor Anti-Theft & Reconciliation Hub
+Route::prefix('auditor')->name('auditor.')->group(function () {
+    Route::get('/',             [AuditorController::class, 'index'])->name('index');
+    Route::post('/close-shift', [AuditorController::class, 'closeShift'])->name('close.shift');
+});
+
+// 5. Debt & Part-Payment Recovery Hub
+Route::prefix('debts')->name('debts.')->group(function () {
+    Route::get('/',             [DebtController::class, 'index'])->name('index');
+    Route::post('/pay/{id}',    [DebtController::class, 'recordPayment'])->name('pay');
+});

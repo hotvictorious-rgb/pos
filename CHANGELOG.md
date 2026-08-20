@@ -8,23 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Child-Friendly & Auditor-Grade Inventory & POS System**:
+  - **Visual Point of Sale (POS)** (`/pos`): Big touch product cards, search, category chips, `+ / -` steppers, Part-Payment & debt tracking, and physical stock handover toggle ("Did customer take goods away today? [YES/NO]").
+  - **Physical Closing Stock Engine**: Decoupled sales from physical dispatch so goods sold but not yet taken away (`UNSUPPLIED`) stay in physical closing stock.
+  - **Unsupplied Goods Pickup Hub** (`/stock/unsupplied`): Lists orders on ground with one-click "Handover Goods to Customer" dispatching.
+  - **2-Step Anti-Theft Inter-Location Transfers**: Dispatched $\rightarrow$ In-Transit $\rightarrow$ Destination Verification & Count. Automatic discrepancy & theft alert if items go missing.
+  - **Auditor Anti-Theft & Control Hub** (`/auditor`): Theft discrepancy radar, multi-shop physical closing stock valuation matrix, Cashier End-of-Day shift drawer balancing (Counted vs Expected Cash), and immutable activity logs.
+  - **Customer Debt & Part-Payment Recovery** (`/debts`): Debtors ledger, installment payment modal, and printable payment receipts.
+  - **Printable Invoices & Receipts** (`/pos/receipt/{id}`): Shows payment breakdown and physical fulfillment status (Supplied vs Unsupplied).
+  - **StockService** (`app/Services/StockService.php`): Core business logic for stock-in, sales, transfers, unsupplied dispatch, and customer payments.
+  - **New Models**: `Warehouse`, `StockLevel`, `Customer`, `CustomerLedger`, `Transfer`, `TransferItem`, `CashierShift`, `Supplier`.
+  - **New Migration**: `database/migrations/2026_08_20_110000_create_locations_and_transfers_tables.php`.
+  - **Database Seeder**: Populated with realistic products, shops, stock counts, and sample customer debts.
 - **Web Installer Wizard (CodeCanyon style)**:
   - 6-step interactive installation wizard at `/install` (Welcome, Requirements check, Database config with live PDO connection test, Admin account creation, Migration runner with animated progress, and Completion).
   - `InstallerController` handling installer steps, .env generation, migration execution, and admin account setup.
   - `CheckInstalled` middleware to automatically redirect uninstalled instances to `/install` and lock down the installer after completion.
   - Blade templates for all installer steps and dashboard placeholder (`resources/views/installer/*`, `resources/views/dashboard.blade.php`).
-- Core inventory management schema migrations: `products` and `suppliers` tables.
-- Role-Based Access Control (RBAC) via Laravel Gates and Policies (Admin, Manager, Staff).
-- Backup & Restore module with Artisan commands (`backup:run`, `backup:restore`).
-- Activity audit log for all CRUD operations.
-- Blade-based admin panel (no Node.js/Vite/React).
-- API versioned routes under `/api/v1/*` protected by Laravel Sanctum.
-- CSV/PDF export for inventory valuation, stock movement, and supplier performance.
-- Database migrations: `products`, `suppliers`, `warehouses`, `stock_levels`, `backup_logs`.
-- Docker + Docker Compose LEMP stack (PHP 8.3-FPM, MySQL, Redis, Nginx).
-- GitHub Actions CI workflow (lint, test, build).
+- Business Logic, Audit & Anti-Theft Specification (`docs/business_rules.md`).
 - AI Agent Engineering Rules (`docs/ai_agent_rules.md`) — mandatory commit & changelog tracking rules for all AI agents.
-- Business Logic, Audit & Anti-Theft Specification (`docs/business_rules.md`) — complete domain specification covering physical closing stock, two-step inter-location transfers, supplied vs. unsupplied fulfillment states, customer debt/part-payments, and auditor reconciliation controls.
 - Whogohost hosting guide (VPS + Shared Hosting + Web Installer) in README.
 
 ### Changed
@@ -34,7 +36,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - Cleaned up `composer.json` to remove Node.js/npm setup scripts.
 - Updated `.env.example` to remove Gemini keys and reflect correct driver options.
 - Updated `bootstrap/app.php` to register `CheckInstalled` middleware globally across web routes.
-- Updated `routes/web.php` with 8 installer routes and Blade dashboard route.
+- Updated `routes/web.php` with 37 registered routes covering POS, Stock, Auditor, Debts, Installer, and Dashboard.
 
 ### Removed
 - **Gemini AI integration** — removed entirely; system is now fully offline-capable.
