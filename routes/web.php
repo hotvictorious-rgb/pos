@@ -87,6 +87,8 @@ Route::prefix('pos')->name('pos.')->group(function () {
 // 3. Products Catalog Management
 Route::prefix('products')->name('products.')->group(function () {
     Route::get('/',                     [\App\Http\Controllers\Web\ProductController::class, 'index'])->name('index');
+    Route::get('/template/csv',         [\App\Http\Controllers\Web\ProductController::class, 'downloadCsvTemplate'])->name('template.csv');
+    Route::post('/import/csv',          [\App\Http\Controllers\Web\ProductController::class, 'importCsv'])->name('import.csv');
     Route::post('/',                    [\App\Http\Controllers\Web\ProductController::class, 'store'])->name('store');
     Route::post('/{id}',                [\App\Http\Controllers\Web\ProductController::class, 'update'])->name('update');
     Route::post('/{id}/delete',         [\App\Http\Controllers\Web\ProductController::class, 'destroy'])->name('destroy');

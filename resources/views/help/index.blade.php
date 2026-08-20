@@ -255,6 +255,24 @@
         <h4 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem;">Cashier FAQs</h4>
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
+                <span>❓ Are past sales transactions editable? How are cashier mistakes handled?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                <strong>No. Invoices cannot be silently modified or deleted</strong> to prevent fraud and theft. If a cashier made a mistake or a customer returns items, go to <strong>🔄 Returns & Refunds</strong> in the sidebar. Select the invoice, choose the returned items, and refund the cash or deduct their debt balance. This restores physical stock and logs an immutable audit trail.
+            </div>
+        </div>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ Who adds products and can we import hundreds of items from CSV?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Only <strong>Auditors</strong>, <strong>Managers</strong>, and <strong>Sales & Stock Officers</strong> can add products. In <strong>🛍️ Products Catalog</strong>, click <strong>"📥 Bulk Import (CSV)"</strong> to upload hundreds of products at once. You can download the sample template with headers: <code>name, code, category, brand, size, unitPrice, minStockLevel, initial_stock</code>.
+            </div>
+        </div>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
                 <span>❓ What if a customer brings money later to pay their debt?</span>
                 <span class="faq-toggle">▼</span>
             </div>

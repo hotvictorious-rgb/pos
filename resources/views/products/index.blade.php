@@ -57,9 +57,17 @@
                 Manage product codes, wholesale/retail pricing, brand/pack sizes, and stock across branches.
             </p>
         </div>
-        <button class="btn btn-success btn-lg" onclick="openModal('modalAddProduct')">
-            ➕ Add New Product
-        </button>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <a href="{{ route('products.template.csv') }}" class="btn btn-secondary" style="font-size: 0.85rem;">
+                📄 CSV Template
+            </a>
+            <button class="btn btn-primary" onclick="openModal('modalImportCsv')" style="font-size: 0.85rem;">
+                📥 Bulk Import (CSV)
+            </button>
+            <button class="btn btn-success" onclick="openModal('modalAddProduct')" style="font-size: 0.85rem;">
+                ➕ Add New Product
+            </button>
+        </div>
     </div>
 
     <!-- Products Table with Multi-Branch Stocks -->
@@ -242,6 +250,50 @@
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalEditProduct')">Cancel</button>
                     <button type="submit" class="btn btn-primary" style="flex: 1;">✓ Update Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- Modal: Bulk CSV Import -->
+    <div id="modalImportCsv" class="modal-backdrop" style="display: none;">
+        <div class="modal" style="max-width: 550px;">
+            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">📥 Bulk Import Products from CSV</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                Upload a CSV spreadsheet to import hundreds of items at once.
+            </p>
+
+            <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; font-size: 0.8rem; color: #cbd5e1;">
+                <strong style="color: #93c5fd;">Required CSV Column Headers:</strong><br>
+                <code>name, code, category, brand, size, unitPrice, minStockLevel, initial_stock</code>
+                <div style="margin-top: 0.5rem;">
+                    <a href="{{ route('products.template.csv') }}" style="color: #4ade80; text-decoration: underline; font-weight: 700;">
+                        📥 Download Sample CSV Template
+                    </a>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ route('products.import.csv') }}" enctype="multipart/form-data">
+                @csrf
+
+                <div class="form-group">
+                    <label>Select CSV File (.csv)</label>
+                    <input type="file" name="csv_file" accept=".csv,text/csv" required style="padding: 0.5rem;">
+                </div>
+
+                <div class="form-group">
+                    <label>Assign Initial Stock to Branch</label>
+                    <select name="warehouse_id">
+                        @foreach($warehouses as $wh)
+                            <option value="{{ $wh->id }}">{{ $wh->name }} ({{ $wh->code }})</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalImportCsv')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">✓ Upload & Import Products</button>
                 </div>
             </form>
         </div>
