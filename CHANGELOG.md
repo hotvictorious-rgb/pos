@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+- **Header Enhancements**:
+  - **Live Digital Date & Clock**: Real-time ticking calendar and digital clock in Nigerian local time format (`Thu, 20 Aug 2026 | 12:35:10 PM`).
+  - **Interactive Quick POS Calculator**: One-click topbar calculator widget with standard arithmetic (`+`, `-`, `*`, `/`, `%`, `00`), error handling, and high-visibility digital display for quick counter tallying.
 - **Nigerian Wholesale/Retail Workflow Enhancements (Nwaniba Market Spec)**:
   - **Modern Sidebar Navigation**: Fixed high-contrast collapsible sidebar with distinct operational groups, active route markers, and quick POS access.
   - **Products & Pricing Catalog Hub** (`/products`): Full CRUD catalog manager with category filters, pack/brand specs, SKU generator, and live stock visibility across all shop locations.

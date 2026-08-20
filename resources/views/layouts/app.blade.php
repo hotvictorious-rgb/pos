@@ -398,10 +398,21 @@
     <!-- Main Content Wrapper -->
     <div class="main-wrapper">
         <header class="topbar">
-            <div style="font-size: 0.95rem; font-weight: 700; color: #cbd5e1;">
-                Nigerian Retail & Wholesale Distribution Engine 🇳🇬
+            <!-- Left: Live Clock & Date -->
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div id="liveClockWidget" style="background: rgba(31,41,55,0.7); border: 1px solid var(--border); border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.85rem; font-weight: 700; color: #93c5fd; display: flex; align-items: center; gap: 0.5rem;">
+                    <span>📅</span> <span id="headerDate">--</span>
+                    <span style="color: #4b5563;">|</span>
+                    <span>⏰</span> <span id="headerTime" style="color: #4ade80;">--:--:--</span>
+                </div>
             </div>
+
+            <!-- Right: Quick Calculator & Operator -->
             <div style="display: flex; align-items: center; gap: 1rem;">
+                <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.85rem; background: rgba(31,41,55,0.9); border-color: #4b5563; color: #f3f4f6;" onclick="toggleCalculator()">
+                    🧮 Calculator
+                </button>
+
                 <div style="font-size: 0.85rem; color: var(--text-muted);">
                     Operator: <strong style="color: #f3f4f6;">{{ auth()->user()->name ?? 'Auditor / Lead' }}</strong>
                 </div>
@@ -431,6 +442,115 @@
         </main>
     </div>
 
+    <!-- Quick Header Calculator Modal -->
+    <div id="modalCalculator" class="modal-backdrop" style="display: none;">
+        <div class="modal" style="max-width: 360px; padding: 1.5rem; background: #111827; border: 2px solid #374151;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.1rem; font-weight: 800; color: #f9fafb;">🧮 POS Calculator</h3>
+                <button type="button" onclick="toggleCalculator()" style="background: none; border: none; color: #9ca3af; font-size: 1.25rem; cursor: pointer;">✕</button>
+            </div>
+
+            <!-- Display -->
+            <div id="calcDisplay" style="background: #030712; border: 1px solid #374151; border-radius: 12px; padding: 1rem; font-size: 1.8rem; font-weight: 800; text-align: right; color: #4ade80; overflow-x: auto; margin-bottom: 1rem; min-height: 60px; font-family: monospace;">
+                0
+            </div>
+
+            <!-- Keypad Grid -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem;">
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #dc2626; color: #fff;" onclick="calcClear()">C</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('(')">(</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput(')')">)</button>
+                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('/')">÷</button>
+
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('7')">7</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('8')">8</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('9')">9</button>
+                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('*')">×</button>
+
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('4')">4</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('5')">5</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('6')">6</button>
+                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('-')">−</button>
+
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('1')">1</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('2')">2</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('3')">3</button>
+                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('+')">+</button>
+
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('0')">0</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('00')">00</button>
+                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('.')">.</button>
+                <button type="button" class="btn btn-success" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcEquals()">=</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Clock & Calculator Scripts -->
+    <script>
+    // 1. Live Clock Engine
+    function updateClock() {
+        const now = new Date();
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+        const dayName = days[now.getDay()];
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = months[now.getMonth()];
+        const year = now.getFullYear();
+
+        let hours = now.getHours();
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // 0 should be 12
+        const strHours = String(hours).padStart(2, '0');
+
+        const dateEl = document.getElementById('headerDate');
+        const timeEl = document.getElementById('headerTime');
+
+        if (dateEl) dateEl.textContent = `${dayName}, ${day} ${month} ${year}`;
+        if (timeEl) timeEl.textContent = `${strHours}:${minutes}:${seconds} ${ampm}`;
+    }
+
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // 2. Interactive Calculator Engine
+    let calcExpression = '';
+
+    function toggleCalculator() {
+        const modal = document.getElementById('modalCalculator');
+        modal.style.display = (modal.style.display === 'none' || modal.style.display === '') ? 'flex' : 'none';
+    }
+
+    function calcInput(val) {
+        if (calcExpression === '0' && val !== '.') calcExpression = '';
+        calcExpression += val;
+        document.getElementById('calcDisplay').textContent = calcExpression;
+    }
+
+    function calcClear() {
+        calcExpression = '';
+        document.getElementById('calcDisplay').textContent = '0';
+    }
+
+    function calcEquals() {
+        try {
+            // Safe evaluation of arithmetic only
+            const sanitized = calcExpression.replace(/[^0-9+\-*/().]/g, '');
+            if (!sanitized) return;
+            const result = Function('"use strict";return (' + sanitized + ')')();
+            calcExpression = String(result);
+            document.getElementById('calcDisplay').textContent = Number(result).toLocaleString('en-US', { maximumFractionDigits: 4 });
+        } catch (e) {
+            document.getElementById('calcDisplay').textContent = 'Error';
+            calcExpression = '';
+        }
+    }
+    </script>
+
     @stack('scripts')
 </body>
 </html>
+
