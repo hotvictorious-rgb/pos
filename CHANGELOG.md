@@ -26,6 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
   - `CheckInstalled` middleware to automatically redirect uninstalled instances to `/install` and lock down the installer after completion.
   - Blade templates for all installer steps and dashboard placeholder (`resources/views/installer/*`, `resources/views/dashboard.blade.php`).
 - Business Logic, Audit & Anti-Theft Specification (`docs/business_rules.md`).
+- Whogohost cPanel Shared Hosting & Update Guide (`docs/whogohost_cpanel_guide.md`) — complete step-by-step installation walkthrough and safe upgrade protocol.
 - AI Agent Engineering Rules (`docs/ai_agent_rules.md`) — mandatory commit & changelog tracking rules for all AI agents.
 - Whogohost hosting guide (VPS + Shared Hosting + Web Installer) in README.
 
