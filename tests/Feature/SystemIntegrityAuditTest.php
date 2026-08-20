@@ -342,10 +342,11 @@ class SystemIntegrityAuditTest extends TestCase
 
         $response1 = $this->actingAs($this->user)->withSession(['user_id' => $this->user->id, 'user_role' => 'admin'])->get("/pos/receipt/{$saleSupplied->id}");
         $response1->assertStatus(200);
+        $response1->assertSee('PAID &amp; SUPPLIED', false);
         $response1->assertSee('✓ GOODS SUPPLIED & COLLECTED', false);
-        $response1->assertDontSee('⏳ GOODS IN SHOP (PENDING PICKUP)', false);
+        $response1->assertDontSee('GOODS NOT SUPPLIED', false);
 
-        // 2. Delayed Pickup Sale (Unsupplied)
+        // 2. Delayed Pickup Sale (Paid & Not Supplied)
         $saleUnsupplied = $this->stockService->recordSale(
             [
                 'id' => (string) Str::uuid(),
@@ -374,16 +375,16 @@ class SystemIntegrityAuditTest extends TestCase
 
         $response2 = $this->actingAs($this->user)->withSession(['user_id' => $this->user->id, 'user_role' => 'admin'])->get("/pos/receipt/{$saleUnsupplied->id}");
         $response2->assertStatus(200);
-        $response2->assertSee('⏳ GOODS IN SHOP (PENDING PICKUP)', false);
-        $response2->assertDontSee('✓ GOODS SUPPLIED & COLLECTED', false);
+        $response2->assertSee('PAID &amp; NOT SUPPLIED', false);
+        $response2->assertSee('GOODS NOT SUPPLIED', false);
 
-        // 3. Dispatch the unsupplied sale
+        // 3. Dispatch the unsupplied sale -> transitions to Paid & Supplied
         $this->stockService->dispatchUnsuppliedSale($saleUnsupplied->id, $this->warehouseA->id, $this->user->id, 'Storekeeper John');
 
         $response3 = $this->actingAs($this->user)->withSession(['user_id' => $this->user->id, 'user_role' => 'admin'])->get("/pos/receipt/{$saleUnsupplied->id}");
         $response3->assertStatus(200);
-        $response3->assertSee('✓ GOODS SUPPLIED & COLLECTED', false);
+        $response3->assertSee('PAID &amp; SUPPLIED', false);
         $response3->assertSee('Storekeeper John');
-        $response3->assertDontSee('⏳ GOODS IN SHOP (PENDING PICKUP)', false);
+        $response3->assertDontSee('GOODS NOT SUPPLIED (AWAITING', false);
     }
 }

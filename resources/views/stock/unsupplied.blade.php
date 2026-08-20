@@ -28,9 +28,9 @@
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-            <h2 style="font-size: 1.5rem; font-weight: 800;">Goods Sold Awaiting Pickup ⏳</h2>
+            <h2 style="font-size: 1.5rem; font-weight: 800;">Goods Sold & Not Supplied ⏳</h2>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                These items have been purchased, but are **still physically in the shop**. Hand them over when customer arrives!
+                These items have been purchased (Paid, Part-Paid, or Debt), but are **Not Supplied (still physically in the shop)**. Hand them over when customer arrives!
             </p>
         </div>
         <a href="{{ route('pos.index') }}" class="btn btn-primary">
@@ -43,7 +43,7 @@
         <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div style="font-size: 1.8rem;">💡</div>
             <div style="font-size: 0.9rem; color: #fde047;">
-                <strong>Auditor Stock Rule:</strong> These items remain part of your **Physical Closing Stock** count on the shelves. Only tap "Handover Goods" when the customer physically carries them out of the building.
+                <strong>Auditor Closing Stock Rule:</strong> As long as goods are **Not Supplied**, they remain counted in your **Physical Closing Stock** on the shelves. Only mark them as **Supplied** when the customer physically carries them out of the building.
             </div>
         </div>
     </div>
@@ -56,7 +56,7 @@
                 <span style="font-size: 1.25rem; font-weight: 800; color: #f8fafc;">
                     Customer: {{ $sale->customerName }}
                 </span>
-                <span class="badge badge-warning">⏳ Awaiting Collection</span>
+                <span class="badge badge-warning">⏳ Not Supplied (Awaiting Pickup)</span>
             </div>
 
             <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
@@ -81,10 +81,10 @@
                 ₦{{ number_format($sale->totalAmount, 0) }}
             </div>
 
-            <form method="POST" action="{{ route('stock.dispatch', $sale->id) }}" onsubmit="return confirm('Confirm that customer is taking these items away now?')">
+            <form method="POST" action="{{ route('stock.dispatch', $sale->id) }}" onsubmit="return confirm('Confirm that customer is taking these items away now? (Will mark as Supplied)')">
                 @csrf
                 <button type="submit" class="btn btn-success btn-lg">
-                    📦 Handover Goods to Customer
+                    📦 Mark as Supplied (Handover Goods)
                 </button>
             </form>
         </div>
@@ -92,9 +92,9 @@
     @empty
     <div style="text-align: center; padding: 4rem 1rem; background: var(--card-bg); border-radius: 20px;">
         <div style="font-size: 3.5rem; margin-bottom: 1rem;">🎉</div>
-        <h3 style="font-size: 1.3rem; font-weight: 800;">All Goods Have Been Collected!</h3>
+        <h3 style="font-size: 1.3rem; font-weight: 800;">All Goods Have Been Supplied!</h3>
         <p style="color: var(--text-muted); margin-top: 0.35rem;">
-            There are currently zero unsupplied customer orders left in the shop.
+            There are currently zero Not Supplied customer orders left in the shop.
         </p>
     </div>
     @endforelse

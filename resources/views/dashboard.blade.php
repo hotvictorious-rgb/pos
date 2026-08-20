@@ -176,9 +176,9 @@
 
         <div class="stat-card">
             <div>
-                <div class="stat-label">Sold Awaiting Pickup</div>
+                <div class="stat-label">Not Supplied (In Shop)</div>
                 <div class="stat-val" style="color: #fbbf24;">{{ $unsuppliedCount }} Orders</div>
-                <small style="color: #fcd34d;">Still in physical stock</small>
+                <small style="color: #fcd34d;">Still in physical closing stock</small>
             </div>
             <div style="font-size: 2.2rem;">⏳</div>
         </div>
@@ -216,7 +216,7 @@
                 💰
             </div>
             <div class="tile-title">Sell Goods</div>
-            <div class="tile-desc">Scan or tap products, collect cash, POS, or give part-payment on credit.</div>
+            <div class="tile-desc">Scan or tap products, collect cash, POS, or record part-payment / debt.</div>
             <div class="tile-badge badge-success">Point of Sale</div>
         </a>
 
@@ -230,14 +230,14 @@
             <div class="tile-badge badge-info">{{ $totalProducts }} Products in System</div>
         </a>
 
-        <!-- 3. Unsupplied Goods Waiting in Shop -->
+        <!-- 3. Not Supplied Goods Waiting in Shop -->
         <a href="{{ route('stock.unsupplied') }}" class="action-tile tile-unsupplied">
             <div class="tile-icon" style="background: linear-gradient(135deg, #d97706, #f59e0b);">
                 ⏳
             </div>
-            <div class="tile-title">Goods Awaiting Pickup</div>
-            <div class="tile-desc">Items already paid for but customer hasn't collected yet. Keep count accurate!</div>
-            <div class="tile-badge badge-warning">{{ $unsuppliedCount }} Pending Handover</div>
+            <div class="tile-title">Not Supplied Orders</div>
+            <div class="tile-desc">Goods paid or part-paid but not yet collected. Mark as Supplied upon customer pickup.</div>
+            <div class="tile-badge badge-warning">{{ $unsuppliedCount }} Not Supplied</div>
         </a>
 
         <!-- 4. Debt & Part-Payments -->

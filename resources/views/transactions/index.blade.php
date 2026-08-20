@@ -104,8 +104,10 @@
                     <label>Payment Status</label>
                     <select name="payment_status">
                         <option value="">-- All Payments --</option>
-                        <option value="PAID" {{ request('payment_status') === 'PAID' ? 'selected' : '' }}>✓ Fully Paid</option>
-                        <option value="DEBT" {{ request('payment_status') === 'DEBT' ? 'selected' : '' }}>💳 Part-Payment / Debt</option>
+                        <option value="PAID" {{ request('payment_status') === 'PAID' ? 'selected' : '' }}>✓ Paid (Full Payment)</option>
+                        <option value="PART_PAID" {{ in_array(request('payment_status'), ['PART_PAID', 'PARTIAL']) ? 'selected' : '' }}>💳 Part-Paid (Part Payment)</option>
+                        <option value="NOT_PAID" {{ in_array(request('payment_status'), ['NOT_PAID', 'UNPAID']) ? 'selected' : '' }}>🔴 Not Paid (Full Credit)</option>
+                        <option value="DEBT" {{ request('payment_status') === 'DEBT' ? 'selected' : '' }}>🤝 All Debtors (Part-Paid & Not Paid)</option>
                     </select>
                 </div>
 
@@ -113,8 +115,12 @@
                     <label>Goods Delivery</label>
                     <select name="delivery_status">
                         <option value="">-- All Deliveries --</option>
-                        <option value="DELIVERED" {{ in_array(request('delivery_status'), ['DELIVERED', 'SUPPLIED']) ? 'selected' : '' }}>✓ Delivered / Handed Over</option>
-                        <option value="UNSUPPLIED" {{ request('delivery_status') === 'UNSUPPLIED' ? 'selected' : '' }}>⏳ Unsupplied / On Ground</option>
+                        <option value="SUPPLIED" {{ in_array(request('delivery_status'), ['DELIVERED', 'SUPPLIED']) ? 'selected' : '' }}>✓ Supplied (Handed Over)</option>
+                        <option value="NOT_SUPPLIED" {{ in_array(request('delivery_status'), ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING']) ? 'selected' : '' }}>⏳ Not Supplied (In Shop / Pickup)</option>
+                        <option value="PAID_SUPPLIED" {{ request('delivery_status') === 'PAID_SUPPLIED' ? 'selected' : '' }}>🟢 Paid & Supplied</option>
+                        <option value="PAID_NOT_SUPPLIED" {{ request('delivery_status') === 'PAID_NOT_SUPPLIED' ? 'selected' : '' }}>🟠 Paid & Not Supplied</option>
+                        <option value="PART_PAID_SUPPLIED" {{ request('delivery_status') === 'PART_PAID_SUPPLIED' ? 'selected' : '' }}>⚠️ Part-Paid & Supplied</option>
+                        <option value="PART_PAID_NOT_SUPPLIED" {{ request('delivery_status') === 'PART_PAID_NOT_SUPPLIED' ? 'selected' : '' }}>⏳ Part-Paid & Not Supplied</option>
                     </select>
                 </div>
             </div>
@@ -176,7 +182,7 @@
                         <th>Items Count</th>
                         <th>Total Amount</th>
                         <th>Paid Amount</th>
-                        <th>Balance / Debt</th>
+                        <th>Payment Status</th>
                         <th>Handover Status</th>
                         <th>Cashier</th>
                         <th>Actions</th>
@@ -186,6 +192,7 @@
                     @forelse($sales as $sale)
                     @php
                         $balance = max(0, $sale->totalAmount - $sale->paidAmount);
+                        $isSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
                     @endphp
                     <tr>
                         <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
@@ -210,17 +217,19 @@
                             ₦{{ number_format($sale->paidAmount, 0) }}
                         </td>
                         <td>
-                            @if($balance > 0)
-                                <span class="badge badge-danger">Owes ₦{{ number_format($balance, 0) }}</span>
+                            @if($sale->paidAmount >= $sale->totalAmount)
+                                <span class="badge badge-success">✓ Paid</span>
+                            @elseif($sale->paidAmount > 0)
+                                <span class="badge badge-warning" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;">💳 Part-Paid (Owes ₦{{ number_format($balance, 0) }})</span>
                             @else
-                                <span class="badge badge-success">✓ PAID</span>
+                                <span class="badge badge-danger">🔴 Not Paid (Owes ₦{{ number_format($balance, 0) }})</span>
                             @endif
                         </td>
                         <td>
-                            @if(in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']))
+                            @if($isSupplied)
                                 <span class="badge badge-success">✓ Supplied</span>
                             @else
-                                <span class="badge badge-warning">⏳ Awaiting Pickup</span>
+                                <span class="badge badge-warning" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;">⏳ Not Supplied</span>
                             @endif
                         </td>
                         <td style="font-size: 0.85rem; color: #cbd5e1;">

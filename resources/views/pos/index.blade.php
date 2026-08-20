@@ -344,39 +344,39 @@
             <!-- Handover / Physical Stock Rule Selector -->
             <div class="handover-box">
                 <div style="font-size: 0.8rem; font-weight: 800; color: #fbbf24; text-transform: uppercase;">
-                    📦 Did Customer Take Goods Today?
+                    📦 Goods Delivery: Supplied Now or Not Supplied?
                 </div>
                 <div class="handover-options">
                     <label class="radio-card selected-yes" id="labelSuppliedYes" onclick="selectHandover('yes')">
                         <input type="radio" name="is_supplied" value="yes" checked id="radioYes">
-                        <div>🟢 YES</div>
-                        <div style="font-size: 0.7rem; opacity: 0.8;">Left Shop (Deduct Stock)</div>
+                        <div>🟢 SUPPLIED</div>
+                        <div style="font-size: 0.7rem; opacity: 0.8;">Customer took goods away (Deduct stock)</div>
                     </label>
 
                     <label class="radio-card" id="labelSuppliedNo" onclick="selectHandover('no')">
                         <input type="radio" name="is_supplied" value="no" id="radioNo">
-                        <div>🟠 NO</div>
-                        <div style="font-size: 0.7rem; opacity: 0.8;">Keep in Closing Stock</div>
+                        <div>🟠 NOT SUPPLIED</div>
+                        <div style="font-size: 0.7rem; opacity: 0.8;">Goods stay in shop for pickup (Keep in stock)</div>
                     </label>
                 </div>
             </div>
 
             <!-- Payment Breakdown Tabs -->
             <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase;">
-                💳 Payment Method
+                💳 Payment Status & Method
             </div>
             <div class="pay-tabs">
-                <div class="pay-tab active" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Full Cash</div>
-                <div class="pay-tab" id="tabPos" onclick="selectPaymentMode('POS')">💳 POS / Bank</div>
-                <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part-Pay / Debt</div>
+                <div class="pay-tab active" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Paid (Cash)</div>
+                <div class="pay-tab" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS/Bank)</div>
+                <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part-Paid / Not Paid</div>
             </div>
 
-            <!-- Part-Payment Input (Visible when Part-Payment/Debt is selected) -->
+            <!-- Part-Payment Input (Visible when Part-Paid / Not Paid is selected) -->
             <div id="debtBox" style="display: none; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 0.75rem; margin-bottom: 1rem;">
-                <label style="color: #c084fc;">Amount Paying Now (₦):</label>
-                <input type="number" id="partPayInput" placeholder="e.g. 5000" onkeyup="updateDebtCalculation()" step="any">
+                <label style="color: #c084fc;">Amount Paying Now (₦) [Part-Paid or 0 for Not Paid]:</label>
+                <input type="number" id="partPayInput" placeholder="e.g. 5000 (or 0 if totally unpaid)" onkeyup="updateDebtCalculation()" step="any">
                 <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #cbd5e1;">
-                    <span>Remaining Balance Due:</span>
+                    <span>Remaining Debt Balance:</span>
                     <strong style="color: #f87171;" id="remainingDebtDisplay">₦0</strong>
                 </div>
             </div>

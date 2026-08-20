@@ -70,9 +70,9 @@ $assertCondition = function(bool $condition, string $testName) use (&$passCount,
 };
 
 // -----------------------------------------------------------------------------
-// SCENARIO 1: Immediate Counter Handover (isSuppliedNow = true)
+// SCENARIO 1: Immediate Counter Handover (PAID & SUPPLIED)
 // -----------------------------------------------------------------------------
-echo "[1/3] Testing Sale with IMMEDIATE Handover (Goods Supplied Now)...\n";
+echo "[1/4] Testing Sale with Immediate Handover (PAID & SUPPLIED)...\n";
 
 $saleSupplied = $stockService->recordSale(
     [
@@ -105,14 +105,15 @@ $assertCondition($saleSupplied->deliveryStatus === 'DELIVERED', "Sale deliverySt
 
 $htmlSupplied = view('pos.receipt', ['sale' => $saleSupplied, 'warehouse' => $warehouse])->render();
 
-$assertCondition(str_contains($htmlSupplied, '✓ GOODS SUPPLIED & COLLECTED'), "Receipt HTML contains '✓ GOODS SUPPLIED & COLLECTED' badge");
-$assertCondition(!str_contains($htmlSupplied, '⏳ GOODS IN SHOP (PENDING PICKUP)'), "Receipt HTML does NOT contain pending pickup badge");
+$assertCondition(str_contains(html_entity_decode($htmlSupplied), 'PAID & SUPPLIED'), "Receipt HTML contains 'PAID & SUPPLIED' header badge");
+$assertCondition(str_contains($htmlSupplied, '✓ GOODS SUPPLIED & COLLECTED'), "Receipt HTML contains '✓ GOODS SUPPLIED & COLLECTED' description");
+$assertCondition(!str_contains($htmlSupplied, 'GOODS NOT SUPPLIED'), "Receipt HTML does NOT contain unsupplied text");
 $assertCondition(str_contains($htmlSupplied, '₦50,000'), "Receipt displays exact zero-decimal total ₦50,000");
 
 // -----------------------------------------------------------------------------
-// SCENARIO 2: Delayed Pickup / Goods Left in Shop (isSuppliedNow = false)
+// SCENARIO 2: Delayed Pickup / Goods Left in Shop (PAID & NOT SUPPLIED)
 // -----------------------------------------------------------------------------
-echo "\n[2/3] Testing Sale with DELAYED Handover (Goods Unsupplied / Left in Shop)...\n";
+echo "\n[2/4] Testing Sale with Delayed Handover (PAID & NOT SUPPLIED)...\n";
 
 $saleUnsupplied = $stockService->recordSale(
     [
@@ -145,14 +146,52 @@ $assertCondition($saleUnsupplied->deliveryStatus === 'UNSUPPLIED', "Sale deliver
 
 $htmlUnsupplied = view('pos.receipt', ['sale' => $saleUnsupplied, 'warehouse' => $warehouse])->render();
 
-$assertCondition(str_contains($htmlUnsupplied, '⏳ GOODS IN SHOP (PENDING PICKUP)'), "Receipt HTML contains '⏳ GOODS IN SHOP (PENDING PICKUP)' badge");
-$assertCondition(str_contains($htmlUnsupplied, 'Items locked in shop stock buffer until customer pickup'), "Receipt explains physical buffer status clearly");
+$assertCondition(str_contains(html_entity_decode($htmlUnsupplied), 'PAID & NOT SUPPLIED'), "Receipt HTML contains 'PAID & NOT SUPPLIED' header badge");
+$assertCondition(str_contains($htmlUnsupplied, 'GOODS NOT SUPPLIED (AWAITING CUSTOMER PICKUP IN SHOP)'), "Receipt HTML contains 'GOODS NOT SUPPLIED' explanation");
 $assertCondition(!str_contains($htmlUnsupplied, '✓ GOODS SUPPLIED & COLLECTED'), "Receipt HTML does NOT contain supplied badge");
 
 // -----------------------------------------------------------------------------
-// SCENARIO 3: Subsequent Dispatch / Handover of Unsupplied Goods
+// SCENARIO 3: Part-Paid Sale with Handover (PART-PAID & SUPPLIED)
 // -----------------------------------------------------------------------------
-echo "\n[3/3] Testing Subsequent Dispatch of Previously Unsupplied Order...\n";
+echo "\n[3/4] Testing Part-Paid Sale (PART-PAID & SUPPLIED)...\n";
+
+$salePartPaid = $stockService->recordSale(
+    [
+        'id' => (string) Str::uuid(),
+        'totalAmount' => 100000,
+        'paidAmount' => 40000,
+        'cashAmount' => 40000,
+        'posAmount' => 0,
+        'transferAmount' => 0,
+        'customerId' => $customer->id,
+        'customerName' => $customer->name,
+    ],
+    [
+        [
+            'productId' => $product->id,
+            'code' => $product->code,
+            'productName' => $product->name,
+            'quantity' => 2,
+            'unitPrice' => 50000,
+            'totalPrice' => 100000,
+        ]
+    ],
+    $warehouse->id,
+    true, // isSuppliedNow = true
+    'USER-TEST-1',
+    'Cashier Joy'
+);
+
+$htmlPartPaid = view('pos.receipt', ['sale' => $salePartPaid, 'warehouse' => $warehouse])->render();
+
+$assertCondition(str_contains(html_entity_decode($htmlPartPaid), 'PART-PAID & SUPPLIED'), "Receipt HTML contains 'PART-PAID & SUPPLIED' header badge");
+$assertCondition(str_contains($htmlPartPaid, 'Debt Balance (PART-PAID):'), "Receipt displays debt balance label");
+$assertCondition(str_contains($htmlPartPaid, '60,000'), "Receipt displays exact remaining debt balance ₦60,000");
+
+// -----------------------------------------------------------------------------
+// SCENARIO 4: Subsequent Dispatch of Previously Unsupplied Order
+// -----------------------------------------------------------------------------
+echo "\n[4/4] Testing Subsequent Dispatch of Previously Unsupplied Order...\n";
 
 $dispatchedSale = $stockService->dispatchUnsuppliedSale($saleUnsupplied->id, $warehouse->id, 'USER-TEST-DISPATCH', 'Storekeeper Emeka');
 
@@ -162,9 +201,9 @@ $assertCondition($dispatchedSale->deliveredBy === 'Storekeeper Emeka', "Sale del
 
 $htmlDispatched = view('pos.receipt', ['sale' => $dispatchedSale->fresh(), 'warehouse' => $warehouse])->render();
 
-$assertCondition(str_contains($htmlDispatched, '✓ GOODS SUPPLIED & COLLECTED'), "Receipt HTML now renders '✓ GOODS SUPPLIED & COLLECTED'");
+$assertCondition(str_contains(html_entity_decode($htmlDispatched), 'PAID & SUPPLIED'), "Receipt HTML now renders 'PAID & SUPPLIED'");
 $assertCondition(str_contains($htmlDispatched, 'By: Storekeeper Emeka'), "Receipt shows handler officer name ('Storekeeper Emeka')");
-$assertCondition(!str_contains($htmlDispatched, '⏳ GOODS IN SHOP (PENDING PICKUP)'), "Receipt no longer displays pending pickup badge");
+$assertCondition(!str_contains($htmlDispatched, 'GOODS NOT SUPPLIED'), "Receipt no longer displays unsupplied text");
 
 echo "\n====================================================================\n";
 echo "   VERIFICATION SUMMARY\n";
@@ -172,7 +211,7 @@ echo "====================================================================\n";
 echo "Passed: {$passCount} | Failed: {$failCount}\n";
 
 if ($failCount === 0) {
-    echo "🌟 SUCCESS: Receipts are 100% verified to reflect correct handover status across all states!\n";
+    echo "🌟 SUCCESS: Receipts are 100% verified to reflect correct payment & handover statuses across all combinations!\n";
     exit(0);
 } else {
     echo "❌ ERROR: One or more assertions failed.\n";

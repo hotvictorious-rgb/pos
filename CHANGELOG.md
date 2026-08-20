@@ -9,28 +9,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Cashier Shift Balancing Feature**: Completely removed cashier shift balancing workflows, modal forms, routes (`/close-shift`), shift reports table, and JSON shift exports across the entire codebase to streamline closing operations.
 
 ### Added
-- **Receipt Handover Status Verification Suite** (`verify_receipt_handover.php`):
-  - Automated proof asserting receipts dynamically display `✓ GOODS SUPPLIED & COLLECTED` for immediate handover sales and `⏳ GOODS IN SHOP (PENDING PICKUP)` for orders awaiting physical customer pickup.
-  - Verification that dispatching unsupplied goods instantly transitions the receipt fulfillment status badge and displays fulfillment timestamp and handler staff attribution.
-- **Physical Fulfillment Handover Timestamp & Staff on Receipts**: Enhanced printable receipts (`/pos/receipt/{id}`) to include handover date/time and dispatch officer name upon physical collection.
+- **Standardized Payment & Fulfillment Terminology Matrix**:
+  - Implemented explicit terminology across the entire application:
+    - Payment States: **Paid** (full settlement), **Part-Paid** (deposit with remaining debt balance), and **Not Paid** (100% credit sale).
+    - Fulfillment States: **Supplied** (goods physically collected/taken away) and **Not Supplied** (goods retained in shop buffer awaiting pickup).
+    - 4-State & Composite Badges: **Paid & Supplied**, **Paid & Not Supplied**, **Part-Paid & Supplied**, **Part-Paid & Not Supplied**, **Not Paid & Supplied**, and **Not Paid & Not Supplied**.
+  - **In-App FAQs and Workflow Documentation** (`/help`):
+    - Added comprehensive explanations and accordion FAQs for Cashiers, Storekeepers, Managers, and Auditors detailing how Part Payments are mathematically calculated, ledgered, and recovered in installments.
+    - Added visual workflow guide illustrating the 4 key combinations and why physical closing stock is strictly preserved until goods are marked as *Supplied*.
+- **Receipt Handover & Payment Composite Badges** (`pos/receipt.blade.php`):
+  - Updated receipts to prominently print clear status badges: `PAID & SUPPLIED`, `PAID & NOT SUPPLIED`, `PART-PAID & SUPPLIED`, `PART-PAID & NOT SUPPLIED`, `NOT PAID & SUPPLIED`, and `NOT PAID & NOT SUPPLIED`.
+  - Added line item showing `Amount Paid: ₦... (PAID / PART-PAID / NOT PAID)`, remaining `Debt Balance (PART-PAID): ₦...`, and `Goods Status: ✓ SUPPLIED / ⏳ NOT SUPPLIED`.
 
 ### Changed
-- **Unified Delivery Status Representation Across System**: Standardized fulfillment filter queries, table badge indicators, and JavaScript modal views across `pos/receipt.blade.php`, `transactions/index.blade.php`, and `reports/index.blade.php` to seamlessly recognize both `DELIVERED` and `SUPPLIED` status values.
-
-### Fixed
-- **Transactions & Reports Delivery Filter Alignment**: Fixed status comparison mismatches in `TransactionController` and `ReportController` ensuring filter dropdowns accurately query `DELIVERED` sales without exclusion.
-- **Safe View Error Bag Handling**: Added `isset($errors)` guard in `layouts/app.blade.php` ensuring safe rendering across both HTTP web sessions and CLI testing environments.
+- **POS Checkout Sidebar Form** (`pos/index.blade.php`):
+  - Standardized handover toggle labels to `🟢 SUPPLIED (Customer took goods away - Deduct stock)` and `🟠 NOT SUPPLIED (Goods stay in shop for pickup - Keep in stock)`.
+  - Updated payment mode tabs to `Paid (Cash)`, `Paid (POS/Bank)`, and `Part-Paid / Not Paid`.
+- **Transactions History & Sales Reports Filter Engines** (`transactions/index.blade.php`, `reports/index.blade.php`, `TransactionController.php`, `ReportController.php`):
+  - Added filter options for `PAID`, `PART_PAID`, `NOT_PAID`, `SUPPLIED`, `NOT_SUPPLIED`, and composite filters (`PAID_SUPPLIED`, `PAID_NOT_SUPPLIED`, `PART_PAID_SUPPLIED`, `PART_PAID_NOT_SUPPLIED`).
+  - Standardized table badge columns to show clear `Paid`, `Part-Paid`, `Not Paid` alongside `Supplied`, `Not Supplied`.
+- **Stock Pickup & Dashboard Tiles** (`stock/unsupplied.blade.php`, `stock/index.blade.php`, `dashboard.blade.php`, `auditor/index.blade.php`):
+  - Renamed unsupplied orders references to `Goods Sold & Not Supplied (Awaiting Pickup)` and dispatch button to `📦 Mark as Supplied (Handover Goods)`.
 
 ### Testing & Verification
-- **PHPUnit Feature & Regression Test Suite**: Updated `SystemIntegrityAuditTest` and `ExampleTest` to verify session-authenticated routes, mathematical accuracy, delayed pickup buffer segregation, inter-branch transfers, and dynamic receipt handover statuses with 100% pass rate (6/6 tests, 49 assertions).
-- **7-Tier Comprehensive Audit Verification Suite** (`verify_system_suite.php`):
-  - Tier 1: Immediate delivery sale math & customer debt generation ($100\%$ exact).
-  - Tier 2: Delayed pickup stock buffer segregation & physical dispatch ($100\%$ exact).
-  - Tier 3: Inter-branch transfer dispatch, in-transit buffer, and verification count ($100\%$ exact).
-  - Tier 4: Customer debt ledger calculations & partial repayments ($100\%$ exact).
-  - Tier 5: Sales returns & shelf physical stock restitution ($100\%$ exact).
-  - Tier 6: Full database relational integrity & zero-corruption scan ($100\%$ clean).
-  - Tier 7: Full HTTP 200 verification across all 27 web pages, filter decks, CSV/JSON export streams, and reports.
+- **Receipt Verification Suite** (`verify_receipt_handover.php`): Verified all 4 payment and handover combinations across 18 automated assertions ($100\%$ pass).
+- **PHPUnit Feature Suite** (`tests/Feature/SystemIntegrityAuditTest.php`): 6/6 tests passing (50 assertions) verifying composite badges, debt generation, and unsupplied buffer transitions.
+- **7-Tier Business Logic & Mathematical Audit** (`verify_system_suite.php`): All 7 tiers verified ($100\%$ pass across all 29 routes).
 
 ### Security & Governance
 - **Central Catalog Authority Enforcement**: Restricted product creation, master price editing, CSV bulk imports, and archiving strictly to `admin` (Auditor / Super Admin). Branch Managers and Sales & Stock staff can add stock quantities (`Stock In`) for catalog items while keeping product definitions centralized and tamper-proof.

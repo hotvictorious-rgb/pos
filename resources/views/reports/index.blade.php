@@ -171,8 +171,10 @@
                     <label style="font-size: 0.75rem;">Payment Status</label>
                     <select name="payment_status">
                         <option value="">-- All Payments --</option>
-                        <option value="PAID" {{ request('payment_status') === 'PAID' ? 'selected' : '' }}>Fully Paid</option>
-                        <option value="DEBT" {{ request('payment_status') === 'DEBT' ? 'selected' : '' }}>Part-Payment (Debt)</option>
+                        <option value="PAID" {{ request('payment_status') === 'PAID' ? 'selected' : '' }}>✓ Paid (Full)</option>
+                        <option value="PART_PAID" {{ in_array(request('payment_status'), ['PART_PAID', 'PARTIAL']) ? 'selected' : '' }}>💳 Part-Paid</option>
+                        <option value="NOT_PAID" {{ in_array(request('payment_status'), ['NOT_PAID', 'UNPAID']) ? 'selected' : '' }}>🔴 Not Paid</option>
+                        <option value="DEBT" {{ request('payment_status') === 'DEBT' ? 'selected' : '' }}>🤝 All Debtors</option>
                     </select>
                 </div>
 
@@ -180,8 +182,12 @@
                     <label style="font-size: 0.75rem;">Handover Status</label>
                     <select name="delivery_status">
                         <option value="">-- All Deliveries --</option>
-                        <option value="DELIVERED" {{ request('delivery_status') === 'DELIVERED' ? 'selected' : '' }}>Delivered Now</option>
-                        <option value="UNSUPPLIED" {{ request('delivery_status') === 'UNSUPPLIED' ? 'selected' : '' }}>Awaiting Pickup</option>
+                        <option value="SUPPLIED" {{ in_array(request('delivery_status'), ['DELIVERED', 'SUPPLIED']) ? 'selected' : '' }}>✓ Supplied</option>
+                        <option value="NOT_SUPPLIED" {{ in_array(request('delivery_status'), ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING']) ? 'selected' : '' }}>⏳ Not Supplied</option>
+                        <option value="PAID_SUPPLIED" {{ request('delivery_status') === 'PAID_SUPPLIED' ? 'selected' : '' }}>🟢 Paid & Supplied</option>
+                        <option value="PAID_NOT_SUPPLIED" {{ request('delivery_status') === 'PAID_NOT_SUPPLIED' ? 'selected' : '' }}>🟠 Paid & Not Supplied</option>
+                        <option value="PART_PAID_SUPPLIED" {{ request('delivery_status') === 'PART_PAID_SUPPLIED' ? 'selected' : '' }}>⚠️ Part-Paid & Supplied</option>
+                        <option value="PART_PAID_NOT_SUPPLIED" {{ request('delivery_status') === 'PART_PAID_NOT_SUPPLIED' ? 'selected' : '' }}>⏳ Part-Paid & Not Supplied</option>
                     </select>
                 </div>
 
@@ -326,16 +332,20 @@
                             <td style="font-weight: 800;">₦{{ number_format($s->totalAmount, 0) }}</td>
                             <td style="color: #4ade80;">₦{{ number_format($s->paidAmount, 0) }}</td>
                             <td>
-                                @if($debt > 0)
-                                    <span class="badge badge-danger">₦{{ number_format($debt, 0) }}</span>
-                                @else
+                                @if($s->paidAmount >= $s->totalAmount)
                                     <span class="badge badge-success">✓ Paid</span>
+                                @elseif($s->paidAmount > 0)
+                                    <span class="badge badge-warning" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;">💳 Part-Paid (₦{{ number_format($debt, 0) }})</span>
+                                @else
+                                    <span class="badge badge-danger">🔴 Not Paid (₦{{ number_format($debt, 0) }})</span>
                                 @endif
                             </td>
                             <td>
-                                <span class="badge {{ in_array(strtoupper($s->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']) ? 'badge-success' : 'badge-warning' }}">
-                                    {{ in_array(strtoupper($s->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']) ? '✓ DELIVERED' : '⏳ UNSUPPLIED' }}
-                                </span>
+                                @if(in_array(strtoupper($s->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']))
+                                    <span class="badge badge-success">✓ Supplied</span>
+                                @else
+                                    <span class="badge badge-warning" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;">⏳ Not Supplied</span>
+                                @endif
                             </td>
                             <td>{{ $s->userName }}</td>
                         </tr>

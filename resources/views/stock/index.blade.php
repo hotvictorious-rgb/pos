@@ -152,14 +152,14 @@
             </div>
         </div>
 
-        <!-- 3. Unsupplied Goods Waiting in Shop -->
+        <!-- 3. Goods Sold & Not Supplied (Awaiting Pickup) -->
         <a href="{{ route('stock.unsupplied') }}" class="stock-card" style="border-color: rgba(217,119,6,0.4); text-decoration: none; color: inherit;">
             <div class="card-icon-wrap" style="background: rgba(217,119,6,0.15); color: #fbbf24;">
                 ⏳
             </div>
             <div>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Pickup & Dispatch</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted);">{{ $unsuppliedCount }} sold orders waiting for customer handover.</p>
+                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Not Supplied (Pickups)</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">{{ $unsuppliedCount }} sold orders in shop awaiting customer handover.</p>
             </div>
         </a>
     </div>

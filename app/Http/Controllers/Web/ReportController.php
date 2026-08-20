@@ -67,9 +67,14 @@ class ReportController extends Controller
         }
 
         if ($request->filled('payment_status')) {
-            if ($request->payment_status === 'PAID') {
+            $pStatus = strtoupper($request->payment_status);
+            if ($pStatus === 'PAID') {
                 $salesQuery->whereColumn('paidAmount', '>=', 'totalAmount');
-            } elseif ($request->payment_status === 'DEBT') {
+            } elseif (in_array($pStatus, ['PART_PAID', 'PARTIAL'])) {
+                $salesQuery->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0);
+            } elseif (in_array($pStatus, ['NOT_PAID', 'UNPAID'])) {
+                $salesQuery->where('paidAmount', '<=', 0);
+            } elseif ($pStatus === 'DEBT') {
                 $salesQuery->whereColumn('paidAmount', '<', 'totalAmount');
             }
         }
@@ -78,6 +83,16 @@ class ReportController extends Controller
             $dStatus = strtoupper($request->delivery_status);
             if (in_array($dStatus, ['DELIVERED', 'SUPPLIED'])) {
                 $salesQuery->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif (in_array($dStatus, ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING'])) {
+                $salesQuery->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+            } elseif ($dStatus === 'PAID_SUPPLIED') {
+                $salesQuery->whereColumn('paidAmount', '>=', 'totalAmount')->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif ($dStatus === 'PAID_NOT_SUPPLIED') {
+                $salesQuery->whereColumn('paidAmount', '>=', 'totalAmount')->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+            } elseif ($dStatus === 'PART_PAID_SUPPLIED') {
+                $salesQuery->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0)->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif ($dStatus === 'PART_PAID_NOT_SUPPLIED') {
+                $salesQuery->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0)->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
             } else {
                 $salesQuery->where('deliveryStatus', $dStatus);
             }

@@ -229,30 +229,82 @@
             </div>
 
             <div class="step-box">
-                <strong style="color: #fbbf24;">3. Part-Payments & Customer Debts</strong>
+                <strong style="color: #fbbf24;">3. Handling Part-Payments, Not Paid (Full Debt), and Customer Ledgers</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    If the customer is making a deposit and owing the rest, choose <strong>💳 Part-Payment / Debt</strong> mode. Type the deposit amount and enter the Customer's Name and Phone Number. The balance moves to the Debtors Ledger.
+                    When a customer is paying partially or buying on credit:
+                    <br>• Select <strong>🤝 Part-Paid / Not Paid</strong> payment mode.
+                    <br>• In <strong>Amount Paying Now (₦)</strong>, enter the deposit collected (e.g. ₦30,000 for a ₦50,000 bill), or type <strong>0</strong> if totally unpaid.
+                    <br>• The system instantly computes the <strong>Remaining Debt Balance</strong> (₦20,000).
+                    <br>• Enter the Customer's Name and Phone Number. The system automatically creates/updates their customer debt profile, logs the payment into today's revenue, posts the balance to the debt ledger, and prints <strong>PART-PAID</strong> with the remaining debt balance directly on their receipt.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #f87171;">4. Handover Toggle: Did Customer Take Goods Today?</strong>
+                <strong style="color: #f87171;">4. Goods Handover Matrix (Supplied vs. Not Supplied)</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    If the customer is carrying the goods away immediately, select <strong>"YES (Delivered Now)"</strong>.<br>
-                    If the customer will send their truck tomorrow, select <strong>"NO (Awaiting Pickup)"</strong>. This keeps the items in your shop's physical closing stock count so the auditor does not suspect theft!
+                    Always confirm physical fulfillment at checkout:
+                    <br>• <strong>🟢 SUPPLIED:</strong> Select if the customer is physically carrying goods away right now. Shelf closing stock decrements immediately.
+                    <br>• <strong>🟠 NOT SUPPLIED:</strong> Select if the customer paid/part-paid but will send a vehicle tomorrow. Goods stay locked in your shop's stock buffer so your physical closing stock remains 100% accurate for the auditor!
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #93c5fd;">5. Daily Sales & Receipts Audit</strong>
+                <strong style="color: #93c5fd;">5. The 4 Main Sale State Combinations</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Review your completed sales and customer receipts anytime under <strong>📜 Sales History</strong> to verify your total daily revenue collected.
+                    Every sale in the system is classified into one of these transparent states:
+                    <br>• <strong>🟢 Paid & Supplied:</strong> Full payment received, goods taken away immediately.
+                    <br>• <strong>🟠 Paid & Not Supplied:</strong> Full payment received, goods remain safely in shop for later pickup.
+                    <br>• <strong>⚠️ Part-Paid & Supplied:</strong> Deposit collected, customer owes debt, goods taken away.
+                    <br>• <strong>⏳ Part-Paid & Not Supplied:</strong> Deposit collected, customer owes debt, goods remain in shop until full collection.
+                    <br>• <strong>🔴 Not Paid & Supplied:</strong> Full credit sale (₦0 deposit), customer takes goods away.
+                    <br>• <strong>⏳ Not Paid & Not Supplied:</strong> Order reservation (₦0 deposit), goods remain in shop.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #4ade80;">6. Daily Sales & Receipts Audit</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Review your completed sales and customer receipts anytime under <strong>📜 Sales History</strong> to verify your total daily revenue collected and outstanding customer debts.
                 </p>
             </div>
         </div>
 
         <!-- Cashier FAQs -->
-        <h4 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem;">Cashier FAQs</h4>
+        <h4 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem;">Cashier & Sales FAQs</h4>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ How exactly are Part Payments (Part-Paid) handled in the system?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                When an order is completed as <strong>Part-Paid</strong> (e.g. ₦30,000 paid on a ₦50,000 invoice):
+                <ol style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <li><strong>Revenue Accounting:</strong> Only the actual cash/POS received (₦30,000) is counted in today's collected money.</li>
+                    <li><strong>Debtors Ledger:</strong> The remaining balance (₦20,000) is automatically posted to the customer's permanent ledger under <strong>💳 Customer Debts</strong>.</li>
+                    <li><strong>Customer Receipt:</strong> The printed receipt clearly states <code>TOTAL: ₦50,000</code>, <code>Amount Paid: ₦30,000 (PART-PAID)</code>, and <code>Debt Balance: ₦20,000</code>.</li>
+                    <li><strong>Debt Recovery:</strong> When the customer brings money later, staff records the repayment under <em>Customer Debts</em>, which reduces the balance and prints an installment recovery receipt.</li>
+                </ol>
+            </div>
+        </div>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ What is the difference between "Paid & Supplied" vs "Paid & Not Supplied"?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                <strong>Paid & Supplied</strong> means the customer paid and carried their goods away immediately. The items are subtracted from physical shelf stock right away.<br><br>
+                <strong>Paid & Not Supplied</strong> means the customer paid in full, but left the cartons in your shop to send their transport vehicle later. The items <strong>remain counted in your shop's physical closing stock</strong>. When their driver arrives, the storekeeper goes to <strong>⏳ Pickup Orders</strong> and taps <strong>"Mark as Supplied"</strong>. This prevents physical count discrepancies during audits!
+            </div>
+        </div>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ What happens if a customer buys on 100% credit without paying any deposit?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Select <strong>🤝 Part-Paid / Not Paid</strong> and enter <strong>0</strong> in the <em>Amount Paying Now</em> box. The sale will be recorded as <strong>Not Paid (Full Debt)</strong>, the full bill will be added to the customer's debt ledger, and the receipt will state <code>NOT PAID & SUPPLIED</code> (or <code>NOT PAID & NOT SUPPLIED</code>).
+            </div>
+        </div>
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
                 <span>❓ Are past sales transactions editable? How are cashier mistakes handled?</span>
@@ -269,15 +321,6 @@
             </div>
             <div class="faq-answer">
                 Only the <strong>Auditor / Super Admin</strong> can create, edit, or bulk-import new products into the central catalog (this prevents rogue staff from introducing ghost items). However, <strong>Branch Managers</strong>, <strong>Storekeepers</strong>, and <strong>Sales & Stock Officers</strong> can add stock quantities at any time via <strong>📦 Stock In / Out ➔ 📥 New Goods Arrived</strong>!
-            </div>
-        </div>
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ Can I filter and export the products catalog?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Yes! In <strong>🛍️ Products Catalog</strong>, you can filter items by <strong>Stock Health</strong> (In Stock, Low Stock, Out of Stock), <strong>Category</strong>, <strong>Price Range</strong>, or <strong>Keyword Search</strong>. You can export the entire catalog as <strong>📥 CSV (for Excel)</strong>, <strong>🤖 JSON (for AI analysis)</strong>, or click <strong>🖨️ Print Price List</strong>.
             </div>
         </div>
         <div class="faq-item" onclick="toggleFaq(this)">

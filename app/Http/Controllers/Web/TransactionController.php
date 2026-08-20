@@ -46,9 +46,13 @@ class TransactionController extends Controller
 
         // 2. Payment Status Filter
         if ($request->filled('payment_status')) {
-            $status = $request->payment_status;
+            $status = strtoupper($request->payment_status);
             if ($status === 'PAID') {
                 $query->whereColumn('paidAmount', '>=', 'totalAmount');
+            } elseif (in_array($status, ['PART_PAID', 'PARTIAL'])) {
+                $query->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0);
+            } elseif (in_array($status, ['NOT_PAID', 'UNPAID'])) {
+                $query->where('paidAmount', '<=', 0);
             } elseif ($status === 'DEBT') {
                 $query->whereColumn('paidAmount', '<', 'totalAmount');
             }
@@ -59,6 +63,16 @@ class TransactionController extends Controller
             $dStatus = strtoupper($request->delivery_status);
             if (in_array($dStatus, ['DELIVERED', 'SUPPLIED'])) {
                 $query->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif (in_array($dStatus, ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING'])) {
+                $query->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+            } elseif ($dStatus === 'PAID_SUPPLIED') {
+                $query->whereColumn('paidAmount', '>=', 'totalAmount')->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif ($dStatus === 'PAID_NOT_SUPPLIED') {
+                $query->whereColumn('paidAmount', '>=', 'totalAmount')->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+            } elseif ($dStatus === 'PART_PAID_SUPPLIED') {
+                $query->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0)->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif ($dStatus === 'PART_PAID_NOT_SUPPLIED') {
+                $query->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0)->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
             } else {
                 $query->where('deliveryStatus', $dStatus);
             }

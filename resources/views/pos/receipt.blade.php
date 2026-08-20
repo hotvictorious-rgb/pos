@@ -112,6 +112,31 @@
     </div>
 
     <!-- Summary -->
+    @php
+        $debtRemaining = max(0, $sale->totalAmount - $sale->paidAmount);
+        $isSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
+        
+        if ($sale->paidAmount >= $sale->totalAmount) {
+            $paymentStatus = 'PAID';
+            $combinedStatus = $isSupplied ? 'PAID & SUPPLIED' : 'PAID & NOT SUPPLIED';
+            $badgeBg = $isSupplied ? '#dcfce7' : '#fef3c7';
+            $badgeColor = $isSupplied ? '#15803d' : '#b45309';
+            $badgeBorder = $isSupplied ? '#86efac' : '#fcd34d';
+        } elseif ($sale->paidAmount > 0) {
+            $paymentStatus = 'PART-PAID';
+            $combinedStatus = $isSupplied ? 'PART-PAID & SUPPLIED' : 'PART-PAID & NOT SUPPLIED';
+            $badgeBg = '#fef3c7';
+            $badgeColor = '#b45309';
+            $badgeBorder = '#fcd34d';
+        } else {
+            $paymentStatus = 'NOT PAID';
+            $combinedStatus = $isSupplied ? 'NOT PAID & SUPPLIED' : 'NOT PAID & NOT SUPPLIED';
+            $badgeBg = '#fee2e2';
+            $badgeColor = '#b91c1c';
+            $badgeBorder = '#fca5a5';
+        }
+    @endphp
+
     <div class="receipt-summary">
         <div class="receipt-row" style="font-size: 1.1rem; font-weight: 800;">
             <span>TOTAL:</span>
@@ -119,36 +144,45 @@
         </div>
         <div class="receipt-row" style="color: #16a34a; font-weight: 700;">
             <span>Amount Paid:</span>
-            <span>₦{{ number_format($sale->paidAmount, 0) }}</span>
+            <span>₦{{ number_format($sale->paidAmount, 0) }} ({{ $paymentStatus }})</span>
         </div>
 
-        @php $debtRemaining = max(0, $sale->totalAmount - $sale->paidAmount); @endphp
         @if($debtRemaining > 0)
         <div class="receipt-row" style="color: #dc2626; font-weight: 800;">
-            <span>Balance Remaining:</span>
+            <span>Debt Balance ({{ $paymentStatus }}):</span>
             <span>₦{{ number_format($debtRemaining, 0) }}</span>
         </div>
         @endif
+
+        <div class="receipt-row" style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem;">
+            <span>Goods Status:</span>
+            <strong style="color: {{ $isSupplied ? '#15803d' : '#b45309' }};">
+                {{ $isSupplied ? '✓ SUPPLIED' : '⏳ NOT SUPPLIED' }}
+            </strong>
+        </div>
     </div>
 
-    <!-- Physical Fulfillment Status Badge -->
-    @if(in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']))
-        <div class="receipt-badge" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac;">
-            ✓ GOODS SUPPLIED & COLLECTED
-            @if($sale->deliveredAt)
-                <div style="font-size: 0.75rem; font-weight: 500; color: #166534; margin-top: 0.25rem;">
-                    Handed over: {{ \Carbon\Carbon::parse($sale->deliveredAt)->format('d M Y, h:i A') }}@if($sale->deliveredBy) · By: {{ $sale->deliveredBy }}@endif
-                </div>
-            @endif
+    <!-- Prominent Combined Status Badge -->
+    <div class="receipt-badge" style="background: {{ $badgeBg }}; color: {{ $badgeColor }}; border: 1px solid {{ $badgeBorder }};">
+        <div style="font-size: 0.95rem; font-weight: 900; letter-spacing: 0.02em;">
+            {{ $combinedStatus }}
         </div>
-    @else
-        <div class="receipt-badge" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;">
-            ⏳ GOODS IN SHOP (PENDING PICKUP)
-            <div style="font-size: 0.75rem; font-weight: 500; color: #92400e; margin-top: 0.25rem;">
-                Items locked in shop stock buffer until customer pickup
+        @if($isSupplied)
+            <div style="font-size: 0.75rem; font-weight: 600; margin-top: 0.25rem;">
+                ✓ GOODS SUPPLIED & COLLECTED
+                @if($sale->deliveredAt)
+                    <br><span style="font-weight: 400;">Handed over: {{ \Carbon\Carbon::parse($sale->deliveredAt)->format('d M Y, h:i A') }}@if($sale->deliveredBy) · By: {{ $sale->deliveredBy }}@endif</span>
+                @endif
             </div>
-        </div>
-    @endif
+        @else
+            <div style="font-size: 0.75rem; font-weight: 600; margin-top: 0.25rem;">
+                ⏳ GOODS NOT SUPPLIED (AWAITING CUSTOMER PICKUP IN SHOP)
+                <div style="font-weight: 400; font-size: 0.7rem; opacity: 0.9; margin-top: 0.15rem;">
+                    Items locked in shop stock buffer until customer pickup
+                </div>
+            </div>
+        @endif
+    </div>
 
     <div style="text-align: center; font-size: 0.75rem; color: #94a3b8; margin-top: 1.5rem;">
         Thank you for your patronage!<br>

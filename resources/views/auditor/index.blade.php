@@ -120,7 +120,7 @@
                     <tr>
                         <th>Branch / Shop Location</th>
                         <th style="color: #4ade80;">Physical Count (On Shelves)</th>
-                        <th style="color: #fbbf24;">Sold (Uncollected Liability)</th>
+                        <th style="color: #fbbf24;">Sold & Not Supplied (In Shop)</th>
                         <th style="color: #60a5fa;">Available to Sell</th>
                         <th>Estimated Stock Value</th>
                     </tr>
