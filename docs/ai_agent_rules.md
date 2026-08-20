@@ -65,6 +65,15 @@ These rules are absolute. Any deviation or drift is strictly prohibited.
 ✅ DO verify routes and migrations before committing
 ```
 
+### 2.5 Mandatory In-App User Guide & FAQ Synchronization (MANDATORY)
+
+```
+✅ Whenever a new feature, workflow, or route is added or modified in the application:
+   1. The AI agent MUST read `resources/views/help/index.blade.php` FIRST.
+   2. The AI agent MUST update the in-app FAQ accordions and visual step-by-step guides.
+   3. Ensure the in-app guide reflects the exact current state of the application cleanly so workers never get confused.
+```
+
 ---
 
 ## 3. Mandatory AI Workflow Protocol

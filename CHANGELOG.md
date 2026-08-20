@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+- **Mandatory In-App User Guide & FAQ Sync Rule**: Added Section 2.5 to `docs/ai_agent_rules.md` requiring all AI agents to read and synchronize `/help` FAQs with every newly added feature or workflow.
+- **In-App FAQ Expansion**: Added questions and operational answers for Accepting Transfers, POS Price Bargaining, Sales History Filtering, Topbar Calculator, and System Settings.
 - **Dedicated Inter-Branch Transfers Hub** (`/stock/transfers`):
   - In-transit shipment monitor with prominent **"✅ Accept & Count Goods"** action cards for destination storekeepers.
   - Physical offload count verification modal with instant item-by-item tally and discrepancy/theft flagging.

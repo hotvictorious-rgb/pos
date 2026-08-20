@@ -228,6 +228,56 @@
 
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
+                <span>❓ Where do I click to accept and verify an incoming transfer shipment?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Go to **🚚 Shop Transfers** in the sidebar under *Inventory & Stock*. You will see all in-transit shipments on the road. On the shipment card, click the prominent green **"✅ Accept & Count Goods"** button. Count the physical cartons offloaded, enter the numbers, and click confirm. The items are added directly to your shop's closing stock.
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ How does price bargaining & editable prices work at the POS?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                When selling goods in the POS, tap products to add them to the right-side cart drawer. For bulk buyers or price negotiations, simply click inside the **Price (₦)** box on any cart item and type the agreed negotiated unit price. The cart subtotal, grand total, and customer debt balance will update automatically in real-time.
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ How do I filter sales history for a specific cashier or date range?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Go to **📑 Sales History** in the sidebar under *Sales & Customer Debts*. Use the Quick Date pills (Today, Yesterday, This Week, This Month) or set custom from/to dates, select payment status (Fully Paid vs Debt), or pick a specific Cashier from the dropdown, then click **🔍 Apply Filters**.
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ How do I use the POS Calculator in the header?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Tap the **🧮 Calculator** button in the top header at any time. A touch-friendly calculator popup will open immediately so cashiers and storekeepers can calculate carton tallies, bulk discounts, or customer change without leaving their active screen.
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ How do I customize business info and printable receipt footers?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Go to **⚙️ System Settings** in the sidebar. In the *Business & Receipts* tab, you can change your business name, contact phones, headquarters address, currency symbol (₦), and custom receipt footer terms (e.g. warranty and return policy).
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
                 <span>❓ What should I do if a worker leaves or is suspected of misconduct?</span>
                 <span class="faq-toggle">▼</span>
             </div>
