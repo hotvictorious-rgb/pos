@@ -327,10 +327,16 @@
                 </div>
             </div>
 
-            <!-- Customer Details (For Part-Payment/Debt tracking) -->
-            <div class="form-group" style="margin-bottom: 0.75rem;">
-                <label>Customer Name</label>
-                <input type="text" name="customerName" id="customerNameInput" placeholder="Walk-in Customer (or Enter Name)">
+            <!-- Customer Details (For Wholesale / Part-Payment / Debt tracking) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Customer Name</label>
+                    <input type="text" name="customerName" id="customerNameInput" placeholder="Walk-in (or Name)">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Phone Number</label>
+                    <input type="text" name="customerPhone" id="customerPhoneInput" placeholder="080...">
+                </div>
             </div>
 
             <!-- Total Amount Card -->
