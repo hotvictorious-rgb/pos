@@ -38,3 +38,6 @@ composer.phar
 /storage/framework/testing/*
 /storage/framework/views/*
 /storage/app/backups/*
+/storage/app/private/*
+/storage/installed
+*.zip

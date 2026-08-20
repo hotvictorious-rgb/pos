@@ -4,27 +4,47 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DataController;
 use App\Http\Controllers\BackupController;
+use App\Http\Controllers\Installer\InstallerController;
 
-// API routes - run inside 'web' middleware group automatically (session support)
-Route::prefix('api')->group(function () {
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/me', [AuthController::class, 'me']);
-    
-    Route::get('/data', [DataController::class, 'get']);
-    Route::post('/data', [DataController::class, 'post']);
-    Route::post('/reset', [DataController::class, 'reset']);
-
-    // Backup & Restore Module Routes
-    Route::get('/backups', [BackupController::class, 'index']);
-    Route::post('/backups', [BackupController::class, 'create']);
-    Route::get('/backups/{id}/download', [BackupController::class, 'download']);
-    Route::post('/backups/{id}/restore', [BackupController::class, 'restore']);
-    Route::post('/backups/upload', [BackupController::class, 'upload']);
-    Route::delete('/backups/{id}', [BackupController::class, 'destroy']);
+// ─────────────────────────────────────────────────────────
+// INSTALLER ROUTES (accessible before the app is installed)
+// ─────────────────────────────────────────────────────────
+Route::prefix('install')->name('installer.')->group(function () {
+    Route::get('/',            [InstallerController::class, 'welcome'])->name('welcome');
+    Route::get('/requirements',[InstallerController::class, 'requirements'])->name('requirements');
+    Route::get('/database',    [InstallerController::class, 'database'])->name('database');
+    Route::post('/database',   [InstallerController::class, 'databaseSave'])->name('database.save');
+    Route::get('/admin',       [InstallerController::class, 'admin'])->name('admin');
+    Route::post('/admin',      [InstallerController::class, 'install'])->name('install');
+    Route::post('/run',        [InstallerController::class, 'run'])->name('run');
+    Route::get('/complete',    [InstallerController::class, 'complete'])->name('complete');
 });
 
-// Catch-all route to serve the React SPA for any non-API URLs
-Route::get('{any}', function () {
-    return view('app');
-})->where('any', '.*');
+// ─────────────────────────────────────────────────────────
+// API ROUTES (session-aware, CSRF exempt)
+// ─────────────────────────────────────────────────────────
+Route::prefix('api')->group(function () {
+    Route::post('/login',  [AuthController::class, 'login']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/me',      [AuthController::class, 'me']);
+
+    Route::get('/data',   [DataController::class, 'get']);
+    Route::post('/data',  [DataController::class, 'post']);
+    Route::post('/reset', [DataController::class, 'reset']);
+
+    // Backup & Restore
+    Route::get('/backups',               [BackupController::class, 'index']);
+    Route::post('/backups',              [BackupController::class, 'create']);
+    Route::get('/backups/{id}/download', [BackupController::class, 'download']);
+    Route::post('/backups/{id}/restore', [BackupController::class, 'restore']);
+    Route::post('/backups/upload',       [BackupController::class, 'upload']);
+    Route::delete('/backups/{id}',       [BackupController::class, 'destroy']);
+});
+
+// ─────────────────────────────────────────────────────────
+// BLADE ADMIN PANEL (served after install)
+// ─────────────────────────────────────────────────────────
+Route::get('/', function () {
+    return view('dashboard');
+})->name('dashboard');
+
