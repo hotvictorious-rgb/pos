@@ -309,6 +309,20 @@
                     Go to <strong>⚙️ System Settings</strong> to customize receipt footers, low stock alert limits, add new branch shops, and download one-click database backup snapshots.
                 </p>
             </div>
+
+            <div class="step-box">
+                <strong style="color: #4ade80;">5. Reports & AI Data Exports (CSV / JSON)</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>📊 Reports & AI Exports</strong> in the sidebar. You can view, print, and download structured CSV (Excel) and JSON files for Sales, Inventory Valuations, Transfers, and Debtors that any external AI or spreadsheet can analyze.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #93c5fd;">6. Printable Transfer Waybills</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    In <strong>🚚 Shop Transfers</strong> or the Reports tab, click <strong>🖨️ Waybill</strong> next to any transfer to print an official delivery note with signature boxes for the dispatch officer, carrier driver, and storekeeper.
+                </p>
+            </div>
         </div>
     </div>
 

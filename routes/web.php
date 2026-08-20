@@ -96,6 +96,7 @@ Route::prefix('products')->name('products.')->group(function () {
 Route::prefix('stock')->name('stock.')->group(function () {
     Route::get('/',                     [StockController::class, 'index'])->name('index');
     Route::get('/transfers',            [StockController::class, 'transfersList'])->name('transfers');
+    Route::get('/waybill/{id}',         [StockController::class, 'waybill'])->name('waybill');
     Route::post('/in',                  [StockController::class, 'stockIn'])->name('in');
     Route::post('/transfer-out',        [StockController::class, 'transferOut'])->name('transfer.out');
     Route::post('/transfer-in/{id}',    [StockController::class, 'transferIn'])->name('transfer.in');
@@ -104,6 +105,14 @@ Route::prefix('stock')->name('stock.')->group(function () {
     Route::get('/adjustments',          [StockController::class, 'adjustments'])->name('adjustments');
     Route::post('/adjustments',         [StockController::class, 'recordAdjustment'])->name('adjustments.record');
 });
+
+// 5. Reports & AI Data Export Hub
+Route::prefix('reports')->name('reports.')->group(function () {
+    Route::get('/',                             [\App\Http\Controllers\Web\ReportController::class, 'index'])->name('index');
+    Route::get('/export-csv/{type}',            [\App\Http\Controllers\Web\ReportController::class, 'exportCsv'])->name('export.csv');
+    Route::get('/export-json/{type}',           [\App\Http\Controllers\Web\ReportController::class, 'exportJson'])->name('export.json');
+});
+
 
 // 5. Auditor Anti-Theft & Reconciliation Hub
 Route::prefix('auditor')->name('auditor.')->group(function () {

@@ -385,6 +385,9 @@
             <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
                 <span>🚨</span> <span>Auditor Control Hub</span>
             </a>
+            <a href="{{ route('reports.index') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
+                <span>📊</span> <span>Reports & AI Exports</span>
+            </a>
             <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
                 <span>👥</span> <span>Workers & Roles</span>
             </a>

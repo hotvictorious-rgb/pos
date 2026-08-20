@@ -168,6 +168,16 @@ class StockController extends Controller
         return view('stock.transfers', compact('pendingTransfers', 'completedTransfers', 'warehouses', 'allProducts'));
     }
 
+    /**
+     * Printable Transfer Waybill / Delivery Note.
+     */
+    public function waybill($id)
+    {
+        $transfer = Transfer::with(['source', 'destination', 'items'])->findOrFail($id);
+        return view('stock.waybill', compact('transfer'));
+    }
+
+
 
     /**
      * View list of Unsupplied Goods awaiting customer pickup.
