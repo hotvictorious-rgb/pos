@@ -24,6 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - Docker + Docker Compose LEMP stack (PHP 8.3-FPM, MySQL, Redis, Nginx).
 - GitHub Actions CI workflow (lint, test, build).
 - AI Agent Engineering Rules (`docs/ai_agent_rules.md`) — mandatory commit & changelog tracking rules for all AI agents.
+- Business Logic, Audit & Anti-Theft Specification (`docs/business_rules.md`) — complete domain specification covering physical closing stock, two-step inter-location transfers, supplied vs. unsupplied fulfillment states, customer debt/part-payments, and auditor reconciliation controls.
 - Whogohost hosting guide (VPS + Shared Hosting + Web Installer) in README.
 
 ### Changed
