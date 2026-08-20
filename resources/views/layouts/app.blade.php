@@ -308,6 +308,9 @@
             <a href="{{ route('debts.index') }}" class="nav-btn {{ request()->routeIs('debts.*') ? 'active' : '' }}">
                 💳 Customer Debts
             </a>
+            <a href="{{ route('users.index') }}" class="nav-btn {{ request()->routeIs('users.*') ? 'active' : '' }}">
+                👥 Workers
+            </a>
             <a href="{{ route('auditor.index') }}" class="nav-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}" style="border-color: rgba(220,38,38,0.4); color: #fca5a5;">
                 🚨 Auditor Hub
             </a>

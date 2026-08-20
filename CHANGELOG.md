@@ -7,7 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
-### Added
+- **Staff & Role Management Hub** (`/users`): Visual worker cards with role badges (Auditor, Manager, Storekeeper, Cashier), one-tap account creation, anti-theft instant account lock/disable toggle, and password reset modal.
 - **Child-Friendly & Auditor-Grade Inventory & POS System**:
   - **Visual Point of Sale (POS)** (`/pos`): Big touch product cards, search, category chips, `+ / -` steppers, Part-Payment & debt tracking, and physical stock handover toggle ("Did customer take goods away today? [YES/NO]").
   - **Physical Closing Stock Engine**: Decoupled sales from physical dispatch so goods sold but not yet taken away (`UNSUPPLIED`) stay in physical closing stock.

@@ -103,3 +103,12 @@ Route::prefix('debts')->name('debts.')->group(function () {
     Route::get('/',             [DebtController::class, 'index'])->name('index');
     Route::post('/pay/{id}',    [DebtController::class, 'recordPayment'])->name('pay');
 });
+
+// 6. Workers & Role Permissions Hub
+Route::prefix('users')->name('users.')->group(function () {
+    Route::get('/',                       [\App\Http\Controllers\Web\UserController::class, 'index'])->name('index');
+    Route::post('/',                      [\App\Http\Controllers\Web\UserController::class, 'store'])->name('store');
+    Route::post('/toggle/{id}',           [\App\Http\Controllers\Web\UserController::class, 'toggleStatus'])->name('toggle');
+    Route::post('/reset-password/{id}',   [\App\Http\Controllers\Web\UserController::class, 'resetPassword'])->name('reset.password');
+});
+
