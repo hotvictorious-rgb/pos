@@ -12,7 +12,7 @@ use App\Models\Transfer;
 use App\Models\Customer;
 use App\Models\StockAdjustment;
 use App\Models\Activity;
-use App\Models\ShiftLog;
+use App\Models\CashierShift;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -158,7 +158,7 @@ class ReportController extends Controller
         $totalDamagedUnits = $adjustments->sum('quantity');
 
         // 7. Cashier Shift Logs
-        $shiftLogs = ShiftLog::orderBy('created_at', 'desc')->take(30)->get();
+        $shiftLogs = CashierShift::orderBy('created_at', 'desc')->take(30)->get();
 
         // 8. Immutable Activity Logs
         $activities = Activity::orderBy('timestamp', 'desc')->take(50)->get();
@@ -299,7 +299,7 @@ class ReportController extends Controller
             ],
             'shift_logs' => [
                 'metadata' => ['report' => 'Cashier Shift Cash Balancing Logs', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => ShiftLog::orderBy('created_at', 'desc')->get()
+                'data' => CashierShift::orderBy('created_at', 'desc')->get()
             ],
             'activities' => [
                 'metadata' => ['report' => 'Immutable System Audit Activity Log', 'generated_at' => now()->toIso8601String()],

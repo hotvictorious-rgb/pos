@@ -606,7 +606,7 @@
                         @php $diff = (float) $sh->counted_cash - (float) $sh->expected_cash; @endphp
                         <tr>
                             <td style="font-size: 0.75rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($sh->created_at)) }}</td>
-                            <td><strong>{{ $sh->user_name }}</strong></td>
+                            <td><strong>{{ $sh->cashier_name ?? $sh->user_name ?? 'Cashier' }}</strong></td>
                             <td>₦{{ number_format($sh->expected_cash, 2) }}</td>
                             <td style="font-weight: 800; color: #4ade80;">₦{{ number_format($sh->counted_cash, 2) }}</td>
                             <td>
@@ -618,7 +618,7 @@
                                     <span class="badge badge-success">✓ EXACT BALANCE</span>
                                 @endif
                             </td>
-                            <td>{{ $sh->notes ?? 'Shift closed' }}</td>
+                            <td>{{ $sh->auditor_notes ?? $sh->notes ?? 'Shift closed' }}</td>
                         </tr>
                         @empty
                         <tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">No shift logs recorded yet.</td></tr>

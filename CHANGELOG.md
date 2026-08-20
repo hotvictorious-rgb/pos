@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ---
 
 ### Fixed
+- **Reports Shift Model Binding**: Resolved `Class "App\Models\ShiftLog" not found` in `ReportController` by binding to the correct `CashierShift` Eloquent model.
 - **Transfer Dispatch & Sales Item Key Resolution**: Fixed `Undefined array key "productId"` in `StockService` by gracefully resolving both camelCase `productId` and snake_case `product_id` keys in `initiateTransfer`, `recordSale`, and `recordSaleReturn`.
 
 ### Added
