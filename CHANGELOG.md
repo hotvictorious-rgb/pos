@@ -9,6 +9,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Header Brand Title**: Updated sidebar/header brand subtitle from "Nwaniba POS & Stock" to generic "POS & Stock".
 
 ### Fixed
+- **Product Stock Levels Eloquent Relation**: Defined missing `stockLevels()` has-many relationship in `Product` model resolving 500 error in structured JSON catalog export.
+- **PHP 8.4 Type Hint Compatibility**: Corrected `double` type hint to `float` in `StockService::recordCustomerPayment`.
 - **Reports Shift Model Binding**: Resolved `Class "App\Models\ShiftLog" not found` in `ReportController` by binding to the correct `CashierShift` Eloquent model.
 - **Transfer Dispatch & Sales Item Key Resolution**: Fixed `Undefined array key "productId"` in `StockService` by gracefully resolving both camelCase `productId` and snake_case `product_id` keys in `initiateTransfer`, `recordSale`, and `recordSaleReturn`.
 

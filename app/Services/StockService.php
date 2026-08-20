@@ -430,7 +430,7 @@ class StockService
     /**
      * Record Customer Debt Payment (Part payment recovery).
      */
-    public function recordCustomerPayment(int $customerId, double $amount, string $paymentMethod, ?string $refNo, string $userId, string $userName, ?string $notes = null): CustomerLedger
+    public function recordCustomerPayment(int $customerId, float $amount, string $paymentMethod, ?string $refNo, string $userId, string $userName, ?string $notes = null): CustomerLedger
     {
         return DB::transaction(function () use ($customerId, $amount, $paymentMethod, $refNo, $userId, $userName, $notes) {
             $customer = Customer::findOrFail($customerId);

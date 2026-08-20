@@ -31,4 +31,9 @@ class Product extends Model
         'minStockLevel' => 'integer',
         'archived' => 'boolean',
     ];
+
+    public function stockLevels()
+    {
+        return $this->hasMany(StockLevel::class, 'product_id', 'id');
+    }
 }
