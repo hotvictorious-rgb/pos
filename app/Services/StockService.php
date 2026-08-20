@@ -114,7 +114,8 @@ class StockService
 
             // Process line items & stock impact
             foreach ($items as $item) {
-                $product = Product::findOrFail($item['productId']);
+                $productId = $item['productId'] ?? $item['product_id'] ?? null;
+                $product = Product::findOrFail($productId);
                 $qty = (int) $item['quantity'];
                 $unitPrice = (float) $item['unitPrice'];
 
@@ -296,7 +297,8 @@ class StockService
             ]);
 
             foreach ($items as $item) {
-                $product = Product::findOrFail($item['productId']);
+                $productId = $item['productId'] ?? $item['product_id'] ?? null;
+                $product = Product::findOrFail($productId);
                 $qty = (int) $item['quantity'];
 
                 TransferItem::create([
@@ -525,7 +527,8 @@ class StockService
             $firstProduct = null;
 
             foreach ($returnItems as $item) {
-                $product = Product::findOrFail($item['productId']);
+                $productId = $item['productId'] ?? $item['product_id'] ?? null;
+                $product = Product::findOrFail($productId);
                 $qty = (int) $item['quantity'];
                 $unitPrice = (float) ($item['unitPrice'] ?? $product->unitPrice);
                 $totalRefundAmount += ($qty * $unitPrice);
