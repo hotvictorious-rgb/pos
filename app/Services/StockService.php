@@ -458,4 +458,152 @@ class StockService
             return $ledger;
         });
     }
+
+    /**
+     * Record Stock Adjustment (Damaged, Expired, or Lost items on ground).
+     */
+    public function recordStockAdjustment(string $productId, int $warehouseId, string $type, int $quantity, string $reason, string $userId, string $userName): \App\Models\StockAdjustment
+    {
+        return DB::transaction(function () use ($productId, $warehouseId, $type, $quantity, $reason, $userId, $userName) {
+            $product = Product::findOrFail($productId);
+            $stock = $this->getStockLevel($productId, $warehouseId);
+
+            // Deduct physical closing stock
+            $stock->physical_stock = max(0, $stock->physical_stock - $quantity);
+            $stock->save();
+
+            $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
+            $product->save();
+
+            $adjustment = \App\Models\StockAdjustment::create([
+                'warehouse_id' => $warehouseId,
+                'product_id' => $productId,
+                'product_name' => $product->name,
+                'product_code' => $product->code,
+                'type' => strtoupper($type),
+                'quantity' => $quantity,
+                'reason' => $reason,
+                'recorded_by' => $userName,
+                'status' => 'APPROVED',
+            ]);
+
+            InventoryLog::create([
+                'id' => (string) Str::uuid(),
+                'productId' => $productId,
+                'type' => 'STOCK_ADJUSTMENT_' . strtoupper($type),
+                'quantity' => -$quantity,
+                'userId' => $userId,
+                'userName' => $userName,
+                'productCode' => $product->code,
+                'productName' => $product->name,
+                'description' => "Stock Adjustment ({$type}): {$quantity} units written off. Reason: {$reason}",
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
+            Activity::create([
+                'id' => (string) Str::uuid(),
+                'type' => 'STOCK_ADJUSTMENT',
+                'description' => "{$userName} wrote off {$quantity} units of {$product->name} ({$type}) at Shop #{$warehouseId}. Reason: {$reason}",
+                'userId' => $userId,
+                'userName' => $userName,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
+            return $adjustment;
+        });
+    }
+
+    /**
+     * Record Sales Return & Customer Refund (Restores units to physical closing stock).
+     */
+    public function recordSaleReturn(string $saleId, array $returnItems, int $warehouseId, string $refundMethod, string $reason, string $userId, string $userName): \App\Models\SalesReturn
+    {
+        return DB::transaction(function () use ($saleId, $returnItems, $warehouseId, $refundMethod, $reason, $userId, $userName) {
+            $sale = Sale::with('items')->findOrFail($saleId);
+
+            $totalRefundAmount = 0;
+            $firstProduct = null;
+
+            foreach ($returnItems as $item) {
+                $product = Product::findOrFail($item['productId']);
+                $qty = (int) $item['quantity'];
+                $unitPrice = (float) ($item['unitPrice'] ?? $product->unitPrice);
+                $totalRefundAmount += ($qty * $unitPrice);
+
+                if (!$firstProduct) {
+                    $firstProduct = $product;
+                }
+
+                // Restore physical closing stock
+                $stock = $this->getStockLevel($product->id, $warehouseId);
+                $stock->physical_stock += $qty;
+                $stock->save();
+
+                $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
+                $product->save();
+
+                InventoryLog::create([
+                    'id' => (string) Str::uuid(),
+                    'productId' => $product->id,
+                    'type' => 'SALES_RETURN',
+                    'quantity' => $qty,
+                    'userId' => $userId,
+                    'userName' => $userName,
+                    'productCode' => $product->code,
+                    'productName' => $product->name,
+                    'description' => "Customer Return for Sale #{$saleId} ({$qty} units restored to shelf count). Reason: {$reason}",
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+            }
+
+            $salesReturn = \App\Models\SalesReturn::create([
+                'id' => (string) Str::uuid(),
+                'saleId' => $saleId,
+                'customerName' => $sale->customerName,
+                'code' => 'RET-' . strtoupper(Str::random(6)),
+                'productId' => $firstProduct ? $firstProduct->id : 'MULTI',
+                'productName' => $firstProduct ? $firstProduct->name : 'Returned Items',
+                'quantity' => count($returnItems),
+                'refundAmount' => $totalRefundAmount,
+                'reason' => $reason,
+                'createdAt' => now()->toIso8601String(),
+                'userId' => $userId,
+                'userName' => $userName,
+                'wasDelivered' => true,
+            ]);
+
+            // Adjust Customer Debt Ledger if refund method is CREDIT_NOTE/DEBT_REDUCTION
+            if ($refundMethod === 'DEBT_REDUCTION' && $sale->customerName) {
+                $customer = Customer::where('name', $sale->customerName)->first();
+                if ($customer) {
+                    $customer->total_debt = max(0, $customer->total_debt - $totalRefundAmount);
+                    $customer->save();
+
+                    CustomerLedger::create([
+                        'customer_id' => $customer->id,
+                        'sale_id' => $saleId,
+                        'type' => 'RETURN_CREDIT',
+                        'amount' => $totalRefundAmount,
+                        'balance_after' => $customer->total_debt,
+                        'payment_method' => 'RETURN_CREDIT',
+                        'reference_no' => $salesReturn->code,
+                        'recorded_by' => $userName,
+                        'notes' => "Debt reduced by ₦" . number_format($totalRefundAmount, 2) . " due to Sales Return #{$salesReturn->code}",
+                    ]);
+                }
+            }
+
+            Activity::create([
+                'id' => (string) Str::uuid(),
+                'type' => 'SALES_RETURN',
+                'description' => "{$userName} processed Sales Return for Sale #{$saleId} (₦" . number_format($totalRefundAmount, 2) . " refund). Reason: {$reason}",
+                'userId' => $userId,
+                'userName' => $userName,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
+            return $salesReturn;
+        });
+    }
 }
+

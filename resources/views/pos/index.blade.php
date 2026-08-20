@@ -451,7 +451,13 @@ function renderCart() {
                 <input type="hidden" name="items[${index}][quantity]" value="${item.qty}">
                 <input type="hidden" name="items[${index}][unitPrice]" value="${item.price}">
                 <div style="font-weight:700;font-size:0.9rem;">${item.name}</div>
-                <div style="font-size:0.75rem;color:#94a3b8;">₦${item.price.toLocaleString()} x ${item.qty}</div>
+                <div style="font-size:0.75rem;color:#94a3b8;display:flex;align-items:center;gap:0.35rem;margin-top:0.25rem;">
+                    <span>Price (₦):</span>
+                    <input type="number" step="any" min="0" value="${item.price}" 
+                           style="width:90px;padding:0.2rem 0.4rem;font-size:0.8rem;background:#0b0f19;border:1px solid #475569;border-radius:6px;color:#4ade80;font-weight:700;" 
+                           onchange="updateItemPrice('${item.id}', this.value)" title="Click to edit selling price for market negotiation / bulk discount">
+                    <span>x ${item.qty}</span>
+                </div>
             </div>
             <div class="qty-controls">
                 <button type="button" class="qty-btn" onclick="updateQty('${item.id}', -1)">−</button>
@@ -472,6 +478,17 @@ function renderCart() {
     btn.style.opacity = 1;
     btn.style.cursor = 'pointer';
 }
+
+function updateItemPrice(id, newPrice) {
+    const p = parseFloat(newPrice);
+    if (isNaN(p) || p < 0) return;
+    const item = cart.find(i => i.id === id);
+    if (item) {
+        item.price = p;
+        renderCart();
+    }
+}
+
 
 function selectHandover(val) {
     const yesLabel = document.getElementById('labelSuppliedYes');

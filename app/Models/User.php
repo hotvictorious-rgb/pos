@@ -19,6 +19,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'warehouse_id',
         'disabled',
         'permissions',
     ];
@@ -34,5 +35,10 @@ class User extends Authenticatable
             'disabled' => 'boolean',
             'permissions' => 'array',
         ];
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

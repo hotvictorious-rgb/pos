@@ -87,6 +87,10 @@
                     </span>
                 </div>
 
+                <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 0.5rem;">
+                    Branch: <strong style="color: #60a5fa;">{{ $u->warehouse->name ?? 'All Branches / Central HQ' }}</strong>
+                </div>
+
                 <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 1rem;">
                     Status: 
                     @if($u->disabled)
@@ -143,14 +147,26 @@
                     <input type="password" name="password" placeholder="Minimum 6 characters" required>
                 </div>
 
-                <div class="form-group">
-                    <label>Assign Role & Authority</label>
-                    <select name="role" required>
-                        <option value="cashier">💰 Cashier / Sales Officer (POS & Part-Payments only)</option>
-                        <option value="storekeeper">📦 Storekeeper (Stock In & Transfers only)</option>
-                        <option value="manager">🏢 Branch Manager (Local Shop Sales & Stock)</option>
-                        <option value="admin">🛡️ Auditor / Super Admin (Full Unrestricted Access)</option>
-                    </select>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Assign Role & Authority</label>
+                        <select name="role" required>
+                            <option value="cashier">💰 Cashier / Sales Officer</option>
+                            <option value="storekeeper">📦 Storekeeper</option>
+                            <option value="manager">🏢 Branch Manager</option>
+                            <option value="admin">🛡️ Auditor / Super Admin</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Assigned Branch Location</label>
+                        <select name="warehouse_id">
+                            <option value="">-- Central HQ (All Shops) --</option>
+                            @foreach($warehouses as $wh)
+                                <option value="{{ $wh->id }}">{{ $wh->name }} ({{ $wh->code }})</option>
+                            @endforeach
+                        </select>
+                    </div>
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
@@ -160,6 +176,7 @@
             </form>
         </div>
     </div>
+
 
     <!-- Modal: Reset Password -->
     <div id="modalResetPass" class="modal-backdrop" style="display: none;">

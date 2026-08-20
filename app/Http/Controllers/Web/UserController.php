@@ -54,6 +54,7 @@ class UserController extends Controller
             'email' => strtolower(trim($request->email)),
             'password' => Hash::make($request->password),
             'role' => $role,
+            'warehouse_id' => $request->warehouse_id ? (int) $request->warehouse_id : null,
             'disabled' => false,
             'permissions' => $permissions,
         ]);

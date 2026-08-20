@@ -122,4 +122,50 @@ class PosController extends Controller
 
         return view('pos.receipt', compact('sale', 'warehouse'));
     }
+
+    /**
+     * Display Sales Returns & Customer Refunds screen.
+     */
+    public function returns(Request $request)
+    {
+        $sales = Sale::with('items')->orderBy('created_at', 'desc')->take(20)->get();
+        $recentReturns = \App\Models\SalesReturn::orderBy('created_at', 'desc')->take(15)->get();
+        $warehouses = Warehouse::where('is_active', true)->get();
+
+        return view('pos.returns', compact('sales', 'recentReturns', 'warehouses'));
+    }
+
+    /**
+     * Process Sales Return (Restores stock to physical shelves).
+     */
+    public function processReturn(Request $request)
+    {
+        $request->validate([
+            'sale_id' => 'required',
+            'warehouse_id' => 'required',
+            'items' => 'required|array|min:1',
+            'refund_method' => 'required|string', // CASH_REFUND, DEBT_REDUCTION
+            'reason' => 'required|string',
+        ]);
+
+        $userId = Auth::id() ?? 'USER-1';
+        $userName = Auth::user()->name ?? 'Sales Officer';
+
+        try {
+            $salesReturn = $this->stockService->recordSaleReturn(
+                $request->sale_id,
+                $request->items,
+                (int) $request->warehouse_id,
+                $request->refund_method,
+                $request->reason,
+                $userId,
+                $userName
+            );
+
+            return redirect()->route('pos.returns')->with('success', "✓ Return #{$salesReturn->code} processed! Items restored to physical closing stock.");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
 }
+

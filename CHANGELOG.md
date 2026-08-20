@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+- **Nigerian Wholesale/Retail Workflow Enhancements (Nwaniba Market Spec)**:
+  - **Modern Sidebar Navigation**: Fixed high-contrast collapsible sidebar with distinct operational groups, active route markers, and quick POS access.
+  - **Products & Pricing Catalog Hub** (`/products`): Full CRUD catalog manager with category filters, pack/brand specs, SKU generator, and live stock visibility across all shop locations.
+  - **Editable Unit Price at POS**: Real-time price negotiation and bulk discount adjustments right inside the POS cart drawer with instant subtotal and debt recalculations.
+  - **Sales Returns & Customer Refunds** (`/pos/returns`): Invoice picker, line item return selection, cash refund or customer debt balance reduction, and automatic restocking into **Physical Closing Stock**.
+  - **Damaged & Expired Stock Write-offs** (`/stock/adjustments`): Formal write-off hub for damaged, expired, or lost goods on ground with mandatory staff attribution and immutable Auditor logging.
+  - **Multi-Location Staff Assignment**: Tie workers (Cashiers, Storekeepers, Managers) to specific branches (`Shop 1`, `Shop 2`, `Nwaniba Branch`), with centralized oversight under the Super Admin.
 - **System Settings & Configuration Hub** (`/settings`): Business profile manager, customizable receipt headers/footers, currency selector, low-stock threshold rules, branch shop location manager (add/deactivate shops), and database backup snapshot downloads.
 - **Staff & Role Management Hub** (`/users`): Visual worker cards with role badges (Auditor, Manager, Storekeeper, Cashier), one-tap account creation, anti-theft instant account lock/disable toggle, and password reset modal.
 - **Child-Friendly & Auditor-Grade Inventory & POS System**:

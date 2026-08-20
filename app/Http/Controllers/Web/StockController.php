@@ -177,4 +177,50 @@ class StockController extends Controller
             return back()->withErrors(['error' => $e->getMessage()]);
         }
     }
+
+    /**
+     * Stock Adjustments Hub (Damages, Expired, Lost write-offs).
+     */
+    public function adjustments()
+    {
+        $adjustments = \App\Models\StockAdjustment::with('warehouse')->orderBy('created_at', 'desc')->take(30)->get();
+        $warehouses = Warehouse::where('is_active', true)->get();
+        $products = Product::where('archived', false)->orderBy('name')->get();
+
+        return view('stock.adjustments', compact('adjustments', 'warehouses', 'products'));
+    }
+
+    /**
+     * Record Stock Adjustment (Damages/Loss).
+     */
+    public function recordAdjustment(Request $request)
+    {
+        $request->validate([
+            'warehouse_id' => 'required',
+            'product_id' => 'required',
+            'type' => 'required|string',
+            'quantity' => 'required|numeric|min:1',
+            'reason' => 'required|string',
+        ]);
+
+        $userId = Auth::id() ?? 'USER-1';
+        $userName = Auth::user()->name ?? 'Storekeeper';
+
+        try {
+            $this->stockService->recordStockAdjustment(
+                $request->product_id,
+                (int) $request->warehouse_id,
+                $request->type,
+                (int) $request->quantity,
+                $request->reason,
+                $userId,
+                $userName
+            );
+
+            return redirect()->route('stock.adjustments')->with('success', "✓ Stock adjustment recorded and deducted from physical shelf count.");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
 }
+

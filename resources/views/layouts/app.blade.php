@@ -14,11 +14,12 @@
             --success: #16a34a;
             --warning: #d97706;
             --danger: #dc2626;
-            --bg: #0f172a;
-            --card-bg: #1e293b;
-            --border: #334155;
-            --text: #f8fafc;
-            --text-muted: #94a3b8;
+            --bg: #0b0f19;
+            --sidebar-bg: #111827;
+            --card-bg: #1f2937;
+            --border: #374151;
+            --text: #f9fafb;
+            --text-muted: #9ca3af;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,99 +30,155 @@
             color: var(--text);
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
         }
 
-        /* Top Navigation Bar */
-        .navbar {
-            background: rgba(30, 41, 59, 0.95);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border);
-            padding: 0.85rem 1.5rem;
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 260px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
+            flex-direction: column;
+            position: fixed;
             top: 0;
+            bottom: 0;
+            left: 0;
             z-index: 50;
+            transition: all 0.3s ease;
         }
 
-        .brand {
+        .sidebar-header {
+            padding: 1.25rem 1.5rem;
             display: flex;
             align-items: center;
             gap: 0.75rem;
-            text-decoration: none;
-            color: var(--text);
+            border-bottom: 1px solid var(--border);
         }
 
         .brand-icon {
-            width: 42px;
-            height: 42px;
+            width: 44px;
+            height: 44px;
             background: linear-gradient(135deg, #3b82f6, #8b5cf6);
             border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 1.5rem;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
         }
 
         .brand-text h1 {
-            font-size: 1.15rem;
+            font-size: 1.1rem;
             font-weight: 800;
-            letter-spacing: -0.02em;
+            color: #f9fafb;
         }
 
         .brand-text p {
             font-size: 0.75rem;
-            color: var(--text-muted);
+            color: #9ca3af;
         }
 
-        .nav-links {
+        .sidebar-menu {
+            flex: 1;
+            padding: 1rem 0.75rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .menu-category {
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 0.75rem 0.75rem 0.25rem;
+        }
+
+        .nav-item {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .nav-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.6rem 1rem;
-            border-radius: 10px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-decoration: none;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 700;
             color: var(--text-muted);
+            text-decoration: none;
             transition: all 0.2s ease;
-            border: 1px solid transparent;
         }
 
-        .nav-btn:hover {
-            background: rgba(51, 65, 85, 0.5);
+        .nav-item:hover {
+            background: rgba(55, 65, 81, 0.6);
             color: var(--text);
-            border-color: var(--border);
         }
 
-        .nav-btn.active {
-            background: rgba(37, 99, 235, 0.15);
+        .nav-item.active {
+            background: rgba(37, 99, 235, 0.2);
             color: #60a5fa;
-            border-color: rgba(37, 99, 235, 0.3);
+            border: 1px solid rgba(37, 99, 235, 0.4);
         }
 
-        .nav-btn.pos-highlight {
+        .nav-item.pos-btn {
             background: linear-gradient(135deg, #16a34a, #15803d);
             color: #fff;
             box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3);
+            margin: 0.5rem 0;
         }
-
-        .nav-btn.pos-highlight:hover {
-            opacity: 0.9;
+        .nav-item.pos-btn:hover {
+            opacity: 0.95;
             transform: translateY(-1px);
         }
 
-        /* Status indicators */
+        .nav-item.auditor-btn {
+            color: #fca5a5;
+            border: 1px solid rgba(220, 38, 38, 0.2);
+        }
+        .nav-item.auditor-btn.active {
+            background: rgba(220, 38, 38, 0.2);
+            border-color: rgba(220, 38, 38, 0.5);
+        }
+
+        .sidebar-footer {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Main Content Wrapper */
+        .main-wrapper {
+            margin-left: 260px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .topbar {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 0.85rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 40;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1360px;
+            margin: 0 auto;
+            padding: 2rem;
+            flex: 1;
+        }
+
+        /* Online Badge */
         .online-badge {
             display: inline-flex;
             align-items: center;
@@ -148,19 +205,10 @@
             50% { opacity: 0.4; transform: scale(1.2); }
         }
 
-        /* Container */
-        .container {
-            width: 100%;
-            max-width: 1360px;
-            margin: 0 auto;
-            padding: 1.5rem 1rem;
-            flex: 1;
-        }
-
-        /* Flash Alerts */
+        /* Alerts */
         .alert {
             padding: 1rem 1.25rem;
-            border-radius: 12px;
+            border-radius: 14px;
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
@@ -186,7 +234,7 @@
             justify-content: center;
             gap: 0.5rem;
             padding: 0.75rem 1.25rem;
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 0.95rem;
             font-weight: 700;
             border: none;
@@ -202,15 +250,15 @@
         .btn-warning { background: var(--warning); color: #fff; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3); }
         .btn-danger  { background: var(--danger);  color: #fff; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3); }
         .btn-secondary { background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--border); }
-        .btn-lg { padding: 1rem 1.75rem; font-size: 1.1rem; border-radius: 14px; }
+        .btn-lg { padding: 1rem 1.75rem; font-size: 1.05rem; border-radius: 14px; }
         .btn-block { width: 100%; }
 
         .card {
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 16px;
+            border-radius: 18px;
             padding: 1.5rem;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
         }
 
         .badge {
@@ -230,7 +278,7 @@
         .modal-backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0,0,0,0.75);
             backdrop-filter: blur(6px);
             display: flex;
             align-items: center;
@@ -243,7 +291,7 @@
             border: 1px solid var(--border);
             border-radius: 20px;
             width: 100%;
-            max-width: 550px;
+            max-width: 580px;
             padding: 2rem;
             box-shadow: 0 25px 50px rgba(0,0,0,0.5);
             max-height: 90vh;
@@ -255,7 +303,7 @@
         label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; }
         input, select, textarea {
             width: 100%; padding: 0.85rem 1rem;
-            background: rgba(15, 23, 42, 0.6);
+            background: rgba(11, 15, 25, 0.7);
             border: 1px solid var(--border);
             border-radius: 12px;
             color: var(--text);
@@ -268,83 +316,120 @@
             box-shadow: 0 0 0 3px rgba(37,99,235,0.2);
         }
 
-        /* Responsive grid */
-        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem; }
-        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.25rem; }
-        .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; }
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; }
+        .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem; }
 
-        @media (max-width: 768px) {
-            .nav-links { width: 100%; margin-top: 0.5rem; justify-content: flex-start; }
-            .navbar { flex-direction: column; align-items: flex-start; }
+        @media (max-width: 1024px) {
+            .sidebar { width: 75px; }
+            .sidebar-header .brand-text, .menu-category, .nav-item span, .sidebar-footer { display: none; }
+            .sidebar-header { justify-content: center; padding: 1rem; }
+            .nav-item { justify-content: center; padding: 0.75rem; }
+            .main-wrapper { margin-left: 75px; }
         }
     </style>
     @stack('styles')
 </head>
 <body>
 
-    <!-- Header Navigation -->
-    <nav class="navbar">
-        <a href="{{ route('dashboard') }}" class="brand">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
             <div class="brand-icon">📦</div>
             <div class="brand-text">
                 <h1>Hysam Ventures</h1>
-                <p>Anti-Theft Inventory & POS</p>
-            </div>
-        </a>
-
-        <div class="nav-links">
-            <a href="{{ route('dashboard') }}" class="nav-btn {{ request()->routeIs('dashboard') ? 'active' : '' }}">
-                🏠 Home
-            </a>
-            <a href="{{ route('pos.index') }}" class="nav-btn pos-highlight">
-                💰 Sell Goods (POS)
-            </a>
-            <a href="{{ route('stock.index') }}" class="nav-btn {{ request()->routeIs('stock.*') ? 'active' : '' }}">
-                📦 Stock In/Out
-            </a>
-            <a href="{{ route('stock.unsupplied') }}" class="nav-btn {{ request()->routeIs('stock.unsupplied') ? 'active' : '' }}">
-                ⏳ Pickup List
-            </a>
-            <a href="{{ route('debts.index') }}" class="nav-btn {{ request()->routeIs('debts.*') ? 'active' : '' }}">
-                💳 Customer Debts
-            </a>
-            <a href="{{ route('users.index') }}" class="nav-btn {{ request()->routeIs('users.*') ? 'active' : '' }}">
-                👥 Workers
-            </a>
-            <a href="{{ route('auditor.index') }}" class="nav-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}" style="border-color: rgba(220,38,38,0.4); color: #fca5a5;">
-                🚨 Auditor Hub
-            </a>
-            <a href="{{ route('settings.index') }}" class="nav-btn {{ request()->routeIs('settings.*') ? 'active' : '' }}">
-                ⚙️ Settings
-            </a>
-            <div class="online-badge">
-                <span class="online-dot"></span> System Online
+                <p>Nwaniba POS & Stock</p>
             </div>
         </div>
-    </nav>
 
-    <!-- Main Content Area -->
-    <main class="container">
-        @if(session('success'))
-            <div class="alert alert-success">
-                <span>✓</span> {{ session('success') }}
+        <nav class="sidebar-menu">
+            <div class="menu-category">Main Operations</div>
+            <a href="{{ route('dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
+                <span>🏠</span> <span>Dashboard</span>
+            </a>
+
+            <!-- Big POS Button -->
+            <a href="{{ route('pos.index') }}" class="nav-item pos-btn {{ request()->routeIs('pos.index') ? 'active' : '' }}">
+                <span>💰</span> <span>Sell Goods (POS)</span>
+            </a>
+
+            <div class="menu-category">Inventory & Stock</div>
+            <a href="{{ route('products.index') }}" class="nav-item {{ request()->routeIs('products.*') ? 'active' : '' }}">
+                <span>🛍️</span> <span>Products Catalog</span>
+            </a>
+            <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
+                <span>📦</span> <span>Stock In / Out</span>
+            </a>
+            <a href="{{ route('stock.unsupplied') }}" class="nav-item {{ request()->routeIs('stock.unsupplied') ? 'active' : '' }}">
+                <span>⏳</span> <span>Pickup Orders</span>
+            </a>
+            <a href="{{ route('stock.adjustments') }}" class="nav-item {{ request()->routeIs('stock.adjustments') ? 'active' : '' }}">
+                <span>📉</span> <span>Damaged Goods</span>
+            </a>
+
+            <div class="menu-category">Sales & Customer Debts</div>
+            <a href="{{ route('pos.returns') }}" class="nav-item {{ request()->routeIs('pos.returns') ? 'active' : '' }}">
+                <span>🔄</span> <span>Returns & Refunds</span>
+            </a>
+            <a href="{{ route('debts.index') }}" class="nav-item {{ request()->routeIs('debts.*') ? 'active' : '' }}">
+                <span>💳</span> <span>Customer Debts</span>
+            </a>
+
+            <div class="menu-category">Auditor & Management</div>
+            <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
+                <span>🚨</span> <span>Auditor Control Hub</span>
+            </a>
+            <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
+                <span>👥</span> <span>Workers & Roles</span>
+            </a>
+            <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
+                <span>⚙️</span> <span>System Settings</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="online-badge">
+                <span class="online-dot"></span> Online
             </div>
-        @endif
+            <div style="font-size: 0.75rem; color: #6b7280;">v1.2.0</div>
+        </div>
+    </aside>
 
-        @if(session('warning'))
-            <div class="alert alert-warning">
-                <span>⚠️</span> {{ session('warning') }}
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+        <header class="topbar">
+            <div style="font-size: 0.95rem; font-weight: 700; color: #cbd5e1;">
+                Nigerian Retail & Wholesale Distribution Engine 🇳🇬
             </div>
-        @endif
-
-        @if($errors->any())
-            <div class="alert alert-danger">
-                <span>❌</span> {{ $errors->first() }}
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div style="font-size: 0.85rem; color: var(--text-muted);">
+                    Operator: <strong style="color: #f3f4f6;">{{ auth()->user()->name ?? 'Auditor / Lead' }}</strong>
+                </div>
             </div>
-        @endif
+        </header>
 
-        @yield('content')
-    </main>
+        <main class="container">
+            @if(session('success'))
+                <div class="alert alert-success">
+                    <span>✓</span> {{ session('success') }}
+                </div>
+            @endif
+
+            @if(session('warning'))
+                <div class="alert alert-warning">
+                    <span>⚠️</span> {{ session('warning') }}
+                </div>
+            @endif
+
+            @if($errors->any())
+                <div class="alert alert-danger">
+                    <span>❌</span> {{ $errors->first() }}
+                </div>
+            @endif
+
+            @yield('content')
+        </main>
+    </div>
 
     @stack('scripts')
 </body>

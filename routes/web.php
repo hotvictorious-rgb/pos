@@ -77,12 +77,22 @@ Route::get('/', function () {
 
 // 2. Visual Point of Sale (POS)
 Route::prefix('pos')->name('pos.')->group(function () {
-    Route::get('/',             [PosController::class, 'index'])->name('index');
-    Route::post('/checkout',    [PosController::class, 'checkout'])->name('checkout');
-    Route::get('/receipt/{id}', [PosController::class, 'receipt'])->name('receipt');
+    Route::get('/',                     [PosController::class, 'index'])->name('index');
+    Route::post('/checkout',            [PosController::class, 'checkout'])->name('checkout');
+    Route::get('/receipt/{id}',         [PosController::class, 'receipt'])->name('receipt');
+    Route::get('/returns',              [PosController::class, 'returns'])->name('returns');
+    Route::post('/returns',             [PosController::class, 'processReturn'])->name('returns.process');
 });
 
-// 3. Stock Hub (Goods In, Transfers, Dispatch)
+// 3. Products Catalog Management
+Route::prefix('products')->name('products.')->group(function () {
+    Route::get('/',                     [\App\Http\Controllers\Web\ProductController::class, 'index'])->name('index');
+    Route::post('/',                    [\App\Http\Controllers\Web\ProductController::class, 'store'])->name('store');
+    Route::post('/{id}',                [\App\Http\Controllers\Web\ProductController::class, 'update'])->name('update');
+    Route::post('/{id}/delete',         [\App\Http\Controllers\Web\ProductController::class, 'destroy'])->name('destroy');
+});
+
+// 4. Stock Hub (Goods In, Transfers, Dispatch, Adjustments)
 Route::prefix('stock')->name('stock.')->group(function () {
     Route::get('/',                     [StockController::class, 'index'])->name('index');
     Route::post('/in',                  [StockController::class, 'stockIn'])->name('in');
@@ -90,21 +100,23 @@ Route::prefix('stock')->name('stock.')->group(function () {
     Route::post('/transfer-in/{id}',    [StockController::class, 'transferIn'])->name('transfer.in');
     Route::get('/unsupplied',           [StockController::class, 'unsuppliedList'])->name('unsupplied');
     Route::post('/dispatch/{saleId}',   [StockController::class, 'dispatchConfirm'])->name('dispatch');
+    Route::get('/adjustments',          [StockController::class, 'adjustments'])->name('adjustments');
+    Route::post('/adjustments',         [StockController::class, 'recordAdjustment'])->name('adjustments.record');
 });
 
-// 4. Auditor Anti-Theft & Reconciliation Hub
+// 5. Auditor Anti-Theft & Reconciliation Hub
 Route::prefix('auditor')->name('auditor.')->group(function () {
     Route::get('/',             [AuditorController::class, 'index'])->name('index');
     Route::post('/close-shift', [AuditorController::class, 'closeShift'])->name('close.shift');
 });
 
-// 5. Debt & Part-Payment Recovery Hub
+// 6. Debt & Part-Payment Recovery Hub
 Route::prefix('debts')->name('debts.')->group(function () {
     Route::get('/',             [DebtController::class, 'index'])->name('index');
     Route::post('/pay/{id}',    [DebtController::class, 'recordPayment'])->name('pay');
 });
 
-// 6. Workers & Role Permissions Hub
+// 7. Workers & Role Permissions Hub
 Route::prefix('users')->name('users.')->group(function () {
     Route::get('/',                       [\App\Http\Controllers\Web\UserController::class, 'index'])->name('index');
     Route::post('/',                      [\App\Http\Controllers\Web\UserController::class, 'store'])->name('store');
@@ -112,12 +124,13 @@ Route::prefix('users')->name('users.')->group(function () {
     Route::post('/reset-password/{id}',   [\App\Http\Controllers\Web\UserController::class, 'resetPassword'])->name('reset.password');
 });
 
-// 7. System Settings Hub
+// 8. System Settings Hub
 Route::prefix('settings')->name('settings.')->group(function () {
     Route::get('/',                       [\App\Http\Controllers\Web\SettingController::class, 'index'])->name('index');
     Route::post('/',                      [\App\Http\Controllers\Web\SettingController::class, 'update'])->name('update');
     Route::post('/warehouse',             [\App\Http\Controllers\Web\SettingController::class, 'storeWarehouse'])->name('warehouse.store');
     Route::post('/warehouse/toggle/{id}', [\App\Http\Controllers\Web\SettingController::class, 'toggleWarehouse'])->name('warehouse.toggle');
 });
+
 
 
