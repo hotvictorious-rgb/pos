@@ -112,3 +112,12 @@ Route::prefix('users')->name('users.')->group(function () {
     Route::post('/reset-password/{id}',   [\App\Http\Controllers\Web\UserController::class, 'resetPassword'])->name('reset.password');
 });
 
+// 7. System Settings Hub
+Route::prefix('settings')->name('settings.')->group(function () {
+    Route::get('/',                       [\App\Http\Controllers\Web\SettingController::class, 'index'])->name('index');
+    Route::post('/',                      [\App\Http\Controllers\Web\SettingController::class, 'update'])->name('update');
+    Route::post('/warehouse',             [\App\Http\Controllers\Web\SettingController::class, 'storeWarehouse'])->name('warehouse.store');
+    Route::post('/warehouse/toggle/{id}', [\App\Http\Controllers\Web\SettingController::class, 'toggleWarehouse'])->name('warehouse.toggle');
+});
+
+

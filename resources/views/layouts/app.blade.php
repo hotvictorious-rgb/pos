@@ -314,6 +314,9 @@
             <a href="{{ route('auditor.index') }}" class="nav-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}" style="border-color: rgba(220,38,38,0.4); color: #fca5a5;">
                 🚨 Auditor Hub
             </a>
+            <a href="{{ route('settings.index') }}" class="nav-btn {{ request()->routeIs('settings.*') ? 'active' : '' }}">
+                ⚙️ Settings
+            </a>
             <div class="online-badge">
                 <span class="online-dot"></span> System Online
             </div>
