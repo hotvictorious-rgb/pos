@@ -13,6 +13,7 @@ use App\Models\Customer;
 use App\Models\StockAdjustment;
 use App\Models\Activity;
 use App\Models\User;
+use App\Models\SalesReturn;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Carbon\Carbon;
@@ -179,6 +180,50 @@ class ReportController extends Controller
         // 7. Immutable Activity Logs
         $activities = Activity::orderBy('timestamp', 'desc')->take(50)->get();
 
+        // 8. Returns & Refunds Query
+        $returnsQuery = SalesReturn::query();
+        if ($fromDate && $toDate) {
+            $returnsQuery->whereBetween('createdAt', [
+                Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
+                Carbon::parse($toDate)->endOfDay()->toIso8601String()
+            ]);
+        } elseif ($datePreset === 'TODAY') {
+            $returnsQuery->whereDate('createdAt', Carbon::today());
+        } elseif ($datePreset === 'YESTERDAY') {
+            $returnsQuery->whereDate('createdAt', Carbon::yesterday());
+        } elseif ($datePreset === 'THIS_WEEK') {
+            $returnsQuery->whereBetween('createdAt', [
+                Carbon::now()->startOfWeek()->toIso8601String(),
+                Carbon::now()->endOfWeek()->toIso8601String()
+            ]);
+        } elseif ($datePreset === 'THIS_MONTH') {
+            $returnsQuery->whereBetween('createdAt', [
+                Carbon::now()->startOfMonth()->toIso8601String(),
+                Carbon::now()->endOfMonth()->toIso8601String()
+            ]);
+        } elseif ($datePreset === 'THIS_YEAR') {
+            $returnsQuery->whereBetween('createdAt', [
+                Carbon::now()->startOfYear()->toIso8601String(),
+                Carbon::now()->endOfYear()->toIso8601String()
+            ]);
+        }
+
+        if ($request->filled('user_name')) {
+            $returnsQuery->where('userName', 'like', "%{$request->user_name}%");
+        }
+
+        if ($request->filled('search')) {
+            $sText = trim($request->search);
+            $returnsQuery->where(function ($q) use ($sText) {
+                $q->where('saleId', 'like', "%{$sText}%")
+                  ->orWhere('customerName', 'like', "%{$sText}%")
+                  ->orWhere('productName', 'like', "%{$sText}%");
+            });
+        }
+
+        $returns = $returnsQuery->orderBy('createdAt', 'desc')->get();
+        $totalRefunded = $returns->sum('refundAmount');
+
         return view('reports.index', compact(
             'activeTab',
             'warehouses',
@@ -201,6 +246,8 @@ class ReportController extends Controller
             'adjustments',
             'totalDamagedUnits',
             'activities',
+            'returns',
+            'totalRefunded',
             'datePreset',
             'fromDate',
             'toDate'
@@ -275,6 +322,21 @@ class ReportController extends Controller
                         $a->recorded_by
                     ]);
                 }
+            } elseif ($type === 'returns') {
+                fputcsv($handle, ['Date & Time', 'Original Invoice ID', 'Customer Name', 'SKU', 'Product Name', 'Returned Qty', 'Refunded Amount (NGN)', 'Reason', 'Handled By']);
+                foreach (SalesReturn::orderBy('createdAt', 'desc')->cursor() as $r) {
+                    fputcsv($handle, [
+                        $r->createdAt,
+                        $r->saleId,
+                        $r->customerName,
+                        $r->productCode,
+                        $r->productName,
+                        $r->quantity,
+                        $r->refundAmount,
+                        $r->reason,
+                        $r->userName
+                    ]);
+                }
             }
 
             fclose($handle);
@@ -315,6 +377,10 @@ class ReportController extends Controller
             'activities' => [
                 'metadata' => ['report' => 'Immutable System Audit Activity Log', 'generated_at' => now()->toIso8601String()],
                 'data' => Activity::orderBy('timestamp', 'desc')->get()
+            ],
+            'returns' => [
+                'metadata' => ['report' => 'Customer Returns & Refunds Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'data' => SalesReturn::orderBy('createdAt', 'desc')->get()
             ],
             default => ['error' => 'Invalid report type'],
         };

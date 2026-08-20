@@ -287,6 +287,7 @@
         <button class="rep-tab-btn" onclick="showReport('repTransfers', this)">🚚 Transfers & Waybills ({{ $transfers->count() }})</button>
         <button class="rep-tab-btn" onclick="showReport('repDebts', this)">💳 Debtors Aging ({{ $debtors->count() }})</button>
         <button class="rep-tab-btn" onclick="showReport('repDamages', this)">📉 Damaged Stock ({{ $adjustments->count() }})</button>
+        <button class="rep-tab-btn" onclick="showReport('repReturns', this)">🔄 Returns & Refunds ({{ $returns->count() }})</button>
         <button class="rep-tab-btn" onclick="showReport('repAi', this)">🤖 AI Export Hub</button>
     </div>
 
@@ -587,7 +588,67 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- TAB 6: AI DATA EXPORT HUB -->
+    <!-- TAB 6: RETURNS & REFUNDS -->
+    <!-- ========================================================================= -->
+    <div id="repReturns" class="report-section">
+        <div class="card">
+            <div class="export-bar">
+                <h3 style="font-size: 1.15rem; font-weight: 800;">Customer Returns & Refunds Audit Ledger</h3>
+                <div style="display: flex; gap: 0.5rem;">
+                    <a href="{{ route('reports.export.csv', 'returns') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', 'returns') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                </div>
+            </div>
+
+            <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.9rem; color: #cbd5e1;">Total Value Refunded/Credited in Selected Period:</span>
+                <strong style="color: #fca5a5; font-size: 1.2rem;">₦{{ number_format($totalRefunded, 0) }}</strong>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Sale Invoice</th>
+                            <th>Customer Name</th>
+                            <th>Returned Product</th>
+                            <th>Qty Returned</th>
+                            <th>Refunded Amount</th>
+                            <th>Reason</th>
+                            <th>Staff Responsible</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($returns as $r)
+                        <tr>
+                            <td style="font-size: 0.75rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($r->createdAt)) }}</td>
+                            <td>
+                                <span style="font-family: monospace; font-size: 0.8rem; background: rgba(255,255,255,0.06); padding: 0.2rem 0.4rem; border-radius: 6px;">
+                                    #{{ substr($r->saleId, 0, 8) }}
+                                </span>
+                            </td>
+                            <td><strong>{{ $r->customerName ?? 'Walk-in Customer' }}</strong></td>
+                            <td>
+                                <strong>{{ $r->productName }}</strong>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $r->productCode }}</div>
+                            </td>
+                            <td style="font-weight: 800; color: #fbbf24;">{{ $r->quantity }}</td>
+                            <td style="font-weight: 800; color: #f87171;">₦{{ number_format($r->refundAmount, 0) }}</td>
+                            <td style="font-size: 0.8rem; color: #cbd5e1;">{{ $r->reason }}</td>
+                            <td><strong>{{ $r->userName }}</strong></td>
+                        </tr>
+                        @empty
+                        <tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales returns recorded in the selected period.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 7: AI DATA EXPORT HUB -->
     <!-- ========================================================================= -->
     <div id="repAi" class="report-section">
         <div class="card">
@@ -632,6 +693,15 @@
                     <div style="display: flex; gap: 0.5rem;">
                         <a href="{{ route('reports.export.csv', 'debtors') }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
                         <a href="{{ route('reports.export.json', 'debtors') }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    </div>
+                </div>
+
+                <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
+                    <h4 style="font-size: 1rem; font-weight: 800; color: #fca5a5; margin-bottom: 0.35rem;">🔄 Sales Returns & Refunds</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Complete logs of returned items, quantity, refund amounts, and reasons.</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ route('reports.export.csv', 'returns') }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', 'returns') }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
             </div>
