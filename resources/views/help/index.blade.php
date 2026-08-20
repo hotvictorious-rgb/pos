@@ -264,11 +264,11 @@
         </div>
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
-                <span>❓ Who adds products and can we import hundreds of items from CSV?</span>
+                <span>❓ Who creates products, and who adds stock quantity?</span>
                 <span class="faq-toggle">▼</span>
             </div>
             <div class="faq-answer">
-                Only <strong>Auditors</strong>, <strong>Managers</strong>, and <strong>Sales & Stock Officers</strong> can add products. In <strong>🛍️ Products Catalog</strong>, click <strong>"📥 Bulk Import (CSV)"</strong> to upload hundreds of products at once. You can download the sample template with headers: <code>name, code, category, brand, size, unitPrice, minStockLevel, initial_stock</code>.
+                Only the <strong>Auditor / Super Admin</strong> can create, edit, or bulk-import new products into the central catalog (this prevents rogue staff from introducing ghost items). However, <strong>Branch Managers</strong>, <strong>Storekeepers</strong>, and <strong>Sales & Stock Officers</strong> can add stock quantities at any time via <strong>📦 Stock In / Out ➔ 📥 New Goods Arrived</strong>!
             </div>
         </div>
         <div class="faq-item" onclick="toggleFaq(this)">

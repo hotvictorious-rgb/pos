@@ -50,23 +50,35 @@
 
 @section('content')
 
+    @php $isAdmin = (Auth::user()?->role === 'admin' || !Auth::check()); @endphp
+
     <div class="prod-header">
         <div>
             <h2 style="font-size: 1.5rem; font-weight: 800;">Products & Pricing Catalog 🛍️</h2>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Manage product codes, wholesale/retail pricing, brand/pack sizes, and stock across branches.
+                @if($isAdmin)
+                    Manage central product codes, master pricing, and stock across all shop locations.
+                @else
+                    View official catalog pricing and physical stock on ground across all shop branches.
+                @endif
             </p>
         </div>
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <a href="{{ route('products.template.csv') }}" class="btn btn-secondary" style="font-size: 0.85rem;">
-                📄 CSV Template
-            </a>
-            <button class="btn btn-primary" onclick="openModal('modalImportCsv')" style="font-size: 0.85rem;">
-                📥 Bulk Import (CSV)
-            </button>
-            <button class="btn btn-success" onclick="openModal('modalAddProduct')" style="font-size: 0.85rem;">
-                ➕ Add New Product
-            </button>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            @if($isAdmin)
+                <a href="{{ route('products.template.csv') }}" class="btn btn-secondary" style="font-size: 0.85rem;">
+                    📄 CSV Template
+                </a>
+                <button class="btn btn-primary" onclick="openModal('modalImportCsv')" style="font-size: 0.85rem;">
+                    📥 Bulk Import (CSV)
+                </button>
+                <button class="btn btn-success" onclick="openModal('modalAddProduct')" style="font-size: 0.85rem;">
+                    ➕ Add New Product
+                </button>
+            @else
+                <a href="{{ route('stock.index') }}" class="btn btn-success btn-lg" style="font-size: 0.95rem;">
+                    📥 Add Stock Quantity (Stock In)
+                </a>
+            @endif
         </div>
     </div>
 
@@ -117,10 +129,16 @@
                             </span>
                         </td>
                         <td>
-                            <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;"
-                                    onclick="openEditModal('{{ $p->id }}', '{{ addslashes($p->name) }}', '{{ $p->category }}', {{ $p->unitPrice }}, '{{ $p->brand }}', '{{ $p->size }}')">
-                                ✏️ Edit
-                            </button>
+                            @if($isAdmin)
+                                <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;"
+                                        onclick="openEditModal('{{ $p->id }}', '{{ addslashes($p->name) }}', '{{ $p->category }}', {{ $p->unitPrice }}, '{{ $p->brand }}', '{{ $p->size }}')">
+                                    ✏️ Edit
+                                </button>
+                            @else
+                                <a href="{{ route('stock.index') }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; color: #4ade80;">
+                                    📥 +Stock
+                                </a>
+                            @endif
                         </td>
                     </tr>
                     @empty

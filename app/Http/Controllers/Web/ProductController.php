@@ -33,10 +33,14 @@ class ProductController extends Controller
     }
 
     /**
-     * Store a newly created product.
+     * Store a newly created product (Auditor Admin Only).
      */
     public function store(Request $request)
     {
+        if (Auth::check() && Auth::user()->role !== 'admin') {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can create catalog products. Branch managers and staff can add stock quantities via Stock In.');
+        }
+
         $request->validate([
             'name' => 'required|string|max:150',
             'code' => 'required|string|unique:products,code',
@@ -89,10 +93,14 @@ class ProductController extends Controller
     }
 
     /**
-     * Update an existing product.
+     * Update an existing product (Auditor Admin Only).
      */
     public function update(Request $request, $id)
     {
+        if (Auth::check() && Auth::user()->role !== 'admin') {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can edit product catalog details.');
+        }
+
         $request->validate([
             'name' => 'required|string|max:150',
             'category' => 'required|string',
@@ -115,10 +123,14 @@ class ProductController extends Controller
     }
 
     /**
-     * Archive/Delete a product safely.
+     * Archive/Delete a product safely (Auditor Admin Only).
      */
     public function destroy($id)
     {
+        if (Auth::check() && Auth::user()->role !== 'admin') {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can delete or archive catalog products.');
+        }
+
         $product = Product::findOrFail($id);
         $product->archived = true;
         $product->save();
@@ -148,10 +160,14 @@ class ProductController extends Controller
     }
 
     /**
-     * Bulk import products from an uploaded CSV file.
+     * Bulk import products from an uploaded CSV file (Auditor Admin Only).
      */
     public function importCsv(Request $request)
     {
+        if (Auth::check() && Auth::user()->role !== 'admin') {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can bulk import new catalog products.');
+        }
+
         $request->validate([
             'csv_file' => 'required|file|mimes:csv,txt|max:5120',
             'warehouse_id' => 'nullable|numeric',

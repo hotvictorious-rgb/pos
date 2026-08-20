@@ -12,6 +12,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Reports Shift Model Binding**: Resolved `Class "App\Models\ShiftLog" not found` in `ReportController` by binding to the correct `CashierShift` Eloquent model.
 - **Transfer Dispatch & Sales Item Key Resolution**: Fixed `Undefined array key "productId"` in `StockService` by gracefully resolving both camelCase `productId` and snake_case `product_id` keys in `initiateTransfer`, `recordSale`, and `recordSaleReturn`.
 
+### Security & Governance
+- **Central Catalog Authority Enforcement**: Restricted product creation, master price editing, CSV bulk imports, and archiving strictly to `admin` (Auditor / Super Admin). Branch Managers and Sales & Stock staff can add stock quantities (`Stock In`) for catalog items while keeping product definitions centralized and tamper-proof.
+
 ### Added
 - **Bulk CSV Product Import & Sample Template** (`/products/import/csv` & `/products/template/csv`):
   - Added bulk product import engine supporting automatic SKU generation, category/brand mapping, price updating, and initial physical stock distribution to branches.

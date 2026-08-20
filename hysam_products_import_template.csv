@@ -1,0 +1,4 @@
+name,code,category,brand,size,unitPrice,minStockLevel,initial_stock
+"Mama Gold Rice (50kg)",MAMA-RICE-50KG,"Grains & Rice","Mama Gold","50kg Bag",78000,10,50
+"Kings Vegetable Oil (25L)",KINGS-OIL-25L,"Oils & Fats","Devon Kings","25L Keg",46500,5,30
+"Peak Milk Powder (900g)",PEAK-MILK-900G,Provisions,Friesland,"900g Tin",7200,15,100
