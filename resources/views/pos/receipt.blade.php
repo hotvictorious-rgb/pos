@@ -132,13 +132,21 @@
     </div>
 
     <!-- Physical Fulfillment Status Badge -->
-    @if($sale->deliveryStatus === 'DELIVERED')
+    @if(in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']))
         <div class="receipt-badge" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac;">
             ✓ GOODS SUPPLIED & COLLECTED
+            @if($sale->deliveredAt)
+                <div style="font-size: 0.75rem; font-weight: 500; color: #166534; margin-top: 0.25rem;">
+                    Handed over: {{ \Carbon\Carbon::parse($sale->deliveredAt)->format('d M Y, h:i A') }}@if($sale->deliveredBy) · By: {{ $sale->deliveredBy }}@endif
+                </div>
+            @endif
         </div>
     @else
         <div class="receipt-badge" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;">
             ⏳ GOODS IN SHOP (PENDING PICKUP)
+            <div style="font-size: 0.75rem; font-weight: 500; color: #92400e; margin-top: 0.25rem;">
+                Items locked in shop stock buffer until customer pickup
+            </div>
         </div>
     @endif
 

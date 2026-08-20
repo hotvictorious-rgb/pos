@@ -113,7 +113,7 @@
                     <label>Goods Delivery</label>
                     <select name="delivery_status">
                         <option value="">-- All Deliveries --</option>
-                        <option value="SUPPLIED" {{ request('delivery_status') === 'SUPPLIED' ? 'selected' : '' }}>✓ Delivered / Handed Over</option>
+                        <option value="DELIVERED" {{ in_array(request('delivery_status'), ['DELIVERED', 'SUPPLIED']) ? 'selected' : '' }}>✓ Delivered / Handed Over</option>
                         <option value="UNSUPPLIED" {{ request('delivery_status') === 'UNSUPPLIED' ? 'selected' : '' }}>⏳ Unsupplied / On Ground</option>
                     </select>
                 </div>
@@ -217,7 +217,7 @@
                             @endif
                         </td>
                         <td>
-                            @if($sale->deliveryStatus === 'SUPPLIED')
+                            @if(in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']))
                                 <span class="badge badge-success">✓ Supplied</span>
                             @else
                                 <span class="badge badge-warning">⏳ Awaiting Pickup</span>
@@ -318,7 +318,8 @@ function viewSaleDetails(sale) {
     document.getElementById('dtlDate').textContent = new Date(sale.createdAt).toLocaleString();
     document.getElementById('dtlCustomer').textContent = sale.customerName || 'Walk-in Customer';
     document.getElementById('dtlCashier').textContent = sale.userName || 'Cashier';
-    document.getElementById('dtlDelivery').textContent = sale.deliveryStatus === 'SUPPLIED' ? '✓ Supplied to Customer' : '⏳ Awaiting Pickup';
+    const isSupplied = (sale.deliveryStatus === 'DELIVERED' || sale.deliveryStatus === 'SUPPLIED');
+    document.getElementById('dtlDelivery').textContent = isSupplied ? '✓ Supplied to Customer' : '⏳ Awaiting Pickup';
     document.getElementById('dtlReceiptBtn').href = '/pos/receipt/' + sale.id;
 
     let itemsHtml = '';

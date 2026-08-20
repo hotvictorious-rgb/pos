@@ -75,7 +75,12 @@ class ReportController extends Controller
         }
 
         if ($request->filled('delivery_status')) {
-            $salesQuery->where('deliveryStatus', strtoupper($request->delivery_status));
+            $dStatus = strtoupper($request->delivery_status);
+            if (in_array($dStatus, ['DELIVERED', 'SUPPLIED'])) {
+                $salesQuery->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } else {
+                $salesQuery->where('deliveryStatus', $dStatus);
+            }
         }
 
         if ($request->filled('search')) {

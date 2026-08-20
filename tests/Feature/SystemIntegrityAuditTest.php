@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use Tests\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\User;
 use App\Models\Product;
 use App\Models\Warehouse;
 use App\Models\StockLevel;
@@ -10,30 +12,47 @@ use App\Models\Customer;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Transfer;
-use App\Models\CashierShift;
 use App\Services\StockService;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class SystemIntegrityAuditTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected StockService $stockService;
     protected Warehouse $warehouseA;
     protected Warehouse $warehouseB;
     protected Product $product;
+    protected User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->stockService = app(StockService::class);
 
+        // Ensure Admin user exists and is authenticated
+        $this->user = User::firstOrCreate(
+            ['id' => 'ADMIN-TEST-1'],
+            [
+                'name' => 'Admin Tester',
+                'email' => 'admin@test.com',
+                'password' => Hash::make('password123'),
+                'role' => 'admin',
+                'disabled' => false,
+            ]
+        );
+        $this->actingAs($this->user);
+        session(['user_id' => $this->user->id, 'user_role' => 'admin']);
+
         // Ensure warehouses exist
         $this->warehouseA = Warehouse::firstOrCreate(
             ['code' => 'MAIN-01'],
-            ['name' => 'Main Warehouse', 'location' => 'HQ', 'is_active' => true]
+            ['name' => 'Main Warehouse', 'address' => 'HQ', 'is_active' => true]
         );
         $this->warehouseB = Warehouse::firstOrCreate(
             ['code' => 'BRANCH-02'],
-            ['name' => 'Branch Shop B', 'location' => 'Market Road', 'is_active' => true]
+            ['name' => 'Branch Shop B', 'address' => 'Market Road', 'is_active' => true]
         );
 
         // Create or get test product
@@ -53,13 +72,13 @@ class SystemIntegrityAuditTest extends TestCase
         // Reset stock level for test product in Warehouse A to 100 units
         StockLevel::updateOrCreate(
             ['product_id' => $this->product->id, 'warehouse_id' => $this->warehouseA->id],
-            ['physical_stock' => 100, 'unsupplied_stock' => 0]
+            ['physical_stock' => 100, 'allocated_stock' => 0]
         );
 
         // Reset stock level in Warehouse B to 20 units
         StockLevel::updateOrCreate(
             ['product_id' => $this->product->id, 'warehouse_id' => $this->warehouseB->id],
-            ['physical_stock' => 20, 'unsupplied_stock' => 0]
+            ['physical_stock' => 20, 'allocated_stock' => 0]
         );
     }
 
@@ -74,37 +93,47 @@ class SystemIntegrityAuditTest extends TestCase
 
         $qty = 4;
         $unitPrice = 75000.00;
-        $expectedSubtotal = $qty * $unitPrice; // 300,000.00
-        $discount = 10000.00;
-        $expectedTotal = $expectedSubtotal - $discount; // 290,000.00
+        $expectedTotal = $qty * $unitPrice; // 300,000.00
         $paidAmount = 200000.00;
-        $expectedDebt = $expectedTotal - $paidAmount; // 90,000.00
+        $expectedDebt = $expectedTotal - $paidAmount; // 100,000.00
+
+        $customer = Customer::firstOrCreate(
+            ['name' => 'Chief Okon Audited'],
+            ['phone' => '08011223344', 'total_debt' => 0]
+        );
 
         // Execute sale
-        $sale = $this->stockService->recordSale([
-            'warehouseId' => $this->warehouseA->id,
-            'items' => [
+        $sale = $this->stockService->recordSale(
+            [
+                'id' => (string) Str::uuid(),
+                'totalAmount' => $expectedTotal,
+                'paidAmount' => $paidAmount,
+                'cashAmount' => $paidAmount,
+                'posAmount' => 0,
+                'transferAmount' => 0,
+                'customerId' => $customer->id,
+                'customerName' => $customer->name,
+            ],
+            [
                 [
                     'productId' => $this->product->id,
+                    'code' => $this->product->code,
+                    'productName' => $this->product->name,
                     'quantity' => $qty,
                     'unitPrice' => $unitPrice,
-                    'customPrice' => $unitPrice,
+                    'totalPrice' => $expectedTotal,
                 ]
             ],
-            'discount' => $discount,
-            'paidAmount' => $paidAmount,
-            'paymentMethod' => 'CASH',
-            'isDelivered' => true,
-            'customerName' => 'Chief Okon Audited',
-            'customerPhone' => '08011223344',
-            'cashierName' => 'Test Cashier',
-        ]);
+            $this->warehouseA->id,
+            true, // isSuppliedNow
+            $this->user->id,
+            $this->user->name
+        );
 
         // Math Assertions
-        $this->assertEquals($expectedSubtotal, (float) $sale->subtotal, 'Subtotal calculation failed');
-        $this->assertEquals($expectedTotal, (float) $sale->totalAmount, 'Total calculation after discount failed');
+        $this->assertEquals($expectedTotal, (float) $sale->totalAmount, 'Total calculation failed');
         $this->assertEquals($paidAmount, (float) $sale->paidAmount, 'Paid amount mismatch');
-        $this->assertEquals($expectedDebt, (float) $sale->balanceDue, 'Debt amount calculation failed');
+        $this->assertEquals($expectedDebt, (float) $customer->fresh()->total_debt, 'Debt balance calculation failed');
 
         // Physical Stock Deduction Assertion
         $newStock = StockLevel::where('product_id', $this->product->id)
@@ -124,25 +153,41 @@ class SystemIntegrityAuditTest extends TestCase
             ->value('physical_stock');
 
         $qty = 5;
+        $unitPrice = 75000.00;
+        $total = $qty * $unitPrice;
 
-        // Execute sale awaiting pickup (isDelivered = false)
-        $sale = $this->stockService->recordSale([
-            'warehouseId' => $this->warehouseA->id,
-            'items' => [
+        $customer = Customer::firstOrCreate(
+            ['name' => 'Late Pickup Customer'],
+            ['phone' => '08099887766', 'total_debt' => 0]
+        );
+
+        // Execute sale awaiting pickup (isSuppliedNow = false)
+        $sale = $this->stockService->recordSale(
+            [
+                'id' => (string) Str::uuid(),
+                'totalAmount' => $total,
+                'paidAmount' => $total,
+                'cashAmount' => 0,
+                'posAmount' => 0,
+                'transferAmount' => $total,
+                'customerId' => $customer->id,
+                'customerName' => $customer->name,
+            ],
+            [
                 [
                     'productId' => $this->product->id,
+                    'code' => $this->product->code,
+                    'productName' => $this->product->name,
                     'quantity' => $qty,
-                    'unitPrice' => 75000.00,
+                    'unitPrice' => $unitPrice,
+                    'totalPrice' => $total,
                 ]
             ],
-            'discount' => 0,
-            'paidAmount' => 375000.00,
-            'paymentMethod' => 'TRANSFER',
-            'isDelivered' => false,
-            'customerName' => 'Late Pickup Customer',
-            'customerPhone' => '08099887766',
-            'cashierName' => 'Test Cashier',
-        ]);
+            $this->warehouseA->id,
+            false, // isSuppliedNow = false (awaiting pickup)
+            $this->user->id,
+            $this->user->name
+        );
 
         $stockAfterSale = StockLevel::where('product_id', $this->product->id)
             ->where('warehouse_id', $this->warehouseA->id)
@@ -150,17 +195,17 @@ class SystemIntegrityAuditTest extends TestCase
 
         // Anti-theft rule: Physical stock on shelf must remain unchanged until customer collects goods!
         $this->assertEquals($initialPhysical, $stockAfterSale->physical_stock, 'Physical shelf stock changed prematurely before customer collection!');
-        $this->assertEquals($qty, $stockAfterSale->unsupplied_stock, 'Unsupplied stock buffer was not incremented correctly');
+        $this->assertEquals($qty, $stockAfterSale->allocated_stock, 'Unsupplied stock buffer was not incremented correctly');
 
         // Now dispatch the goods when customer arrives with truck
-        $this->stockService->dispatchSale($sale->id, 'Dispatched to customer pickup truck XYZ');
+        $this->stockService->dispatchUnsuppliedSale($sale->id, $this->warehouseA->id, $this->user->id, 'Dispatched to customer pickup truck');
 
         $stockAfterDispatch = StockLevel::where('product_id', $this->product->id)
             ->where('warehouse_id', $this->warehouseA->id)
             ->first();
 
         $this->assertEquals($initialPhysical - $qty, $stockAfterDispatch->physical_stock, 'Physical stock was not decremented upon physical dispatch!');
-        $this->assertEquals(0, $stockAfterDispatch->unsupplied_stock, 'Unsupplied stock was not cleared after dispatch!');
+        $this->assertEquals(0, $stockAfterDispatch->allocated_stock, 'Unsupplied stock was not cleared after dispatch!');
     }
 
     /**
@@ -179,15 +224,16 @@ class SystemIntegrityAuditTest extends TestCase
         $transferQty = 10;
 
         // 1. Dispatch transfer from Warehouse A -> Warehouse B
-        $transfer = $this->stockService->initiateTransfer([
-            'sourceWarehouseId' => $this->warehouseA->id,
-            'targetWarehouseId' => $this->warehouseB->id,
-            'items' => [
+        $transfer = $this->stockService->initiateTransfer(
+            $this->warehouseA->id,
+            $this->warehouseB->id,
+            [
                 ['productId' => $this->product->id, 'quantity' => $transferQty]
             ],
-            'initiatedBy' => 'Test Dispatcher',
-            'notes' => 'Urgent replenishment to Branch B',
-        ]);
+            $this->user->id,
+            $this->user->name,
+            'Urgent replenishment to Branch B'
+        );
 
         // Assert Origin was deducted immediately
         $originAfterDispatch = StockLevel::where('product_id', $this->product->id)
@@ -202,9 +248,15 @@ class SystemIntegrityAuditTest extends TestCase
         $this->assertEquals($destInitial, $destWhileInTransit, 'Destination physical stock increased before physical arrival and count!');
 
         // 2. Receive and count goods at Destination shop
-        $this->stockService->receiveTransfer($transfer->id, [
-            $this->product->id => $transferQty
-        ], 'Storekeeper verified 10 bags in good condition');
+        $this->stockService->receiveTransfer(
+            $transfer->id,
+            [
+                $this->product->id => $transferQty
+            ],
+            $this->user->id,
+            $this->user->name,
+            'Storekeeper verified 10 bags in good condition'
+        );
 
         $destAfterReceipt = StockLevel::where('product_id', $this->product->id)
             ->where('warehouse_id', $this->warehouseB->id)
@@ -248,11 +300,90 @@ class SystemIntegrityAuditTest extends TestCase
         ];
 
         foreach ($routes as $url) {
-            $response = $this->get($url);
+            $response = $this->actingAs($this->user)->withSession(['user_id' => $this->user->id, 'user_role' => 'admin'])->get($url);
             $this->assertTrue(
-                in_array($response->status(), [200, 302]),
-                "Route {$url} failed with HTTP status code: {$response->status()}"
+                in_array($response->getStatusCode(), [200, 302]),
+                "Route {$url} failed with HTTP status code: {$response->getStatusCode()}"
             );
         }
+    }
+
+    /**
+     * PROOF 5: Receipts Accurately Display Handover Status (Supplied vs Unsupplied vs Later Dispatch)
+     */
+    public function test_receipt_shows_correct_handover_status_for_supplied_and_unsupplied_sales()
+    {
+        // 1. Immediate Delivery Sale
+        $saleSupplied = $this->stockService->recordSale(
+            [
+                'id' => (string) Str::uuid(),
+                'totalAmount' => 75000,
+                'paidAmount' => 75000,
+                'cashAmount' => 75000,
+                'posAmount' => 0,
+                'transferAmount' => 0,
+                'customerName' => 'Alhaji Test Buyer',
+            ],
+            [
+                [
+                    'productId' => $this->product->id,
+                    'code' => $this->product->code,
+                    'productName' => $this->product->name,
+                    'quantity' => 1,
+                    'unitPrice' => 75000,
+                    'totalPrice' => 75000,
+                ]
+            ],
+            $this->warehouseA->id,
+            true, // Supplied now
+            $this->user->id,
+            'Cashier Joy'
+        );
+
+        $response1 = $this->actingAs($this->user)->withSession(['user_id' => $this->user->id, 'user_role' => 'admin'])->get("/pos/receipt/{$saleSupplied->id}");
+        $response1->assertStatus(200);
+        $response1->assertSee('✓ GOODS SUPPLIED & COLLECTED', false);
+        $response1->assertDontSee('⏳ GOODS IN SHOP (PENDING PICKUP)', false);
+
+        // 2. Delayed Pickup Sale (Unsupplied)
+        $saleUnsupplied = $this->stockService->recordSale(
+            [
+                'id' => (string) Str::uuid(),
+                'totalAmount' => 150000,
+                'paidAmount' => 150000,
+                'cashAmount' => 0,
+                'posAmount' => 0,
+                'transferAmount' => 150000,
+                'customerName' => 'Chief Pickup Later',
+            ],
+            [
+                [
+                    'productId' => $this->product->id,
+                    'code' => $this->product->code,
+                    'productName' => $this->product->name,
+                    'quantity' => 2,
+                    'unitPrice' => 75000,
+                    'totalPrice' => 150000,
+                ]
+            ],
+            $this->warehouseA->id,
+            false, // Not supplied now (awaiting pickup)
+            $this->user->id,
+            'Cashier Joy'
+        );
+
+        $response2 = $this->actingAs($this->user)->withSession(['user_id' => $this->user->id, 'user_role' => 'admin'])->get("/pos/receipt/{$saleUnsupplied->id}");
+        $response2->assertStatus(200);
+        $response2->assertSee('⏳ GOODS IN SHOP (PENDING PICKUP)', false);
+        $response2->assertDontSee('✓ GOODS SUPPLIED & COLLECTED', false);
+
+        // 3. Dispatch the unsupplied sale
+        $this->stockService->dispatchUnsuppliedSale($saleUnsupplied->id, $this->warehouseA->id, $this->user->id, 'Storekeeper John');
+
+        $response3 = $this->actingAs($this->user)->withSession(['user_id' => $this->user->id, 'user_role' => 'admin'])->get("/pos/receipt/{$saleUnsupplied->id}");
+        $response3->assertStatus(200);
+        $response3->assertSee('✓ GOODS SUPPLIED & COLLECTED', false);
+        $response3->assertSee('Storekeeper John');
+        $response3->assertDontSee('⏳ GOODS IN SHOP (PENDING PICKUP)', false);
     }
 }

@@ -333,8 +333,8 @@
                                 @endif
                             </td>
                             <td>
-                                <span class="badge {{ $s->deliveryStatus === 'SUPPLIED' ? 'badge-success' : 'badge-warning' }}">
-                                    {{ $s->deliveryStatus }}
+                                <span class="badge {{ in_array(strtoupper($s->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']) ? 'badge-success' : 'badge-warning' }}">
+                                    {{ in_array(strtoupper($s->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']) ? '✓ DELIVERED' : '⏳ UNSUPPLIED' }}
                                 </span>
                             </td>
                             <td>{{ $s->userName }}</td>

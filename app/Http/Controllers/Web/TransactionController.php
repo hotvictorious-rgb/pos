@@ -56,7 +56,12 @@ class TransactionController extends Controller
 
         // 3. Fulfillment / Handover Status Filter
         if ($request->filled('delivery_status')) {
-            $query->where('deliveryStatus', strtoupper($request->delivery_status));
+            $dStatus = strtoupper($request->delivery_status);
+            if (in_array($dStatus, ['DELIVERED', 'SUPPLIED'])) {
+                $query->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } else {
+                $query->where('deliveryStatus', $dStatus);
+            }
         }
 
         // 4. Staff / Cashier Filter
