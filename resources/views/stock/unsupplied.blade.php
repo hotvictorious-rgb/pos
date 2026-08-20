@@ -81,7 +81,7 @@
                 ₦{{ number_format($sale->totalAmount, 0) }}
             </div>
 
-            <form method="POST" action="{{ route('stock.dispatch', $sale->id) }}" onsubmit="return confirm('Confirm that customer is taking these items away now? (Will mark as Supplied)')">
+            <form method="POST" action="{{ route('stock.dispatch', $sale->id) }}" onsubmit="return confirm('📦 Confirm Handover & Physical Release:\n\n• Customer: {{ addslashes($sale->customerName) }}\n• Invoice: #{{ substr($sale->id, 0, 8) }}\n• Items: {{ $sale->items->sum('quantity') }} unit(s)\n\nThis will physically release the goods from the shop, deduct shelf stock, and record your staff name and timestamp on the receipt as Supplied. Proceed?')">
                 @csrf
                 <button type="submit" class="btn btn-success btn-lg">
                     📦 Mark as Supplied (Handover Goods)

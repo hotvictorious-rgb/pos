@@ -140,7 +140,7 @@
                 Collecting payment for customer.
             </p>
 
-            <form id="payDebtForm" method="POST" action="">
+            <form id="payDebtForm" method="POST" action="" onsubmit="return confirmDebtPayment(event)">
                 @csrf
                 <div class="form-group">
                     <label>Current Debt Balance</label>
@@ -154,7 +154,7 @@
 
                 <div class="form-group">
                     <label>Payment Method</label>
-                    <select name="payment_method" required>
+                    <select name="payment_method" id="modalPayMethod" required>
                         <option value="CASH">💵 Cash</option>
                         <option value="POS">💳 POS Terminal Card</option>
                         <option value="TRANSFER">🏦 Direct Bank Transfer</option>
@@ -186,9 +186,11 @@
 @push('scripts')
 <script>
 let currentCustomerDebt = 0;
+let currentCustomerName = '';
 
 function openPaymentModal(id, name, debt) {
     currentCustomerDebt = debt;
+    currentCustomerName = name;
     document.getElementById('payDebtForm').action = '/debts/pay/' + id;
     document.getElementById('modalCustomerSubtitle').textContent = 'Collecting debt installment from ' + name;
     document.getElementById('modalCurrentDebt').value = '₦' + Math.round(debt).toLocaleString('en-US');
@@ -205,6 +207,23 @@ function calcNewBalance() {
     const paying = parseFloat(document.getElementById('modalAmountPaying').value) || 0;
     const newBal = Math.max(0, currentCustomerDebt - paying);
     document.getElementById('modalNewBalance').textContent = '₦' + Math.round(newBal).toLocaleString('en-US');
+}
+
+function confirmDebtPayment(event) {
+    const paying = parseFloat(document.getElementById('modalAmountPaying').value) || 0;
+    if (paying <= 0) {
+        alert('⚠️ Please enter a valid payment amount greater than 0.');
+        if (event) event.preventDefault();
+        return false;
+    }
+    const method = document.getElementById('modalPayMethod').value;
+    const newBal = Math.max(0, currentCustomerDebt - paying);
+    const msg = `💵 Confirm Customer Debt Repayment:\n\n• Customer: ${currentCustomerName}\n• Amount Received: ₦${Math.round(paying).toLocaleString('en-US')} (${method})\n• Previous Debt: ₦${Math.round(currentCustomerDebt).toLocaleString('en-US')}\n• New Remaining Balance: ₦${Math.round(newBal).toLocaleString('en-US')}\n\nThis will record this payment into today's revenue and reduce customer's debt. Proceed?`;
+    if (!confirm(msg)) {
+        if (event) event.preventDefault();
+        return false;
+    }
+    return true;
 }
 </script>
 @endpush

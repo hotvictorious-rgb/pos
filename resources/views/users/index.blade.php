@@ -119,7 +119,7 @@
 
             <!-- Action buttons -->
             <div style="display: flex; gap: 0.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-                <form method="POST" action="{{ route('users.toggle', $u->id) }}" style="flex: 1;" onsubmit="return confirm('Change access status for this worker?')">
+                <form method="POST" action="{{ route('users.toggle', $u->id) }}" style="flex: 1;" onsubmit="return confirm('{{ $u->disabled ? '🔓 Confirm Unlocking Worker Access:\n\nThis will re-enable login and POS permissions for ' . addslashes($u->name) . '. Proceed?' : '🔒 Confirm Locking Worker Access:\n\nThis will immediately revoke login access for ' . addslashes($u->name) . '. Proceed?' }}')">
                     @csrf
                     <button type="submit" class="btn {{ $u->disabled ? 'btn-success' : 'btn-danger' }} btn-block" style="padding: 0.5rem; font-size: 0.8rem;">
                         {{ $u->disabled ? '🔓 Unlock' : '🔒 Lock Access' }}
@@ -146,7 +146,7 @@
                 Set up a login for cashiers, storekeepers, or branch managers.
             </p>
 
-            <form method="POST" action="{{ route('users.store') }}">
+            <form method="POST" action="{{ route('users.store') }}" onsubmit="return confirm('➕ Confirm Worker Account Creation:\n\nThis will create a new worker login and grant the assigned role permissions. Proceed?')">
                 @csrf
                 <div class="form-group">
                     <label>Full Name</label>
@@ -204,7 +204,7 @@
                 Enter a new password for worker.
             </p>
 
-            <form id="resetPassForm" method="POST" action="">
+            <form id="resetPassForm" method="POST" action="" onsubmit="return confirm('🔑 Confirm Password Reset:\n\nThis will immediately overwrite the login credentials for this worker. Proceed?')">
                 @csrf
                 <div class="form-group">
                     <label>New Password / PIN</label>

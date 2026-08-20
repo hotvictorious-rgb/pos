@@ -237,7 +237,7 @@
                 Add supplier delivery directly to <strong>{{ $activeWarehouse->name }}</strong> physical count.
             </p>
 
-            <form method="POST" action="{{ route('stock.in') }}">
+            <form method="POST" action="{{ route('stock.in') }}" onsubmit="return confirm('📥 Confirm Receiving New Stock:\n\nThis will physically increase the shelf stock in {{ addslashes($activeWarehouse->name) }} and log a stock-in audit trail. Proceed?')">
                 @csrf
                 <input type="hidden" name="warehouse_id" value="{{ $activeWarehouse->id }}">
 
@@ -281,7 +281,7 @@
                 Dispatches items from <strong>{{ $activeWarehouse->name }}</strong>. Destination shop will verify count on arrival.
             </p>
 
-            <form method="POST" action="{{ route('stock.transfer.out') }}">
+            <form method="POST" action="{{ route('stock.transfer.out') }}" onsubmit="return confirm('🚚 Confirm Inter-Branch Transfer Dispatch:\n\nThis will immediately deduct items from {{ addslashes($activeWarehouse->name) }} physical shelf count and place them In-Transit until the destination counts and receives them. Proceed?')">
                 @csrf
                 <input type="hidden" name="source_warehouse_id" value="{{ $activeWarehouse->id }}">
 
@@ -341,7 +341,7 @@
                     <span class="badge badge-info">In-Transit</span>
                 </div>
 
-                <form method="POST" action="{{ route('stock.transfer.in', $trf->id) }}">
+                <form method="POST" action="{{ route('stock.transfer.in', $trf->id) }}" onsubmit="return confirm('📦 Confirm Transfer Receipt & Physical Count:\n\nThis will officially add the verified counted items into {{ addslashes($activeWarehouse->name) }} physical closing stock. Any shortage will log an auditor alert. Proceed?')">
                     @csrf
                     @foreach($trf->items as $tItem)
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem;">

@@ -107,7 +107,7 @@
                 Deducts unsellable items from the physical closing stock count.
             </p>
 
-            <form method="POST" action="{{ route('stock.adjustments.record') }}">
+            <form method="POST" action="{{ route('stock.adjustments.record') }}" onsubmit="return confirm('📉 Confirm Stock Write-Off / Adjustment:\n\nThis will permanently deduct the damaged/lost units from physical closing stock and record an auditor loss write-off. Proceed?')">
                 @csrf
 
                 <div class="form-group">

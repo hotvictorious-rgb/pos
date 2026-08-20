@@ -177,7 +177,7 @@
                 Physically count the items offloaded from the carrier before confirming.
             </p>
 
-            <form id="acceptTransferForm" method="POST" action="">
+            <form id="acceptTransferForm" method="POST" action="" onsubmit="return confirm('📦 Confirm Transfer Receiving & Physical Count:\n\nThis will officially add the verified counted items to this branch\'s physical inventory and complete the transfer waybill. Proceed?')">
                 @csrf
 
                 <div id="acceptItemsContainer" style="margin-bottom: 1.25rem;">
@@ -205,7 +205,7 @@
                 Select origin, destination, driver, and items to send.
             </p>
 
-            <form method="POST" action="{{ route('stock.transfer.out') }}">
+            <form method="POST" action="{{ route('stock.transfer.out') }}" onsubmit="return confirm('🚚 Confirm Dispatching Transfer:\n\nThis will immediately deduct items from the source shop\'s physical inventory and put them In-Transit until counted by destination branch. Proceed?')">
                 @csrf
 
                 <div class="grid-2">

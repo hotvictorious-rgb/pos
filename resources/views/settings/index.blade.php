@@ -62,7 +62,7 @@
                 🏢 Business Profile & Printable Receipt Customizer
             </h3>
 
-            <form method="POST" action="{{ route('settings.update') }}">
+            <form method="POST" action="{{ route('settings.update') }}" onsubmit="return confirm('🏢 Confirm Settings Update:\n\nThis will update your business profile, currency symbol, and receipt template across the entire system. Proceed?')">
                 @csrf
 
                 <div class="form-group">
@@ -156,7 +156,7 @@
                                 </span>
                             </td>
                             <td>
-                                <form method="POST" action="{{ route('settings.warehouse.toggle', $wh->id) }}">
+                                <form method="POST" action="{{ route('settings.warehouse.toggle', $wh->id) }}" onsubmit="return confirm('{{ $wh->is_active ? '🏬 Confirm Deactivating Location:\n\nThis will disable POS checkout and stock activities for ' . addslashes($wh->name) . '. Proceed?' : '🏬 Confirm Activating Location:\n\nThis will re-enable ' . addslashes($wh->name) . ' across the system. Proceed?' }}')">
                                     @csrf
                                     <button type="submit" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
                                         {{ $wh->is_active ? 'Deactivate' : 'Activate' }}
@@ -218,7 +218,7 @@
                     </p>
                 </div>
 
-                <form method="POST" action="/api/backups">
+                <form method="POST" action="/api/backups" onsubmit="return confirm('💾 Confirm Database Snapshot:\n\nThis will generate an instant JSON backup file containing all products, stock levels, sales history, and audit ledgers. Proceed?')">
                     @csrf
                     <button type="submit" class="btn btn-success">
                         📦 Create Instant DB Backup
@@ -269,7 +269,7 @@
                 Set up a new shop, outlet, or depot to track physical stock independently.
             </p>
 
-            <form method="POST" action="{{ route('settings.warehouse.store') }}">
+            <form method="POST" action="{{ route('settings.warehouse.store') }}" onsubmit="return confirm('🏬 Confirm New Branch Location:\n\nThis will initialize an independent physical stock registry for this new shop location. Proceed?')">
                 @csrf
                 <div class="form-group">
                     <label>Branch Name</label>

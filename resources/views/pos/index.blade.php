@@ -396,6 +396,49 @@
 
 </div>
 
+<!-- POS Checkout Confirmation Modal (What Will Happen) -->
+<div id="modalSaleConfirm" class="modal-backdrop" style="display: none;">
+    <div class="modal" style="max-width: 440px; padding: 1.5rem; background: #0f172a; border: 2px solid #3b82f6; border-radius: 18px; box-shadow: 0 25px 50px rgba(0,0,0,0.5);">
+        <div style="text-align: center; margin-bottom: 1.25rem;">
+            <div style="font-size: 2.5rem; margin-bottom: 0.25rem;">⚡</div>
+            <h3 style="font-size: 1.25rem; font-weight: 800; color: #f8fafc;">Confirm Sale Transaction</h3>
+            <p style="font-size: 0.8rem; color: #94a3b8;">Review what will happen before completing:</p>
+        </div>
+
+        <div style="background: rgba(15,23,42,0.8); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 0.4rem;">
+                <span style="color: #94a3b8;">Customer:</span>
+                <strong id="confirmCustName" style="color: #f8fafc;">Walk-in Customer</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 0.4rem;">
+                <span style="color: #94a3b8;">Total Bill:</span>
+                <strong id="confirmTotalBill" style="color: #4ade80; font-size: 1rem;">₦0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 0.4rem;">
+                <span style="color: #94a3b8;">Amount Paying Now:</span>
+                <strong id="confirmPayingNow" style="color: #60a5fa;">₦0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 0.4rem;">
+                <span style="color: #94a3b8;">Debt Ledger Impact:</span>
+                <strong id="confirmDebtLedger" style="color: #f87171;">₦0</strong>
+            </div>
+            <div style="padding-top: 0.2rem;">
+                <span style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">📦 Stock Fulfillment Impact:</span>
+                <div id="confirmStockImpact" style="font-weight: 700; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem;"></div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem;">
+            <button type="button" class="btn btn-secondary" style="flex: 1; padding: 0.75rem;" onclick="closeSaleConfirm()">
+                ✕ Cancel / Edit
+            </button>
+            <button type="button" class="btn btn-success" style="flex: 1.3; padding: 0.75rem; font-weight: 800;" onclick="finalProceedSale()">
+                ✅ Yes, Complete Sale
+            </button>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('scripts')
@@ -551,8 +594,9 @@ function submitSale() {
     const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
     if (total <= 0 || cart.length === 0) return;
 
+    const custName = document.getElementById('customerNameInput').value.trim() || 'Walk-in Customer';
+
     if (paymentMode === 'DEBT') {
-        const custName = document.getElementById('customerNameInput').value.trim();
         if (!custName || custName.toLowerCase() === 'walk-in customer') {
             alert('⚠️ Please enter the Customer Name to track their debt balance!');
             document.getElementById('customerNameInput').focus();
@@ -560,6 +604,44 @@ function submitSale() {
         }
     }
 
+    const isSupplied = document.getElementById('radioYes').checked;
+    const paid = parseFloat(document.getElementById('hiddenPaid').value) || 0;
+    const remaining = Math.max(0, total - paid);
+    const totalUnits = cart.reduce((sum, item) => sum + item.qty, 0);
+
+    document.getElementById('confirmCustName').textContent = custName;
+    document.getElementById('confirmTotalBill').textContent = '₦' + Math.round(total).toLocaleString('en-US');
+    document.getElementById('confirmPayingNow').textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : 'Paid ' + paymentMode) + ')';
+    
+    if (remaining > 0) {
+        document.getElementById('confirmDebtLedger').textContent = '+ ₦' + Math.round(remaining).toLocaleString('en-US') + ' Added to Debtor Ledger';
+        document.getElementById('confirmDebtLedger').style.color = '#f87171';
+    } else {
+        document.getElementById('confirmDebtLedger').textContent = '₦0 (Fully Settled)';
+        document.getElementById('confirmDebtLedger').style.color = '#4ade80';
+    }
+
+    const impactEl = document.getElementById('confirmStockImpact');
+    if (isSupplied) {
+        impactEl.style.background = 'rgba(34,197,94,0.15)';
+        impactEl.style.color = '#4ade80';
+        impactEl.style.border = '1px solid #22c55e';
+        impactEl.textContent = '🟢 SUPPLIED: Deducts ' + totalUnits + ' unit(s) from physical shelf stock immediately.';
+    } else {
+        impactEl.style.background = 'rgba(245,158,11,0.15)';
+        impactEl.style.color = '#fbbf24';
+        impactEl.style.border = '1px solid #f59e0b';
+        impactEl.textContent = '⏳ NOT SUPPLIED: ' + totalUnits + ' unit(s) remain locked in shop stock buffer until customer pickup.';
+    }
+
+    document.getElementById('modalSaleConfirm').style.display = 'flex';
+}
+
+function closeSaleConfirm() {
+    document.getElementById('modalSaleConfirm').style.display = 'none';
+}
+
+function finalProceedSale() {
     document.getElementById('checkoutForm').submit();
 }
 

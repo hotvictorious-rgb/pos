@@ -235,7 +235,7 @@
                 Register a new inventory SKU for sales and stock tracking.
             </p>
 
-            <form method="POST" action="{{ route('products.store') }}">
+            <form method="POST" action="{{ route('products.store') }}" onsubmit="return confirm('➕ Confirm Adding New Product:\n\nThis will register this new SKU into the central catalog and assign its initial opening stock. Proceed?')">
                 @csrf
                 <div class="form-group">
                     <label>Product Name</label>
@@ -309,7 +309,7 @@
             <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">✏️ Edit Product</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;" id="editSubtitle"></p>
 
-            <form id="editProductForm" method="POST" action="">
+            <form id="editProductForm" method="POST" action="" onsubmit="return confirm('✏️ Confirm Product Catalog Update:\n\nThis will update this product\'s name, category, and master selling price across all POS terminals. Proceed?')">
                 @csrf
                 <div class="form-group">
                     <label>Product Name</label>
@@ -366,7 +366,7 @@
                 </div>
             </div>
 
-            <form method="POST" action="{{ route('products.import.csv') }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ route('products.import.csv') }}" enctype="multipart/form-data" onsubmit="return confirm('📥 Confirm Bulk CSV Import:\n\nThis will parse your spreadsheet and import new items into the central catalog. Proceed?')">
                 @csrf
 
                 <div class="form-group">

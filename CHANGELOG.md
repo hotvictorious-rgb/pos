@@ -9,6 +9,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Cashier Shift Balancing Feature**: Completely removed cashier shift balancing workflows, modal forms, routes (`/close-shift`), shift reports table, and JSON shift exports across the entire codebase to streamline closing operations.
 
 ### Added
+- **Cross-Application Action Confirmation Popups (What Will Happen)**:
+  - Implemented descriptive pre-execution confirmation popups and modals across every interactive action in the application to prevent human errors and explain operational impacts:
+    - **POS Checkout Modal** (`pos/index.blade.php`): Full breakdown popup detailing Customer, Total Bill, Amount Paying Now, Debt Ledger impact, and Shelf Stock deduction vs Unsupplied buffer retention before completing sale.
+    - **Customer Debt Repayment** (`debts/index.blade.php`): Confirmation popup detailing customer name, payment amount, previous debt, and exact new remaining balance.
+    - **Stock In / Arrived Goods** (`stock/index.blade.php`): Confirmation popup confirming physical stock increment and audit logging.
+    - **Inter-Branch Transfer Dispatch & Receiving** (`stock/index.blade.php`, `stock/transfers.blade.php`): Confirmation popups detailing origin stock deduction, in-transit buffer, driver details, physical count verification, and discrepancy alerts.
+    - **Unsupplied Order Dispatch** (`stock/unsupplied.blade.php`): Confirmation popup detailing customer name, invoice #, and items being released from shop.
+    - **Sales Returns & Refunds** (`pos/returns.blade.php`): Confirmation popup detailing items returned to shelf stock and cash refund / debt reduction amount.
+    - **Damaged Stock Adjustments** (`stock/adjustments.blade.php`): Confirmation popup detailing product write-off loss and physical closing stock deduction.
+    - **Product Catalog Management** (`products/index.blade.php`): Confirmation popups for product creation, catalog edits, and bulk CSV imports.
+    - **User Administration** (`users/index.blade.php`): Confirmation popups for worker account creation, locking/unlocking worker access, and password resets.
+    - **Settings & Branch Locations** (`settings/index.blade.php`): Confirmation popups for business profile updates, warehouse activation/deactivation, new branch creation, and instant DB backups.
 - **Standardized Payment & Fulfillment Terminology Matrix**:
   - Implemented explicit terminology across the entire application:
     - Payment States: **Paid** (full settlement), **Part-Paid** (deposit with remaining debt balance), and **Not Paid** (100% credit sale).

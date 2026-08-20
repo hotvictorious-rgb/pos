@@ -97,7 +97,7 @@
                 Select the past sale invoice and specify items returned.
             </p>
 
-            <form method="POST" action="{{ route('pos.returns.process') }}">
+            <form method="POST" action="{{ route('pos.returns.process') }}" onsubmit="return confirm('🔄 Confirm Sales Return & Restitution:\n\nThis will restore the returned items back into physical shelf stock and process the cash refund or debt balance reduction. Proceed?')">
                 @csrf
 
                 <div class="form-group">
