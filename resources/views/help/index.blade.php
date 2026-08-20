@@ -1,27 +1,49 @@
 @extends('layouts.app')
 
-@section('title', 'User Guide & Training Center')
+@section('title', 'Role-Based User Guide & Training Center')
 
 @push('styles')
 <style>
-    .guide-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
+    .role-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 0.5rem;
     }
 
-    .guide-card {
+    .role-tab-btn {
+        padding: 0.75rem 1.25rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .role-tab-btn.active {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+        box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+    }
+
+    .guide-section { display: none; }
+    .guide-section.active { display: block; }
+
+    .duty-card {
         background: var(--card-bg);
         border: 1px solid var(--border);
         border-radius: 18px;
         padding: 1.5rem;
-        transition: all 0.2s;
+        margin-bottom: 1.5rem;
     }
-    .guide-card:hover { border-color: #3b82f6; transform: translateY(-2px); }
 
     .step-box {
-        background: rgba(11,15,25,0.6);
+        background: rgba(11,15,25,0.7);
         border: 1px solid var(--border);
         border-radius: 12px;
         padding: 1rem;
@@ -66,232 +88,242 @@
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-            <h2 style="font-size: 1.6rem; font-weight: 800;">Learning Center & Operational Guide 📖</h2>
+            <h2 style="font-size: 1.6rem; font-weight: 800;">Role-Based Training & User Guides 📖</h2>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Step-by-step visual guides and answers for Cashiers, Storekeepers, Branch Managers, and Auditors.
+                Select your job role below to view your daily duties, step-by-step guides, and anti-theft rules.
             </p>
         </div>
         <a href="{{ route('pos.index') }}" class="btn btn-success">
-            🚀 Go to POS
+            🚀 Open POS
         </a>
     </div>
 
-    <!-- 1. The Core Golden Law of Hysam Ventures -->
-    <div style="background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(139,92,246,0.15)); border: 1px solid rgba(37,99,235,0.4); border-radius: 20px; padding: 1.5rem; margin-bottom: 2rem;">
-        <div style="display: flex; align-items: start; gap: 1rem;">
-            <div style="font-size: 2.2rem;">🛡️</div>
-            <div>
-                <h3 style="font-size: 1.2rem; font-weight: 800; color: #93c5fd; margin-bottom: 0.5rem;">
-                    The Golden Law of Physical Closing Stock (Auditor Rule)
-                </h3>
-                <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.6;">
-                    <strong>"If an item is physically inside the shop or warehouse, it MUST be counted in Physical Closing Stock."</strong><br>
-                    Even if a customer has paid for 10 bags of rice on invoice, as long as the bags have not driven away in a vehicle, they remain locked in the shop's <em>Physical Shelf Count</em> until the official <strong>Handover / Dispatch Note</strong> is stamped.
+    <!-- Role Selection Tabs -->
+    <div class="role-tabs">
+        <button class="role-tab-btn active" onclick="showRoleGuide('roleCashier', this)">💰 Cashier / Sales Officer</button>
+        <button class="role-tab-btn" onclick="showRoleGuide('roleStorekeeper', this)">📦 Storekeeper / Inventory Lead</button>
+        <button class="role-tab-btn" onclick="showRoleGuide('roleManager', this)">🏢 Branch Manager</button>
+        <button class="role-tab-btn" onclick="showRoleGuide('roleAuditor', this)">🛡️ Auditor / Super Admin</button>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 1. CASHIER & SALES OFFICER GUIDE -->
+    <!-- ========================================================================= -->
+    <div id="roleCashier" class="guide-section active">
+        <div class="duty-card" style="border-left: 6px solid #22c55e;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                <span style="font-size: 2rem;">💰</span>
+                <div>
+                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #4ade80;">Cashier & Sales Officer Job Duties</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is selling products, collecting cash/POS payments, and handling customer debts.</p>
+                </div>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #86efac;">1. How to Make a POS Sale</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>💰 Sell Goods (POS)</strong> in the sidebar. Tap any product tile to add to cart. Use the <strong>+ / −</strong> buttons to change quantity.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #60a5fa;">2. Negotiating Prices (Editable Cart Price)</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    If a customer is buying in bulk or bargaining, click inside the <strong>Price (₦)</strong> box on the cart item and type the agreed negotiated unit price.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #fbbf24;">3. Part-Payments & Customer Debts</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    If the customer is making a deposit and owing the rest, choose <strong>💳 Part-Payment / Debt</strong> mode. Type the deposit amount and enter the Customer's Name and Phone Number. The balance moves to the Debtors Ledger.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #f87171;">4. Handover Toggle: Did Customer Take Goods Today?</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    If the customer is carrying the goods away immediately, select <strong>"YES (Delivered Now)"</strong>.<br>
+                    If the customer will send their truck tomorrow, select <strong>"NO (Awaiting Pickup)"</strong>. This keeps the items in your shop's physical closing stock count so the auditor does not suspect theft!
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #93c5fd;">5. End-of-Day (EOD) Cash Drawer Balancing</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    At closing time, count all the cash in your drawer. Enter the total in the <strong>🚨 Auditor Control Hub</strong> under *Close Cashier Shift*.
+                </p>
+            </div>
+        </div>
+
+        <!-- Cashier FAQs -->
+        <h4 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem;">Cashier FAQs</h4>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ What if a customer brings money later to pay their debt?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Go to <strong>💳 Customer Debts</strong> in the sidebar. Click <strong>"💰 Record Payment"</strong> next to their name, type the amount received, and print their updated receipt.
+            </div>
+        </div>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ Can I use the calculator while making a sale?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                Yes! Click the <strong>🧮 Calculator</strong> button in the top header at any time to open the keypad without leaving your POS screen.
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 2. STOREKEEPER & INVENTORY LEAD GUIDE -->
+    <!-- ========================================================================= -->
+    <div id="roleStorekeeper" class="guide-section">
+        <div class="duty-card" style="border-left: 6px solid #3b82f6;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                <span style="font-size: 2rem;">📦</span>
+                <div>
+                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #60a5fa;">Storekeeper & Inventory Lead Job Duties</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is physical stock count accuracy, accepting transfers, releasing pickups, and logging damages.</p>
+                </div>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #86efac;">1. Receiving New Goods from Suppliers (Stock In)</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>📦 Stock In / Out</strong> in the sidebar. Click <strong>📥 New Goods Arrived</strong>, select the product, enter quantity offloaded from supplier truck, and save.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #60a5fa;">2. Accepting & Counting Inter-Branch Transfers</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    When a carrier arrives from another branch, go to <strong>🚚 Shop Transfers</strong> in the sidebar. Locate the shipment card and click <strong>"✅ Accept & Count Goods"</strong>. Physically count every carton before clicking confirm.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #fbbf24;">3. Releasing Customer Pickups (Delayed Orders)</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    When a customer comes to carry goods they bought earlier, go to <strong>⏳ Pickup Orders</strong> in the sidebar and tap <strong>"✓ Handover Goods to Customer"</strong>. This deducts the items from physical closing stock count.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #f87171;">4. Logging Damaged or Expired Stock</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Never throw broken or expired items away without recording. Go to <strong>📉 Damaged Goods</strong> $\rightarrow$ Click <strong>Record Damaged Goods</strong> $\rightarrow$ Enter quantity and incident note.
+                </p>
+            </div>
+        </div>
+
+        <!-- Storekeeper FAQs -->
+        <h4 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem;">Storekeeper FAQs</h4>
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question">
+                <span>❓ What happens if 50 cartons were sent on transfer but only 48 cartons arrived?</span>
+                <span class="faq-toggle">▼</span>
+            </div>
+            <div class="faq-answer">
+                In the Accept modal, enter the exact counted quantity: <strong>48</strong>. The system will add only 48 to your shop's stock and automatically raise a <strong>🚨 THEFT/DISCREPANCY ALERT</strong> for the Auditor showing that 2 units were lost in transit under the carrier's name.
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 3. BRANCH MANAGER GUIDE -->
+    <!-- ========================================================================= -->
+    <div id="roleManager" class="guide-section">
+        <div class="duty-card" style="border-left: 6px solid #d97706;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                <span style="font-size: 2rem;">🏢</span>
+                <div>
+                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #fbbf24;">Branch Manager Job Duties</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is branch oversight, managing local staff, approving returns, and dispatching transfers.</p>
+                </div>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #fbbf24;">1. Processing Customer Returns & Refunds</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>🔄 Returns & Refunds</strong>. Select the original invoice ref, choose items returned, and select whether to refund cash or deduct from customer's debt balance. Stock is automatically restored to shelves.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #60a5fa;">2. Sending Transfers to Other Branches</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>🚚 Shop Transfers</strong> $\rightarrow$ Click <strong>Dispatch New Transfer</strong> $\rightarrow$ Select destination branch, enter driver name, and specify product quantities.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <strong style="color: #86efac;">3. Reviewing Branch Sales & Transactions</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>📑 Sales History</strong>. Filter by <em>Today</em>, <em>This Week</em>, or specific cashiers to monitor revenue, collected cash, and outstanding debts.
                 </p>
             </div>
         </div>
     </div>
 
-    <!-- Visual Workflow Cards -->
-    <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1rem;">Visual Step-by-Step Guides</h3>
-
-    <div class="guide-grid">
-
-        <!-- Guide 1: Inter-Branch Transfers -->
-        <div class="guide-card" style="border-top: 4px solid #3b82f6;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                <span style="font-size: 1.5rem;">🚚</span>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #60a5fa;">How Inter-Branch Transfers Work</h3>
+    <!-- ========================================================================= -->
+    <!-- 4. AUDITOR & SUPER ADMIN GUIDE -->
+    <!-- ========================================================================= -->
+    <div id="roleAuditor" class="guide-section">
+        <div class="duty-card" style="border-left: 6px solid #dc2626;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                <span style="font-size: 2rem;">🛡️</span>
+                <div>
+                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #f87171;">Auditor & Super Admin Job Duties</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is anti-theft oversight, inventory reconciliation, staff access control, and system security.</p>
+                </div>
             </div>
 
             <div class="step-box">
-                <strong style="color: #93c5fd;">Step 1: Dispatch Goods (Source Shop)</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    Origin branch (e.g. Main Depot) goes to <em>Stock In/Out</em> $\rightarrow$ <em>Dispatch Transfer</em>. Selects destination, carrier driver, and quantity. Items enter <strong>In-Transit Buffer</strong>.
+                <strong style="color: #f87171;">1. The Theft & Variance Radar</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>🚨 Auditor Control Hub</strong> in the sidebar. Review the Discrepancy Radar for missing transfer items, unaccounted write-offs, or cashier cash shortages.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #fbbf24;">Step 2: Physical Count at Destination</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    When driver arrives at destination shop (e.g. Nwaniba Branch), the receiving storekeeper physically counts every carton before tapping <em>Verify & Receive</em>.
+                <strong style="color: #60a5fa;">2. Multi-Branch Physical Closing Stock Valuation</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    In the Auditor Hub, view the complete stock matrix comparing physical on-ground counts against total inventory monetary value across all shops.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #f87171;">Step 3: Automatic Theft/Variance Alert</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    If 50 bags were sent but only 48 arrived, the system immediately flags a <strong>🚨 THEFT/VARIANCE ALERT</strong> on the Auditor Dashboard with the driver's name and exact missing value!
-                </p>
-            </div>
-        </div>
-
-        <!-- Guide 2: POS Selling & Price Bargaining -->
-        <div class="guide-card" style="border-top: 4px solid #16a34a;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                <span style="font-size: 1.5rem;">💰</span>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #4ade80;">How to Sell & Negotiate Prices</h3>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #86efac;">Step 1: Tap Products into Cart</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    Tap any product tile or search by name/SKU to add it to the cart. Adjust quantities with the <strong>+ / −</strong> buttons.
+                <strong style="color: #86efac;">3. Creating Workers & Instant Anti-Theft Account Lock</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>👥 Workers & Roles</strong>. Create new staff with assigned roles and branch shops. If any staff is suspected of theft, click <strong>"🔒 Lock Access"</strong> to block their account immediately.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #60a5fa;">Step 2: Edit Selling Price (Market Bargaining)</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    For bulk buyers or market bargaining, simply click the <strong>Price (₦)</strong> box inside the cart drawer and type the agreed negotiated unit price!
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #fde047;">Step 3: Part-Payment / Debt Recording</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    If customer is paying half today, choose <strong>💳 Part-Payment / Debt</strong>, type the deposit amount, and enter their name. The remaining balance automatically moves to the Debtors Ledger.
+                <strong style="color: #fbbf24;">4. System Settings & Database Backups</strong>
+                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Go to <strong>⚙️ System Settings</strong> to customize receipt footers, low stock alert limits, add new branch shops, and download one-click database backup snapshots.
                 </p>
             </div>
         </div>
-
-        <!-- Guide 3: Sales Returns & Damaged Goods -->
-        <div class="guide-card" style="border-top: 4px solid #d97706;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                <span style="font-size: 1.5rem;">🔄</span>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #fbbf24;">Returns & Damaged Goods</h3>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #fbbf24;">Customer Bringing Back Goods?</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    Go to <em>Returns & Refunds</em> $\rightarrow$ Select the original invoice $\rightarrow$ Choose items returned. The system automatically restocks the shelf and gives a cash refund or reduces their debt.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #f87171;">Damaged or Broken Items on Shelf?</strong>
-                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.25rem;">
-                    Go to <em>Damaged Goods</em> $\rightarrow$ Record damaged quantity with incident reason. Never throw items away without recording; the system must deduct it from physical closing stock legitimately.
-                </p>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Frequently Asked Questions (FAQ Accordions) -->
-    <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1rem;">Frequently Asked Questions (FAQ)</h3>
-
-    <div class="faq-list">
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ What happens if a customer buys goods but leaves them in the shop for delivery tomorrow?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                When checking out on POS, toggle <strong>"Did customer take goods away today? ➔ NO (Awaiting Pickup)"</strong>.  
-                The sale and cash payment will be recorded immediately, but the physical items stay counted in your **Physical Closing Stock**. When the customer's truck arrives tomorrow, go to **⏳ Pickup Orders** and click <strong>"Handover Goods"</strong> to deduct them on ground.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ How does the Cashier End-of-Day (EOD) shift balancing work?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                At the end of every business day, the cashier counts all physical cash in their drawer (e.g. ₦150,000) and enters it in the **Auditor Control Hub**.  
-                The system instantly compares this against total cash sales and debt recoveries. If there is a shortage (e.g. ₦5,000 missing), it is immediately logged as a cashier discrepancy for the Auditor to review.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ How can I track customer debt payments when they bring installment cash?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Go to **💳 Customer Debts** in the sidebar. Find the customer's name, click **"💰 Record Payment"**, enter the amount paid (e.g. ₦20,000), and choose Cash, POS, or Transfer. Their debt balance is immediately updated and a printable payment receipt is generated.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ Can I assign different workers to different shop branches?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Yes! In **👥 Workers & Roles**, when creating or editing a worker, you can assign them to a specific branch (e.g. *Main Depot*, *Shop 2*, or *Nwaniba Branch*). The Super Admin / Auditor can see and manage all branches from one centralized screen.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ Where do I click to accept and verify an incoming transfer shipment?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Go to **🚚 Shop Transfers** in the sidebar under *Inventory & Stock*. You will see all in-transit shipments on the road. On the shipment card, click the prominent green **"✅ Accept & Count Goods"** button. Count the physical cartons offloaded, enter the numbers, and click confirm. The items are added directly to your shop's closing stock.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ How does price bargaining & editable prices work at the POS?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                When selling goods in the POS, tap products to add them to the right-side cart drawer. For bulk buyers or price negotiations, simply click inside the **Price (₦)** box on any cart item and type the agreed negotiated unit price. The cart subtotal, grand total, and customer debt balance will update automatically in real-time.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ How do I filter sales history for a specific cashier or date range?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Go to **📑 Sales History** in the sidebar under *Sales & Customer Debts*. Use the Quick Date pills (Today, Yesterday, This Week, This Month) or set custom from/to dates, select payment status (Fully Paid vs Debt), or pick a specific Cashier from the dropdown, then click **🔍 Apply Filters**.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ How do I use the POS Calculator in the header?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Tap the **🧮 Calculator** button in the top header at any time. A touch-friendly calculator popup will open immediately so cashiers and storekeepers can calculate carton tallies, bulk discounts, or customer change without leaving their active screen.
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ How do I customize business info and printable receipt footers?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Go to **⚙️ System Settings** in the sidebar. In the *Business & Receipts* tab, you can change your business name, contact phones, headquarters address, currency symbol (₦), and custom receipt footer terms (e.g. warranty and return policy).
-            </div>
-        </div>
-
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ What should I do if a worker leaves or is suspected of misconduct?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Go to **👥 Workers & Roles** and click the red **"🔒 Lock Access"** button on their profile. Their login is immediately disabled, preventing any further POS sales or stock movements.
-            </div>
-        </div>
-
     </div>
 
 @endsection
 
 @push('scripts')
 <script>
+function showRoleGuide(roleId, btn) {
+    document.querySelectorAll('.role-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.guide-section').forEach(s => s.classList.remove('active'));
+
+    btn.classList.add('active');
+    document.getElementById(roleId).classList.add('active');
+}
+
 function toggleFaq(item) {
     item.classList.toggle('active');
 }

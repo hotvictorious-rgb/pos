@@ -7,15 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+- **Role-Based Training Center & User Guides** (`/help`):
+  - Organized user guides into 4 tailored role tracks: **💰 Cashier / Sales Officer**, **📦 Storekeeper / Inventory Lead**, **🏢 Branch Manager**, and **🛡️ Auditor / Super Admin**.
+  - Interactive top tabs allowing workers to filter and view duties, operational steps, and FAQs specific to their job role.
 - **Mandatory In-App User Guide & FAQ Sync Rule**: Added Section 2.5 to `docs/ai_agent_rules.md` requiring all AI agents to read and synchronize `/help` FAQs with every newly added feature or workflow.
-- **In-App FAQ Expansion**: Added questions and operational answers for Accepting Transfers, POS Price Bargaining, Sales History Filtering, Topbar Calculator, and System Settings.
-- **Dedicated Inter-Branch Transfers Hub** (`/stock/transfers`):
-  - In-transit shipment monitor with prominent **"✅ Accept & Count Goods"** action cards for destination storekeepers.
-  - Physical offload count verification modal with instant item-by-item tally and discrepancy/theft flagging.
-  - One-click dispatch modal for moving items between shops and tracking carrier drivers.
-- **User Guide & Training Center** (`/help`):
-  - Interactive training hub with visual step-by-step illustrations for Inter-Branch Transfers, POS Bargaining, Part-Payments, Sales Returns, Damaged Goods, and Auditor Shifts.
-  - Comprehensive FAQ accordions explaining the Golden Law of Physical Closing Stock and anti-theft accountability.
 - **Transactions & Sales History Hub** (`/transactions`):
   - Advanced multi-criteria filter engine: quick date presets (Today, Yesterday, This Week, This Month), custom date range, payment status (Fully Paid vs Part-Payment Debt), delivery/handover status (Supplied vs Unsupplied), and staff/cashier dropdown.
   - Aggregated real-time metrics: Total Invoices, Gross Sales, Cash/POS Collected, and Outstanding Debts.
