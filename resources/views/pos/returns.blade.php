@@ -72,7 +72,7 @@
                         <td><strong>{{ $ret->customerName ?? 'Customer' }}</strong></td>
                         <td>{{ $ret->productName }} ({{ $ret->quantity }} items)</td>
                         <td style="font-weight: 800; color: #f87171;">
-                            ₦{{ number_format($ret->refundAmount, 2) }}
+                            ₦{{ number_format($ret->refundAmount, 0) }}
                         </td>
                         <td>{{ $ret->reason }}</td>
                         <td>{{ $ret->userName }}</td>
@@ -106,7 +106,7 @@
                         <option value="">-- Choose Sale Invoice --</option>
                         @foreach($sales as $s)
                             <option value="{{ $s->id }}" data-items="{{ json_encode($s->items) }}">
-                                Sale #{{ substr($s->id, 0, 8) }} — {{ $s->customerName }} (₦{{ number_format($s->totalAmount, 2) }}) on {{ date('d/m/Y', strtotime($s->createdAt)) }}
+                                Sale #{{ substr($s->id, 0, 8) }} — {{ $s->customerName }} (₦{{ number_format($s->totalAmount, 0) }}) on {{ date('d/m/Y', strtotime($s->createdAt)) }}
                             </option>
                         @endforeach
                     </select>

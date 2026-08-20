@@ -107,7 +107,7 @@ $customer1->refresh();
 $stockA1 = StockLevel::where('product_id', $product->id)->where('warehouse_id', $warehouseA->id)->value('physical_stock');
 
 if ($sale1->totalAmount == $totalAmount && $sale1->paidAmount == $paidAmount && $customer1->total_debt == $expectedDebt && $stockA1 == (100 - $qty)) {
-    $proofs[] = "✓ PROOF 1 PASSED: Immediate Delivery Math is 100% exact (Total=₦" . number_format($sale1->totalAmount, 2) . ", Paid=₦" . number_format($sale1->paidAmount, 2) . ", Customer Debt Created=₦" . number_format($customer1->total_debt, 2) . ", Physical Closing Stock: 100 -> {$stockA1}).";
+    $proofs[] = "✓ PROOF 1 PASSED: Immediate Delivery Math is 100% exact (Total=₦" . number_format($sale1->totalAmount, 0) . ", Paid=₦" . number_format($sale1->paidAmount, 0) . ", Customer Debt Created=₦" . number_format($customer1->total_debt, 0) . ", Physical Closing Stock: 100 -> {$stockA1}).";
     echo "   -> PASS\n";
 } else {
     $errors[] = "PROOF 1 FAILED: Math mismatch on immediate sale. Debt: {$customer1->total_debt}, Stock: {$stockA1}";
@@ -239,7 +239,7 @@ $customer1->refresh();
 $debtPost = (float) $customer1->total_debt;
 
 if ($debtPost == ($debtPre - $payment)) {
-    $proofs[] = "✓ PROOF 4 PASSED: Customer Debt ledger exact (Debt ₦" . number_format($debtPre, 2) . " - Payment ₦" . number_format($payment, 2) . " = ₦" . number_format($debtPost, 2) . " remaining).";
+    $proofs[] = "✓ PROOF 4 PASSED: Customer Debt ledger exact (Debt ₦" . number_format($debtPre, 0) . " - Payment ₦" . number_format($payment, 0) . " = ₦" . number_format($debtPost, 0) . " remaining).";
     echo "   -> PASS\n";
 } else {
     $errors[] = "PROOF 4 FAILED: Debt ledger calculation mismatch.";

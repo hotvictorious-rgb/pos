@@ -102,10 +102,10 @@
         <div class="receipt-item">
             <div>
                 <strong>{{ $item->productName }}</strong>
-                <div style="font-size: 0.75rem; color: #64748b;">₦{{ number_format($item->unitPrice, 2) }} x {{ $item->quantity }}</div>
+                <div style="font-size: 0.75rem; color: #64748b;">₦{{ number_format($item->unitPrice, 0) }} x {{ $item->quantity }}</div>
             </div>
             <div style="font-weight: 700;">
-                ₦{{ number_format($item->totalPrice, 2) }}
+                ₦{{ number_format($item->totalPrice, 0) }}
             </div>
         </div>
         @endforeach
@@ -115,18 +115,18 @@
     <div class="receipt-summary">
         <div class="receipt-row" style="font-size: 1.1rem; font-weight: 800;">
             <span>TOTAL:</span>
-            <span>₦{{ number_format($sale->totalAmount, 2) }}</span>
+            <span>₦{{ number_format($sale->totalAmount, 0) }}</span>
         </div>
         <div class="receipt-row" style="color: #16a34a; font-weight: 700;">
             <span>Amount Paid:</span>
-            <span>₦{{ number_format($sale->paidAmount, 2) }}</span>
+            <span>₦{{ number_format($sale->paidAmount, 0) }}</span>
         </div>
 
         @php $debtRemaining = max(0, $sale->totalAmount - $sale->paidAmount); @endphp
         @if($debtRemaining > 0)
         <div class="receipt-row" style="color: #dc2626; font-weight: 800;">
             <span>Balance Remaining:</span>
-            <span>₦{{ number_format($debtRemaining, 2) }}</span>
+            <span>₦{{ number_format($debtRemaining, 0) }}</span>
         </div>
         @endif
     </div>

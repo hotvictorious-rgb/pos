@@ -28,7 +28,7 @@
                 Total Outstanding Customer Debt
             </div>
             <div style="font-size: 2.2rem; font-weight: 800; color: #f87171; margin-top: 0.25rem;">
-                ₦{{ number_format($totalOutstandingDebt, 2) }}
+                ₦{{ number_format($totalOutstandingDebt, 0) }}
             </div>
             <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem;">
                 Tracking {{ $debtors->count() }} customer(s) with pending part-payment balances.
@@ -62,7 +62,7 @@
                         </td>
                         <td>{{ $debtor->phone ?? 'N/A' }}</td>
                         <td style="font-size: 1.2rem; font-weight: 800; color: #f87171;">
-                            ₦{{ number_format($debtor->total_debt, 2) }}
+                            ₦{{ number_format($debtor->total_debt, 0) }}
                         </td>
                         <td>
                             <span class="badge badge-danger">⚠️ Owning Balance</span>
@@ -113,10 +113,10 @@
                             <span class="badge badge-info">{{ $pay->payment_method ?? 'CASH' }}</span>
                         </td>
                         <td style="font-weight: 800; color: #4ade80;">
-                            +₦{{ number_format($pay->amount, 2) }}
+                            +₦{{ number_format($pay->amount, 0) }}
                         </td>
                         <td style="color: #cbd5e1;">
-                            ₦{{ number_format($pay->balance_after, 2) }}
+                            ₦{{ number_format($pay->balance_after, 0) }}
                         </td>
                         <td>{{ $pay->recorded_by }}</td>
                     </tr>
@@ -169,7 +169,7 @@
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem; margin-bottom: 1.25rem;">
                     <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
                         <span>New Balance Remaining:</span>
-                        <strong style="color: #fbbf24;" id="modalNewBalance">₦0.00</strong>
+                        <strong style="color: #fbbf24;" id="modalNewBalance">₦0</strong>
                     </div>
                 </div>
 
@@ -191,9 +191,9 @@ function openPaymentModal(id, name, debt) {
     currentCustomerDebt = debt;
     document.getElementById('payDebtForm').action = '/debts/pay/' + id;
     document.getElementById('modalCustomerSubtitle').textContent = 'Collecting debt installment from ' + name;
-    document.getElementById('modalCurrentDebt').value = '₦' + debt.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    document.getElementById('modalCurrentDebt').value = '₦' + Math.round(debt).toLocaleString('en-US');
     document.getElementById('modalAmountPaying').value = '';
-    document.getElementById('modalNewBalance').textContent = '₦' + debt.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    document.getElementById('modalNewBalance').textContent = '₦' + Math.round(debt).toLocaleString('en-US');
     document.getElementById('modalPayDebt').style.display = 'flex';
 }
 
@@ -204,7 +204,7 @@ function closePaymentModal() {
 function calcNewBalance() {
     const paying = parseFloat(document.getElementById('modalAmountPaying').value) || 0;
     const newBal = Math.max(0, currentCustomerDebt - paying);
-    document.getElementById('modalNewBalance').textContent = '₦' + newBal.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    document.getElementById('modalNewBalance').textContent = '₦' + Math.round(newBal).toLocaleString('en-US');
 }
 </script>
 @endpush

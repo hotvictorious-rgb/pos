@@ -152,15 +152,15 @@
         </div>
         <div class="summary-card">
             <h4>Total Gross Sales</h4>
-            <div class="val" style="color: #f9fafb;">₦{{ number_format($totalRevenue, 2) }}</div>
+            <div class="val" style="color: #f9fafb;">₦{{ number_format($totalRevenue, 0) }}</div>
         </div>
         <div class="summary-card">
             <h4>Cash / POS Collected</h4>
-            <div class="val" style="color: #4ade80;">₦{{ number_format($totalPaid, 2) }}</div>
+            <div class="val" style="color: #4ade80;">₦{{ number_format($totalPaid, 0) }}</div>
         </div>
         <div class="summary-card">
             <h4>Outstanding Debts</h4>
-            <div class="val" style="color: #f87171;">₦{{ number_format($totalDebt, 2) }}</div>
+            <div class="val" style="color: #f87171;">₦{{ number_format($totalDebt, 0) }}</div>
         </div>
     </div>
 
@@ -204,14 +204,14 @@
                             <span class="badge badge-info">{{ count($sale->items ?? []) }} items</span>
                         </td>
                         <td style="font-weight: 800; font-size: 1rem; color: #f9fafb;">
-                            ₦{{ number_format($sale->totalAmount, 2) }}
+                            ₦{{ number_format($sale->totalAmount, 0) }}
                         </td>
                         <td style="font-weight: 700; color: #4ade80;">
-                            ₦{{ number_format($sale->paidAmount, 2) }}
+                            ₦{{ number_format($sale->paidAmount, 0) }}
                         </td>
                         <td>
                             @if($balance > 0)
-                                <span class="badge badge-danger">Owes ₦{{ number_format($balance, 2) }}</span>
+                                <span class="badge badge-danger">Owes ₦{{ number_format($balance, 0) }}</span>
                             @else
                                 <span class="badge badge-success">✓ PAID</span>
                             @endif

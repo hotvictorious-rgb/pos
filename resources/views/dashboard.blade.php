@@ -168,7 +168,7 @@
         <div class="stat-card">
             <div>
                 <div class="stat-label">Today's Sales</div>
-                <div class="stat-val" style="color: #4ade80;">₦{{ number_format($todaySalesAmount, 2) }}</div>
+                <div class="stat-val" style="color: #4ade80;">₦{{ number_format($todaySalesAmount, 0) }}</div>
                 <small style="color: #94a3b8;">{{ $todaySalesCount }} transactions today</small>
             </div>
             <div style="font-size: 2.2rem;">💵</div>
@@ -186,7 +186,7 @@
         <div class="stat-card">
             <div>
                 <div class="stat-label">Customer Debt</div>
-                <div class="stat-val" style="color: #c084fc;">₦{{ number_format($totalDebt, 2) }}</div>
+                <div class="stat-val" style="color: #c084fc;">₦{{ number_format($totalDebt, 0) }}</div>
                 <small style="color: #94a3b8;">Part-payments owed</small>
             </div>
             <div style="font-size: 2.2rem;">💳</div>

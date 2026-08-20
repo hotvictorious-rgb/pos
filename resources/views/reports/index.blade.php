@@ -197,25 +197,25 @@
     <div class="kpi-grid">
         <div class="kpi-card" style="border-top: 4px solid #22c55e;">
             <h4>Total Filtered Revenue</h4>
-            <div class="val" style="color: #4ade80;">₦{{ number_format($totalRevenue, 2) }}</div>
+            <div class="val" style="color: #4ade80;">₦{{ number_format($totalRevenue, 0) }}</div>
             <div class="sub">{{ $totalInvoices }} Invoices Generated</div>
         </div>
 
         <div class="kpi-card" style="border-top: 4px solid #3b82f6;">
             <h4>Cash / POS Realized</h4>
-            <div class="val" style="color: #60a5fa;">₦{{ number_format($totalCollected, 2) }}</div>
+            <div class="val" style="color: #60a5fa;">₦{{ number_format($totalCollected, 0) }}</div>
             <div class="sub">{{ $totalRevenue > 0 ? round(($totalCollected / $totalRevenue) * 100, 1) : 0 }}% Collection Rate</div>
         </div>
 
         <div class="kpi-card" style="border-top: 4px solid #ef4444;">
             <h4>New Credit / Debts Created</h4>
-            <div class="val" style="color: #f87171;">₦{{ number_format($totalDebtCreated, 2) }}</div>
-            <div class="sub">All-Time Market Debt: ₦{{ number_format($totalDebtOwedAllTime, 2) }}</div>
+            <div class="val" style="color: #f87171;">₦{{ number_format($totalDebtCreated, 0) }}</div>
+            <div class="sub">All-Time Market Debt: ₦{{ number_format($totalDebtOwedAllTime, 0) }}</div>
         </div>
 
         <div class="kpi-card" style="border-top: 4px solid #a855f7;">
             <h4>Physical Stock Asset Value</h4>
-            <div class="val" style="color: #c084fc;">₦{{ number_format($totalStockValuation, 2) }}</div>
+            <div class="val" style="color: #c084fc;">₦{{ number_format($totalStockValuation, 0) }}</div>
             <div class="sub">{{ number_format($totalPhysicalUnits) }} Total Units on Ground</div>
         </div>
 
@@ -245,7 +245,7 @@
                         <strong style="color: #f9fafb;">#{{ $idx + 1 }} {{ $tp->productName }}</strong>
                         <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $tp->code }} • {{ $tp->total_qty }} units sold</div>
                     </div>
-                    <strong style="color: #4ade80;">₦{{ number_format($tp->total_revenue, 2) }}</strong>
+                    <strong style="color: #4ade80;">₦{{ number_format($tp->total_revenue, 0) }}</strong>
                 </div>
             @empty
                 <p style="font-size: 0.85rem; color: var(--text-muted);">No product sales recorded yet.</p>
@@ -264,8 +264,8 @@
                         <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $st['count'] }} transactions handled</div>
                     </div>
                     <div style="text-align: right;">
-                        <strong style="color: #60a5fa;">₦{{ number_format($st['total'], 2) }}</strong>
-                        <div style="font-size: 0.7rem; color: #4ade80;">Cash: ₦{{ number_format($st['collected'], 2) }}</div>
+                        <strong style="color: #60a5fa;">₦{{ number_format($st['total'], 0) }}</strong>
+                        <div style="font-size: 0.7rem; color: #4ade80;">Cash: ₦{{ number_format($st['collected'], 0) }}</div>
                     </div>
                 </div>
             @empty
@@ -323,11 +323,11 @@
                                 @if($s->customerPhone)<div style="font-size: 0.75rem; color: var(--text-muted);">{{ $s->customerPhone }}</div>@endif
                             </td>
                             <td>{{ $s->items->count() }} items</td>
-                            <td style="font-weight: 800;">₦{{ number_format($s->totalAmount, 2) }}</td>
-                            <td style="color: #4ade80;">₦{{ number_format($s->paidAmount, 2) }}</td>
+                            <td style="font-weight: 800;">₦{{ number_format($s->totalAmount, 0) }}</td>
+                            <td style="color: #4ade80;">₦{{ number_format($s->paidAmount, 0) }}</td>
                             <td>
                                 @if($debt > 0)
-                                    <span class="badge badge-danger">₦{{ number_format($debt, 2) }}</span>
+                                    <span class="badge badge-danger">₦{{ number_format($debt, 0) }}</span>
                                 @else
                                     <span class="badge badge-success">✓ Paid</span>
                                 @endif
@@ -386,7 +386,7 @@
                                 <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $p->code }} • {{ $p->brand }}</div>
                             </td>
                             <td><span class="badge badge-info">{{ $p->category }}</span></td>
-                            <td>₦{{ number_format($p->unitPrice, 2) }}</td>
+                            <td>₦{{ number_format($p->unitPrice, 0) }}</td>
                             @foreach($warehouses as $wh)
                                 <td>{{ $p->branch_stocks[$wh->id] ?? 0 }}</td>
                             @endforeach
@@ -400,7 +400,7 @@
                                     <span class="badge badge-success">IN STOCK</span>
                                 @endif
                             </td>
-                            <td style="font-weight: 800; color: #4ade80;">₦{{ number_format($p->total_valuation, 2) }}</td>
+                            <td style="font-weight: 800; color: #4ade80;">₦{{ number_format($p->total_valuation, 0) }}</td>
                         </tr>
                         @endforeach
                     </tbody>
@@ -510,7 +510,7 @@
                                 @endif
                             </td>
                             <td style="font-weight: 800; color: #f87171; font-size: 1.05rem;">
-                                ₦{{ number_format($d->total_debt, 2) }}
+                                ₦{{ number_format($d->total_debt, 0) }}
                             </td>
                             <td>
                                 <a href="{{ route('debts.index') }}" class="btn btn-success" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">

@@ -283,9 +283,9 @@
                  data-category="{{ $product->category }}"
                  data-stock="{{ $product->available_stock }}"
                  onclick="addToCart('{{ $product->id }}', '{{ addslashes($product->name) }}', {{ $product->unitPrice }}, {{ $product->available_stock }})">
-                <div class="p-icon">🛍️</div>
                 <div class="p-name">{{ $product->name }}</div>
-                <div class="p-price">₦{{ number_format($product->unitPrice, 2) }}</div>
+                <div class="p-sku">SKU: {{ $product->code }}</div>
+                <div class="p-price">₦{{ number_format($product->unitPrice, 0) }}</div>
                 @if($product->available_stock > 0)
                     <span class="p-stock-badge badge-success">✓ {{ $product->available_stock }} In Stock</span>
                 @else
@@ -375,9 +375,9 @@
             <div id="debtBox" style="display: none; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 0.75rem; margin-bottom: 1rem;">
                 <label style="color: #c084fc;">Amount Paying Now (₦):</label>
                 <input type="number" id="partPayInput" placeholder="e.g. 5000" onkeyup="updateDebtCalculation()" step="any">
-                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #e2e8f0; margin-top: 0.4rem;">
-                    <span>Remaining Debt:</span>
-                    <strong style="color: #f87171;" id="remainingDebtDisplay">₦0.00</strong>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #cbd5e1;">
+                    <span>Remaining Balance Due:</span>
+                    <strong style="color: #f87171;" id="remainingDebtDisplay">₦0</strong>
                 </div>
             </div>
 
@@ -429,7 +429,7 @@ function renderCart() {
 
     if (cart.length === 0) {
         list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:2rem 0;" id="emptyCartMessage">Tap any item on the left to add to sale 👈</div>';
-        document.getElementById('displayTotal').textContent = '₦0.00';
+        document.getElementById('displayTotal').textContent = '₦0';
         document.getElementById('hiddenTotal').value = 0;
         btn.disabled = true;
         btn.style.opacity = 0.5;
@@ -469,7 +469,7 @@ function renderCart() {
     });
 
     list.innerHTML = html;
-    document.getElementById('displayTotal').textContent = '₦' + total.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    document.getElementById('displayTotal').textContent = '₦' + Math.round(total).toLocaleString('en-US');
     document.getElementById('hiddenTotal').value = total;
 
     updateDebtCalculation();
@@ -527,7 +527,7 @@ function updateDebtCalculation() {
     if (paymentMode === 'DEBT') {
         const payingNow = parseFloat(partPayInput.value) || 0;
         const remaining = Math.max(0, total - payingNow);
-        remainingDisplay.textContent = '₦' + remaining.toLocaleString('en-US', { minimumFractionDigits: 2 });
+        remainingDisplay.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
         document.getElementById('hiddenPaid').value = payingNow;
         document.getElementById('hiddenCash').value = payingNow;
     } else if (paymentMode === 'CASH') {

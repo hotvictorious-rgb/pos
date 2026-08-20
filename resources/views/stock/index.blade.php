@@ -193,7 +193,7 @@
                             <div style="font-size: 0.75rem; color: var(--text-muted);">Code: {{ $level->product->code ?? 'N/A' }}</div>
                         </td>
                         <td>{{ $level->product->category ?? 'General' }}</td>
-                        <td style="font-weight: 700;">₦{{ number_format($level->product->unitPrice ?? 0, 2) }}</td>
+                        <td style="font-weight: 700;">₦{{ number_format($level->product->unitPrice ?? 0, 0) }}</td>
                         <td>
                             <span style="font-size: 1.1rem; font-weight: 800; color: #4ade80;">
                                 {{ $level->physical_stock }}

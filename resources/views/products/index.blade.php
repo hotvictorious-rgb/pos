@@ -180,7 +180,7 @@
                         <td><span class="badge badge-info">{{ $p->category }}</span></td>
                         <td>{{ $p->brand ?? 'Standard' }} {{ $p->size ? '('.$p->size.')' : '' }}</td>
                         <td style="font-size: 1.15rem; font-weight: 800; color: #4ade80;">
-                            ₦{{ number_format($p->unitPrice, 2) }}
+                            ₦{{ number_format($p->unitPrice, 0) }}
                         </td>
                         @foreach($warehouses as $wh)
                             <td>

@@ -78,7 +78,7 @@
 
         <div style="text-align: right;">
             <div style="font-size: 1.35rem; font-weight: 800; color: #4ade80; margin-bottom: 0.75rem;">
-                ₦{{ number_format($sale->totalAmount, 2) }}
+                ₦{{ number_format($sale->totalAmount, 0) }}
             </div>
 
             <form method="POST" action="{{ route('stock.dispatch', $sale->id) }}" onsubmit="return confirm('Confirm that customer is taking these items away now?')">

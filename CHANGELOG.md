@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Cashier Shift Balancing Feature**: Completely removed cashier shift balancing workflows, modal forms, routes (`/close-shift`), shift reports table, and JSON shift exports across the entire codebase to streamline closing operations.
 
 ### Changed
+- **Zero-Decimal Naira Currency Formatting**: Standardized all currency amounts, product prices, receipts, ledger debts, revenue KPIs, and POS cart displays across all Blade views and JavaScript calculators to 0 decimal places (`₦75,000` instead of `₦75,000.00`) reflecting standard wholesale/retail market currency conventions.
 - **Header Brand Title**: Updated sidebar/header brand subtitle from "Nwaniba POS & Stock" to generic "POS & Stock".
 
 ### Fixed

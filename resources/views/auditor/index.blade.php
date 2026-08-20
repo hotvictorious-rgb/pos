@@ -148,7 +148,7 @@
                             </span> units
                         </td>
                         <td style="font-weight: 800; font-size: 1.05rem;">
-                            ₦{{ number_format($row['stock_value'], 2) }}
+                            ₦{{ number_format($row['stock_value'], 0) }}
                         </td>
                     </tr>
                     @endforeach
