@@ -219,7 +219,7 @@ class ReportController extends Controller
 
             if ($type === 'sales') {
                 fputcsv($handle, ['Invoice ID', 'Date & Time', 'Customer Name', 'Customer Phone', 'Items Count', 'Gross Total (NGN)', 'Paid Amount (NGN)', 'Debt Balance (NGN)', 'Delivery / Handover Status', 'Cashier Name']);
-                foreach (Sale::with('items')->orderBy('createdAt', 'desc')->get() as $s) {
+                foreach (Sale::with('items')->orderBy('createdAt', 'desc')->cursor() as $s) {
                     $debt = max(0, $s->totalAmount - $s->paidAmount);
                     fputcsv($handle, [
                         $s->id,
@@ -236,14 +236,14 @@ class ReportController extends Controller
                 }
             } elseif ($type === 'inventory') {
                 fputcsv($handle, ['Product ID', 'SKU', 'Product Name', 'Category', 'Brand', 'Size', 'Selling Price (NGN)', 'Total Physical Shelf Units', 'Stock Status', 'Total Asset Valuation (NGN)']);
-                foreach (Product::where('archived', false)->get() as $p) {
+                foreach (Product::where('archived', false)->cursor() as $p) {
                     $stock = StockLevel::where('product_id', $p->id)->sum('physical_stock');
                     $status = $stock <= 0 ? 'OUT_OF_STOCK' : ($stock <= 5 ? 'LOW_STOCK' : 'IN_STOCK');
                     fputcsv($handle, [$p->id, $p->code, $p->name, $p->category, $p->brand, $p->size, $p->unitPrice, $stock, $status, $stock * (float)$p->unitPrice]);
                 }
             } elseif ($type === 'transfers') {
                 fputcsv($handle, ['Transfer No', 'Dispatched Date', 'Origin Branch', 'Destination Branch', 'Carrier Driver', 'Status', 'Dispatched By', 'Received By', 'Notes']);
-                foreach (Transfer::with(['source', 'destination'])->orderBy('created_at', 'desc')->get() as $t) {
+                foreach (Transfer::with(['source', 'destination'])->orderBy('created_at', 'desc')->cursor() as $t) {
                     fputcsv($handle, [
                         $t->transfer_no,
                         $t->created_at,
@@ -258,12 +258,12 @@ class ReportController extends Controller
                 }
             } elseif ($type === 'debtors') {
                 fputcsv($handle, ['Customer Name', 'Phone Number', 'Address / Market Location', 'Total Debt Owed (NGN)', 'Last Updated']);
-                foreach (Customer::where('total_debt', '>', 0)->get() as $c) {
+                foreach (Customer::where('total_debt', '>', 0)->cursor() as $c) {
                     fputcsv($handle, [$c->name, $c->phone, $c->address, $c->total_debt, $c->updated_at]);
                 }
             } elseif ($type === 'damages') {
                 fputcsv($handle, ['Date & Time', 'Shop Location', 'SKU', 'Product Name', 'Incident Category', 'Quantity Deducted', 'Reason / Notes', 'Staff Responsible']);
-                foreach (StockAdjustment::with('warehouse')->orderBy('created_at', 'desc')->get() as $a) {
+                foreach (StockAdjustment::with('warehouse')->orderBy('created_at', 'desc')->cursor() as $a) {
                     fputcsv($handle, [
                         $a->created_at,
                         $a->warehouse->name ?? 'Shop',
