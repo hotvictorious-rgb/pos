@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Date-Filterable Executive Dashboard**:
+  - **Interactive Period Presets**: Added quick filter pills for `Today`, `Yesterday`, `This Week`, `This Month`, `This Year`, `All-Time`, and a custom date range picker (`from_date` to `to_date`).
+  - **Comprehensive Live Business KPIs**:
+    - **Sales & Cash Inflow**: Gross Sales (₦), Transactions Count, Cash Drawer Collected (₦), POS / Card & Bank Collected (₦), and New Credit / Debt Incurred (₦).
+    - **Stock Flow & Inventory Logistics**: Units In (+), Units Out (-), Total Stock Valuation (₦), and Low Stock / Out of Stock SKU Alerts.
+    - **Fulfillment & Liabilities**: Unsupplied Orders Count with real-time monetary liability (₦).
+    - **Debt Recoveries**: Installment debt payments collected in the selected period (₦), active debtors count, and all-time outstanding debt.
+    - **Anti-Theft Radar & Losses**: Real-time Transfer Discrepancy Alerts, In-Transit shipments, and damaged goods write-offs.
+    - **Returns & Refunds**: Total returned order counts, units returned, and refund amounts in the period.
+  - **Dedicated Dashboard Controller**: Created `App\Http\Controllers\Web\DashboardController` adhering to PSR-12 and modular architecture.
+  - **Automated Feature Tests**: Created `tests/Feature/DashboardDateFilterTest.php` verifying default Today view, custom date presets, stock movements, and debt recovery calculations.
+
 ### Removed
 - **Cashier Shift Balancing Feature**: Completely removed cashier shift balancing workflows, modal forms, routes (`/close-shift`), shift reports table, and JSON shift exports across the entire codebase to streamline closing operations.
 

@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DataController;
 use App\Http\Controllers\BackupController;
 use App\Http\Controllers\Installer\InstallerController;
+use App\Http\Controllers\Web\DashboardController;
 use App\Http\Controllers\Web\PosController;
 use App\Http\Controllers\Web\StockController;
 use App\Http\Controllers\Web\AuditorController;
@@ -61,31 +62,14 @@ Route::prefix('api')->group(function () {
 // INTERACTIVE USER-FRIENDLY BLADE WEB APP
 // ─────────────────────────────────────────────────────────
 
-// 1. Dashboard (Main Visual Menu)
-Route::get('/', function () {
-    $totalProducts = Product::where('archived', false)->count();
-    $totalWarehouses = Warehouse::where('is_active', true)->count();
-    $todaySalesCount = Sale::whereDate('created_at', today())->count();
-    $todaySalesAmount = Sale::whereDate('created_at', today())->sum('totalAmount');
-    $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')->count();
-    $totalDebt = Customer::sum('total_debt');
-    $discrepancyCount = Transfer::where('status', 'DISCREPANCY')->count();
-
-    return view('dashboard', compact(
-        'totalProducts',
-        'totalWarehouses',
-        'todaySalesCount',
-        'todaySalesAmount',
-        'unsuppliedCount',
-        'totalDebt',
-        'discrepancyCount'
-    ));
-})->name('dashboard');
+// 1. Executive Dashboard (Date Filterable)
+Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
 // 2. Visual Point of Sale (POS)
 Route::prefix('pos')->name('pos.')->group(function () {
     Route::get('/',                     [PosController::class, 'index'])->name('index');
     Route::post('/checkout',            [PosController::class, 'checkout'])->name('checkout');
+    Route::post('/customer/quick-register', [PosController::class, 'quickRegisterCustomer'])->name('customer.quick_register');
     Route::get('/receipt/{id}',         [PosController::class, 'receipt'])->name('receipt');
     Route::get('/returns',              [PosController::class, 'returns'])->name('returns');
     Route::post('/returns',             [PosController::class, 'processReturn'])->name('returns.process');

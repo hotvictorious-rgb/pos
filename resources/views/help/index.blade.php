@@ -122,9 +122,9 @@
             </div>
 
             <div class="step-box">
-                <strong style="color: #4ade80;">1. Live Remote Monitoring of Multi-Branch Sales</strong>
+                <strong style="color: #4ade80;">1. Live Remote Monitoring with Date Filter Presets</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    View real-time daily sales revenue, cash in drawer, POS collections, and outstanding customer debt across all shop branches simultaneously.
+                    The main Executive Dashboard now features fast date filter buttons (<strong>Today</strong>, <strong>Yesterday</strong>, <strong>This Week</strong>, <strong>This Month</strong>, <strong>This Year</strong>, <strong>All-Time</strong>, or <strong>Custom Date Range</strong>). Instantly monitor gross sales revenue, physical cash drawer collections, POS/transfer payments, new debt issued, stock movements in/out, customer refunds, and debt recoveries in that exact time window.
                 </p>
             </div>
 
