@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Exportable Filtered Datasets across All 8 Tabs in Universal History**:
+  - **Memory-Safe CSV & Structured JSON Streaming**: Added live **"📥 Export Filtered CSV"** and **"📄 Export JSON"** action buttons across all 8 tabs in Universal History (`/transactions`):
+    1. `sales`: Sales Invoices History filtered by Date, Payment Status (`PAID`/`PART_PAID`/`NOT_PAID`), Delivery Status, Cashier, Customer search.
+    2. `stock_in`: Stock In History filtered by Date, Inflow Category (`Supplier`/`Opening`/`Audit`), Product SKU/Name, Staff.
+    3. `stock_out`: Stock Out & Dispatches filtered by Date, Outflow Type (`Pickup`/`Transfer Out`/`Damage`/`Expired`/`Lost`), Product/Notes, Staff.
+    4. `in_transit`: In-Transit Buffer filtered by Date, Carrier Driver, Origin/Destination Branch, Dispatched By.
+    5. `transfers_in` / `incoming`: Incoming Branch Transfers filtered by Date, Transfer Status (`RECEIVED`/`DISCREPANCY`/`DISPATCHED`), Branch, Carrier.
+    6. `returns`: Customer Returns & Shelf Restitutions filtered by Date, Return Reason, Product/Sale Ref, Staff.
+    7. `refunds`: Refunds & Financial Reversals filtered by Date, Min/Max Amount, Customer, Sale Ref, Staff.
+    8. `debts`: Customer Debts & Repayment Ledgers filtered by Date, Ledger Type (`PAYMENT`/`INVOICE`/`RETURN_CREDIT`), Payment Method, Customer, Reference #.
+  - **Shared Query Builder Architecture**: Extracted query building logic in `TransactionController` into dedicated reusable methods ensuring exact parity between UI tables and CSV/JSON export files.
+  - **Automated Feature Tests**: Created `tests/Feature/TransactionExportTest.php` verifying CSV streaming and JSON structure across all 8 tabs.
 - **Date-Filterable Executive Dashboard**:
   - **Interactive Period Presets**: Added quick filter pills for `Today`, `Yesterday`, `This Week`, `This Month`, `This Year`, `All-Time`, and a custom date range picker (`from_date` to `to_date`).
   - **Comprehensive Live Business KPIs**:

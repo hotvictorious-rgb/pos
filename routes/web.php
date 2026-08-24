@@ -120,8 +120,12 @@ Route::prefix('debts')->name('debts.')->group(function () {
     Route::post('/pay/{id}',    [DebtController::class, 'recordPayment'])->name('pay');
 });
 
-// 7. Transactions History & Audit Trail
-Route::get('/transactions', [\App\Http\Controllers\Web\TransactionController::class, 'index'])->name('transactions.index');
+// 7. Transactions History & Audit Trail (Exportable)
+Route::prefix('transactions')->name('transactions.')->group(function () {
+    Route::get('/',                  [\App\Http\Controllers\Web\TransactionController::class, 'index'])->name('index');
+    Route::get('/export-csv/{tab}',  [\App\Http\Controllers\Web\TransactionController::class, 'exportCsv'])->name('export.csv');
+    Route::get('/export-json/{tab}', [\App\Http\Controllers\Web\TransactionController::class, 'exportJson'])->name('export.json');
+});
 
 
 // 7. Workers & Role Permissions Hub

@@ -476,9 +476,9 @@
             </div>
 
             <div class="step-box">
-                <strong style="color: #4ade80;">5. Reports & AI Data Exports (CSV / JSON)</strong>
+                <strong style="color: #4ade80;">5. Universal History & AI Data Exports (CSV / JSON across all 8 Tabs)</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>📊 Reports & AI Exports</strong> in the sidebar. You can view, print, and download structured CSV (Excel) and JSON files for Sales, Inventory Valuations, Transfers, and Debtors that any external AI or spreadsheet can analyze.
+                    In <strong>📜 Universal History & Ledgers</strong>, all 8 transaction tabs (<em>Sales, Stock In, Stock Out, In-Transit Buffer, Incoming Transfers, Returns, Refunds, and Customer Debts</em>) feature live filtered <strong>"📥 Export Filtered CSV"</strong> and <strong>"📄 Export JSON"</strong> buttons that stream only records matching your active filters for Excel, Google Sheets, or auditing.
                 </p>
             </div>
 
