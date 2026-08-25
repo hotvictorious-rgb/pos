@@ -319,9 +319,20 @@
             </button>
         </div>
 
+        <!-- Sale Type Mode Selector (Retail vs Confidential Wholesale Dispatch) -->
+        <div style="display: flex; gap: 0.4rem; margin-bottom: 0.85rem; background: rgba(15,23,42,0.8); padding: 0.35rem; border-radius: 12px; border: 1px solid var(--border);">
+            <button type="button" class="btn btn-primary" id="btnModeRetail" style="flex: 1; padding: 0.45rem 0.5rem; font-size: 0.8rem; font-weight: 800; border-radius: 8px;" onclick="setSaleMode('RETAIL')">
+                🛒 Retail Sale
+            </button>
+            <button type="button" class="btn btn-secondary" id="btnModeWholesale" style="flex: 1.25; padding: 0.45rem 0.5rem; font-size: 0.8rem; font-weight: 800; border-radius: 8px; border-color: rgba(139,92,246,0.4); color: #c084fc;" onclick="setSaleMode('WHOLESALE_DISPATCH')">
+                📦 Wholesale Dispatch
+            </button>
+        </div>
+
         <form id="checkoutForm" method="POST" action="{{ route('pos.checkout') }}">
             @csrf
             <input type="hidden" name="warehouse_id" value="{{ $activeWarehouse->id }}">
+            <input type="hidden" name="sale_type" id="saleTypeInput" value="RETAIL">
             <input type="hidden" name="totalAmount" id="hiddenTotal" value="0">
             <input type="hidden" name="paidAmount" id="hiddenPaid" value="0">
             <input type="hidden" name="cashAmount" id="hiddenCash" value="0">
@@ -338,7 +349,7 @@
             <div style="background: rgba(30,41,59,0.5); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
                     <label style="font-size: 0.78rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; margin-bottom: 0;">
-                        👤 Customer Account
+                        👤 Customer Account <span id="wholesaleCustReqBadge" style="color: #c084fc; font-size: 0.7rem; display: none;">(Wholesaler Required)</span>
                     </label>
                     <button type="button" class="btn btn-secondary" onclick="openQuickCustomerModal()" style="padding: 0.2rem 0.55rem; font-size: 0.72rem; border-color: #3b82f6; color: #93c5fd;">
                         ➕ Quick Add
@@ -382,9 +393,9 @@
             </div>
 
             <!-- Total Amount Card -->
-            <div style="background: rgba(15,23,42,0.8); border: 2px solid #334155; border-radius: 14px; padding: 1rem; margin-bottom: 1rem;">
+            <div id="totalBillCard" style="background: rgba(15,23,42,0.8); border: 2px solid #334155; border-radius: 14px; padding: 1rem; margin-bottom: 1rem;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted);">
-                    <span>Total Bill:</span>
+                    <span id="totalBillLabel">Total Bill:</span>
                     <span style="font-size: 1.5rem; font-weight: 800; color: #4ade80;" id="displayTotal">₦0.00</span>
                 </div>
             </div>
@@ -409,24 +420,37 @@
                 </div>
             </div>
 
-            <!-- Payment Breakdown Tabs -->
-            <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase;">
-                💳 Payment Status & Method
-            </div>
-            <div class="pay-tabs">
-                <div class="pay-tab active" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Paid (Cash)</div>
-                <div class="pay-tab" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS/Bank)</div>
-                <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part-Paid / Not Paid</div>
+            <!-- Standard Payment Breakdown Section (Retail Mode) -->
+            <div id="retailPaymentSection">
+                <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase;">
+                    💳 Payment Status & Method
+                </div>
+                <div class="pay-tabs">
+                    <div class="pay-tab active" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Paid (Cash)</div>
+                    <div class="pay-tab" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS/Bank)</div>
+                    <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part-Paid / Not Paid</div>
+                </div>
+
+                <!-- Part-Payment Input (Visible when Part-Paid / Not Paid is selected) -->
+                <div id="debtBox" style="display: none; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 0.75rem; margin-bottom: 1rem;">
+                    <label style="color: #c084fc;">Amount Paying Now (₦) [Part-Paid or 0 for Not Paid]:</label>
+                    <input type="number" id="partPayInput" placeholder="e.g. 5000 (or 0 if totally unpaid)" onkeyup="updateDebtCalculation()" step="any">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #cbd5e1;">
+                        <span>Remaining Debt Balance:</span>
+                        <strong style="color: #f87171;" id="remainingDebtDisplay">₦0</strong>
+                    </div>
+                </div>
             </div>
 
-            <!-- Part-Payment Input (Visible when Part-Paid / Not Paid is selected) -->
-            <div id="debtBox" style="display: none; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 0.75rem; margin-bottom: 1rem;">
-                <label style="color: #c084fc;">Amount Paying Now (₦) [Part-Paid or 0 for Not Paid]:</label>
-                <input type="number" id="partPayInput" placeholder="e.g. 5000 (or 0 if totally unpaid)" onkeyup="updateDebtCalculation()" step="any">
-                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #cbd5e1;">
-                    <span>Remaining Debt Balance:</span>
-                    <strong style="color: #f87171;" id="remainingDebtDisplay">₦0</strong>
+            <!-- Wholesale Dispatch Note Notice Box (Wholesale Mode) -->
+            <div id="wholesaleNoticeBox" style="display: none; background: rgba(139,92,246,0.12); border: 1.5px solid rgba(168,85,247,0.4); border-radius: 14px; padding: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+                    <span style="font-size: 1.25rem;">🔒</span>
+                    <strong style="color: #c084fc; font-size: 0.9rem;">Wholesale Dispatch Note</strong>
                 </div>
+                <p style="font-size: 0.78rem; color: #cbd5e1; margin-bottom: 0; line-height: 1.4;">
+                    Physical goods will be deducted from shop shelves immediately. Pricing, invoicing, and payment collection are handled privately by Madam in the office.
+                </p>
             </div>
 
             <!-- Complete Sale Button -->
@@ -533,6 +557,51 @@
 <script>
 let cart = [];
 let paymentMode = 'CASH';
+let saleMode = 'RETAIL'; // 'RETAIL' or 'WHOLESALE_DISPATCH'
+
+function setSaleMode(mode) {
+    saleMode = mode;
+    document.getElementById('saleTypeInput').value = mode;
+    const btnRetail = document.getElementById('btnModeRetail');
+    const btnWholesale = document.getElementById('btnModeWholesale');
+    const retailPaySec = document.getElementById('retailPaymentSection');
+    const wholesaleBox = document.getElementById('wholesaleNoticeBox');
+    const wholesaleBadge = document.getElementById('wholesaleCustReqBadge');
+    const nameReq = document.getElementById('custNameReq');
+    const phoneReq = document.getElementById('custPhoneReq');
+
+    if (mode === 'WHOLESALE_DISPATCH') {
+        btnWholesale.className = 'btn btn-primary';
+        btnWholesale.style.background = '#8b5cf6';
+        btnWholesale.style.borderColor = '#7c3aed';
+        btnWholesale.style.color = '#fff';
+        btnRetail.className = 'btn btn-secondary';
+        btnRetail.style.background = '';
+        btnRetail.style.color = '';
+
+        retailPaySec.style.display = 'none';
+        wholesaleBox.style.display = 'block';
+        wholesaleBadge.style.display = 'inline';
+        nameReq.style.display = 'inline';
+        phoneReq.style.display = 'inline';
+        document.getElementById('totalBillLabel').textContent = 'Wholesale Units:';
+    } else {
+        btnRetail.className = 'btn btn-primary';
+        btnRetail.style.background = '';
+        btnRetail.style.color = '';
+        btnWholesale.className = 'btn btn-secondary';
+        btnWholesale.style.background = '';
+        btnWholesale.style.color = '#c084fc';
+        btnWholesale.style.borderColor = 'rgba(139,92,246,0.4)';
+
+        retailPaySec.style.display = 'block';
+        wholesaleBox.style.display = 'none';
+        wholesaleBadge.style.display = 'none';
+        document.getElementById('totalBillLabel').textContent = 'Total Bill:';
+        updateCustomerRequirements();
+    }
+    renderCart();
+}
 
 function addToCart(id, name, price, stock) {
     const existing = cart.find(i => i.id === id);
@@ -578,25 +647,32 @@ function renderCart() {
 
     let html = '';
     let total = 0;
+    let totalUnitsCount = 0;
 
     cart.forEach((item, index) => {
         const itemTotal = item.price * item.qty;
         total += itemTotal;
+        totalUnitsCount += item.qty;
+
+        const isWholesale = (saleMode === 'WHOLESALE_DISPATCH');
+        const priceDisplay = isWholesale
+            ? `<div style="font-size:0.75rem;color:#c084fc;font-weight:700;margin-top:0.25rem;">🔒 Price: Negotiated by Madam</div>`
+            : `<div style="font-size:0.75rem;color:#94a3b8;display:flex;align-items:center;gap:0.35rem;margin-top:0.25rem;">
+                    <span>Price (₦):</span>
+                    <input type="number" step="any" min="0" value="${item.price}" 
+                           style="width:90px;padding:0.2rem 0.4rem;font-size:0.8rem;background:#0b0f19;border:1px solid #475569;border-radius:6px;color:#4ade80;font-weight:700;" 
+                           onchange="updateItemPrice('${item.id}', this.value)" title="Click to edit selling price for market negotiation / bulk discount">
+                    <span>x ${item.qty}</span>
+                </div>`;
 
         html += `
         <div class="cart-item">
             <div>
                 <input type="hidden" name="items[${index}][productId]" value="${item.id}">
                 <input type="hidden" name="items[${index}][quantity]" value="${item.qty}">
-                <input type="hidden" name="items[${index}][unitPrice]" value="${item.price}">
+                <input type="hidden" name="items[${index}][unitPrice]" value="${isWholesale ? 0 : item.price}">
                 <div style="font-weight:700;font-size:0.9rem;">${item.name}</div>
-                <div style="font-size:0.75rem;color:#94a3b8;display:flex;align-items:center;gap:0.35rem;margin-top:0.25rem;">
-                    <span>Price (₦):</span>
-                    <input type="number" step="any" min="0" value="${item.price}" 
-                           style="width:90px;padding:0.2rem 0.4rem;font-size:0.8rem;background:#0b0f19;border:1px solid #475569;border-radius:6px;color:#4ade80;font-weight:700;" 
-                           onchange="updateItemPrice('${item.id}', this.value)" title="Click to edit selling price for market negotiation / bulk discount">
-                    <span>x ${item.qty}</span>
-                </div>
+                ${priceDisplay}
             </div>
             <div class="qty-controls">
                 <button type="button" class="qty-btn" onclick="updateQty('${item.id}', -1)">−</button>
@@ -608,10 +684,17 @@ function renderCart() {
     });
 
     list.innerHTML = html;
-    document.getElementById('displayTotal').textContent = '₦' + Math.round(total).toLocaleString('en-US');
-    document.getElementById('hiddenTotal').value = total;
-
-    updateDebtCalculation();
+    if (saleMode === 'WHOLESALE_DISPATCH') {
+        document.getElementById('displayTotal').textContent = totalUnitsCount + ' units (Confidential Price)';
+        document.getElementById('hiddenTotal').value = 0;
+        document.getElementById('hiddenPaid').value = 0;
+        document.getElementById('hiddenCash').value = 0;
+        document.getElementById('hiddenPos').value = 0;
+    } else {
+        document.getElementById('displayTotal').textContent = '₦' + Math.round(total).toLocaleString('en-US');
+        document.getElementById('hiddenTotal').value = total;
+        updateDebtCalculation();
+    }
 
     btn.disabled = false;
     btn.style.opacity = 1;
@@ -871,9 +954,10 @@ function submitSale() {
     const totalUnits = cart.reduce((sum, item) => sum + item.qty, 0);
 
     const errors = [];
+    const isWholesale = (saleMode === 'WHOLESALE_DISPATCH');
 
     // 1. Empty Cart Check
-    if (cart.length === 0 || total <= 0) {
+    if (cart.length === 0 || (!isWholesale && total <= 0)) {
         errors.push({
             title: 'Cart is Empty',
             desc: 'Please select at least one product from the catalog on the left to begin a sale.',
@@ -881,23 +965,41 @@ function submitSale() {
         });
     }
 
-    // Optional phone validation if typed for a regular cash sale
-    if (rawCustPhone && !phoneCheck.valid) {
-        errors.push({
-            title: 'Invalid Nigerian Phone Number',
-            desc: 'Customer phone number must be exactly 11 digits starting with 0 (e.g. 08031234567, 09012345678).',
-            focus: 'customerPhoneInput'
-        });
+    // 2. Customer Validation (Mandatory for Wholesale Dispatch)
+    if (isWholesale) {
+        if (!custName || custName.toLowerCase() === 'walk-in customer') {
+            errors.push({
+                title: 'Wholesaler Account Required',
+                desc: 'Wholesale dispatch notes must be issued to a registered wholesale customer. Please select customer from dropdown or tap "+ Quick Add".',
+                focus: 'customerSelect'
+            });
+        }
+        if (!rawCustPhone || !phoneCheck.valid) {
+            errors.push({
+                title: '11-Digit Phone Number Mandatory',
+                desc: 'A valid 11-digit Nigerian phone number is required on all wholesale dispatch waybills.',
+                focus: 'customerPhoneInput'
+            });
+        }
+    } else {
+        // Optional phone validation if typed for a regular cash sale
+        if (rawCustPhone && !phoneCheck.valid) {
+            errors.push({
+                title: 'Invalid Nigerian Phone Number',
+                desc: 'Customer phone number must be exactly 11 digits starting with 0 (e.g. 08031234567, 09012345678).',
+                focus: 'customerPhoneInput'
+            });
+        }
     }
 
-    // 2. Physical Stock Handover Validation (The Golden Law)
+    // 3. Physical Stock Handover Validation (The Golden Law)
     if (isSupplied && cart.length > 0) {
         cart.forEach(item => {
             const availStock = (typeof item.stock === 'number') ? item.stock : 0;
             if (availStock <= 0) {
                 errors.push({
                     title: `Out of Stock: ${item.name}`,
-                    desc: `<strong>"${item.name}"</strong> has <strong>0 physical units</strong> on ground in this shop.<br><span style="color:#fbbf24;font-size:0.78rem;">👉 Resolution: Switch Delivery below to "🟠 NOT SUPPLIED" if customer is paying in advance for delayed pickup or transfer.</span>`,
+                    desc: `<strong>"${item.name}"</strong> has <strong>0 physical units</strong> on ground in this shop.<br><span style="color:#fbbf24;font-size:0.78rem;">👉 Resolution: Switch Delivery below to "🟠 NOT SUPPLIED" if customer is picking up later.</span>`,
                     focus: 'labelSuppliedNo'
                 });
             } else if (item.qty > availStock) {
@@ -910,8 +1012,8 @@ function submitSale() {
         });
     }
 
-    // 3. Payment Mode & Debt Validation
-    if (paymentMode === 'DEBT') {
+    // 4. Retail Payment Mode & Debt Validation
+    if (!isWholesale && paymentMode === 'DEBT') {
         const partPayRaw = document.getElementById('partPayInput').value;
         const partPayInput = parseFloat(partPayRaw);
 
@@ -947,7 +1049,7 @@ function submitSale() {
         }
     }
 
-    // 4. Delayed Pickup (Not Supplied) Rule
+    // 5. Delayed Pickup (Not Supplied) Rule
     if (!isSupplied) {
         if (!rawCustPhone || !phoneCheck.valid) {
             errors.push({
@@ -968,7 +1070,7 @@ function submitSale() {
     // ⛔ IF ANY BUSINESS RULE IS VIOLATED: BLOCK SUBMISSION AND SHOW REASON POPUP MODAL!
     if (errors.length > 0) {
         showActionBlockedModal({
-            title: 'Sale Cannot Be Completed',
+            title: isWholesale ? 'Wholesale Dispatch Cannot Be Completed' : 'Sale Cannot Be Completed',
             subtitle: 'Please resolve the following business rule requirements:',
             errors: errors
         });
@@ -989,31 +1091,48 @@ function submitSale() {
         row.style.paddingBottom = '0.35rem';
 
         const subtotal = item.qty * item.price;
+        const priceInfo = isWholesale
+            ? `<div style="font-size: 0.75rem; color: #c084fc; font-weight: 700;">🔒 Price: Negotiated by Madam</div>`
+            : `<div style="font-size: 0.75rem; color: #94a3b8;">₦${Math.round(item.price).toLocaleString('en-US')} per unit</div>`;
+        const totalInfo = isWholesale
+            ? `<strong style="color: #c084fc; font-size: 0.85rem;">🔒 Confidential</strong>`
+            : `<strong style="color: #4ade80; font-size: 0.9rem;">₦${Math.round(subtotal).toLocaleString('en-US')}</strong>`;
+
         row.innerHTML = `
             <div style="flex: 1; padding-right: 0.5rem;">
                 <div style="font-weight: 700; color: #f8fafc; font-size: 0.88rem;">${item.name}</div>
-                <div style="font-size: 0.75rem; color: #94a3b8;">₦${Math.round(item.price).toLocaleString('en-US')} per unit</div>
+                ${priceInfo}
             </div>
             <div style="text-align: right; white-space: nowrap;">
                 <span style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); padding: 0.15rem 0.45rem; border-radius: 6px; font-weight: 800; font-size: 0.8rem; margin-right: 0.4rem;">
                     × ${item.qty}
                 </span>
-                <strong style="color: #4ade80; font-size: 0.9rem;">₦${Math.round(subtotal).toLocaleString('en-US')}</strong>
+                ${totalInfo}
             </div>
         `;
         itemsListEl.appendChild(row);
     });
 
     document.getElementById('confirmCustName').innerHTML = `<strong>${custName}</strong> ${custPhone ? '<span style="color:#93c5fd;font-size:0.78rem;">(' + custPhone + ')</span>' : ''}`;
-    document.getElementById('confirmTotalBill').textContent = '₦' + Math.round(total).toLocaleString('en-US');
-    document.getElementById('confirmPayingNow').textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : 'Paid ' + paymentMode) + ')';
     
-    if (remaining > 0) {
-        document.getElementById('confirmDebtLedger').textContent = '+ ₦' + Math.round(remaining).toLocaleString('en-US') + ' Added to Debtor Ledger';
-        document.getElementById('confirmDebtLedger').style.color = '#f87171';
+    if (isWholesale) {
+        document.getElementById('confirmTotalBill').textContent = totalUnits + ' units (Confidential Price)';
+        document.getElementById('confirmPayingNow').textContent = '🔒 Negotiated & Billed in Office by Madam';
+        document.getElementById('confirmPayingNow').style.color = '#c084fc';
+        document.getElementById('confirmDebtLedger').textContent = '📦 Handover Recorded in Wholesale Hub';
+        document.getElementById('confirmDebtLedger').style.color = '#60a5fa';
     } else {
-        document.getElementById('confirmDebtLedger').textContent = '₦0 (Fully Settled)';
-        document.getElementById('confirmDebtLedger').style.color = '#4ade80';
+        document.getElementById('confirmTotalBill').textContent = '₦' + Math.round(total).toLocaleString('en-US');
+        document.getElementById('confirmPayingNow').textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : 'Paid ' + paymentMode) + ')';
+        document.getElementById('confirmPayingNow').style.color = '#60a5fa';
+        
+        if (remaining > 0) {
+            document.getElementById('confirmDebtLedger').textContent = '+ ₦' + Math.round(remaining).toLocaleString('en-US') + ' Added to Debtor Ledger';
+            document.getElementById('confirmDebtLedger').style.color = '#f87171';
+        } else {
+            document.getElementById('confirmDebtLedger').textContent = '₦0 (Fully Settled)';
+            document.getElementById('confirmDebtLedger').style.color = '#4ade80';
+        }
     }
 
     const impactEl = document.getElementById('confirmStockImpact');

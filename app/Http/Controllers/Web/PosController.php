@@ -211,6 +211,7 @@ class PosController extends Controller
             'customerName' => $customerName ?: 'Walk-in Customer',
             'customerPhone' => $customerPhone ?: null,
             'customerId' => $customerId,
+            'sale_type' => $request->get('sale_type', 'RETAIL'),
             'note' => $request->note,
         ];
 

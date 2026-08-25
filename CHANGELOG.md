@@ -11,7 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Credit Limits System**:
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
 
-### Added
+- **Confidential Wholesale Dispatch & Waybill Handover Engine (Option B)**:
+  - **Wholesale Price Secrecy**: Added **`📦 Wholesale Dispatch`** mode on the POS terminal that completely masks item prices (`🔒 Negotiated by Madam`), allowing floor workers to process physical handovers and verify counts without ever seeing agreed wholesale discounts or profit margins.
+  - **Accurate Physical Stock Deductions**: Dispatched wholesale goods are immediately deducted unit-for-unit from the shop's physical shelf closing balance, protecting against inventory leakage.
+  - **Wholesale Goods Delivery Note & Waybill Printing**: Generates specialized, unpriced **📦 Wholesale Delivery Notes** featuring SKU codes, descriptions, exact quantities dispatched, handover status (`🟢 SUPPLIED` or `🟠 NOT SUPPLIED`), customer account information, and formal signature lines for the Store Attendant (Issued By) and Client/Driver (Received By).
+  - **Full Return & Restock Support**: Wholesale dispatch items can be returned via the Sales Returns hub with instant physical restocking back to shop shelves and complete audit trail logging.
 - **Executive Owner / Silent Auditor View-Only Refinements (`viewer` Role)**:
   - **100% Business Visibility**: Granted read-only monitoring access across all 11 business hubs (Master Dashboard, Catalog, Stock Levels, Inter-Branch Transfers, Pickup Orders, Damaged Goods, Sales & Debt Ledgers, Reports, Auditor Radar, and Staff Roster).
   - **Zero-Mutation Guard Middleware (`BlockReadOnlyMutations`)**: Intercepts and strictly rejects all mutating HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) with `403 Forbidden` to guarantee read-only accounts cannot modify, delete, or create records.

@@ -95,15 +95,19 @@ class StockService
             $deliveryStatus = $isSuppliedNow ? 'DELIVERED' : 'UNSUPPLIED';
             $saleStatus = ($paidAmount >= $totalAmount) ? 'COMPLETED' : 'PARTIAL';
 
+            $saleType = $saleData['sale_type'] ?? 'RETAIL';
+
             $sale = Sale::create([
                 'id' => $saleId,
                 'customerName' => $customerName,
+                'customerId' => $customerId,
                 'totalAmount' => $totalAmount,
                 'paidAmount' => $paidAmount,
                 'cashAmount' => $cashAmount,
                 'posAmount' => $posAmount + $transferAmount,
                 'note' => $saleData['note'] ?? null,
                 'status' => $saleStatus,
+                'sale_type' => $saleType,
                 'deliveryStatus' => $deliveryStatus,
                 'deliveredAt' => $isSuppliedNow ? now()->toIso8601String() : null,
                 'deliveredBy' => $isSuppliedNow ? $userName : null,
@@ -566,7 +570,7 @@ class StockService
                 'code' => 'RET-' . strtoupper(Str::random(6)),
                 'productId' => $firstProduct ? $firstProduct->id : 'MULTI',
                 'productName' => $firstProduct ? $firstProduct->name : 'Returned Items',
-                'quantity' => count($returnItems),
+                'quantity' => array_sum(array_column($returnItems, 'quantity')),
                 'refundAmount' => $totalRefundAmount,
                 'reason' => $reason,
                 'createdAt' => now()->toIso8601String(),

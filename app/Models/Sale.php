@@ -18,6 +18,8 @@ class Sale extends Model
         'posAmount',
         'note',
         'status',
+        'sale_type',
+        'customerId',
         'deliveryStatus',
         'deliveredAt',
         'deliveredBy',
