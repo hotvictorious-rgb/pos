@@ -654,14 +654,16 @@ function selectPaymentMode(mode) {
     document.getElementById('tabDebt').className = mode === 'DEBT' ? 'pay-tab active' : 'pay-tab';
 
     const debtBox = document.getElementById('debtBox');
-    debtBox.style.display = mode === 'DEBT' ? 'block' : 'none';
+    if (debtBox) {
+        debtBox.style.display = mode === 'DEBT' ? 'block' : 'none';
+    }
 
     updateDebtCalculation();
     updateCustomerRequirements();
 }
 
 function updateCustomerRequirements() {
-    const isSupplied = document.getElementById('radioYes').checked;
+    const isSupplied = document.getElementById('radioYes') ? document.getElementById('radioYes').checked : true;
     const isDebt = (paymentMode === 'DEBT');
     const isStrict = isDebt || !isSupplied;
 
@@ -669,6 +671,36 @@ function updateCustomerRequirements() {
     const phoneReq = document.getElementById('custPhoneReq');
     if (nameReq) nameReq.style.display = isStrict ? 'inline' : 'none';
     if (phoneReq) phoneReq.style.display = isStrict ? 'inline' : 'none';
+}
+
+function updateDebtCalculation() {
+    const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
+    const partPayInput = document.getElementById('partPayInput');
+    const remainingEl = document.getElementById('remainingDebtDisplay');
+
+    if (paymentMode === 'DEBT') {
+        const partPay = parseFloat(partPayInput ? partPayInput.value : 0) || 0;
+        const remaining = Math.max(0, total - partPay);
+        if (remainingEl) {
+            remainingEl.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
+        }
+        document.getElementById('hiddenPaid').value = partPay;
+        document.getElementById('hiddenCash').value = partPay;
+        document.getElementById('hiddenPos').value = 0;
+        document.getElementById('hiddenTransfer').value = 0;
+    } else if (paymentMode === 'POS') {
+        if (remainingEl) remainingEl.textContent = '₦0';
+        document.getElementById('hiddenPaid').value = total;
+        document.getElementById('hiddenPos').value = total;
+        document.getElementById('hiddenCash').value = 0;
+        document.getElementById('hiddenTransfer').value = 0;
+    } else { // CASH
+        if (remainingEl) remainingEl.textContent = '₦0';
+        document.getElementById('hiddenPaid').value = total;
+        document.getElementById('hiddenCash').value = total;
+        document.getElementById('hiddenPos').value = 0;
+        document.getElementById('hiddenTransfer').value = 0;
+    }
 }
 
 function onCustomerSelected(sel) {
@@ -825,112 +857,6 @@ function submitQuickCustomer(e) {
         btn.textContent = '💾 Save Customer';
         alert('Network error while saving customer');
     });
-}
-
-function updateDebtCalculation() {
-    const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
-    const partPay = parseFloat(document.getElementById('partPayInput').value) || 0;
-    const remaining = Math.max(0, total - partPay);
-    
-    document.getElementById('displayRemainingDebt').textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
-    document.getElementById('hiddenPaid').value = partPay;
-    document.getElementById('hiddenCash').value = partPay;
-    document.getElementById('hiddenPos').value = 0;
-}
-
-function selectPayment(mode) {
-    paymentMode = mode;
-    document.querySelectorAll('.pay-tab').forEach(t => t.classList.remove('active'));
-    
-    const partPaySec = document.getElementById('partPaymentSection');
-    const nameReq = document.getElementById('custNameReq');
-    const phoneReq = document.getElementById('custPhoneReq');
-    const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
-
-    if (mode === 'CASH') {
-        document.getElementById('tabCash').classList.add('active');
-        partPaySec.style.display = 'none';
-        nameReq.style.display = 'none';
-        phoneReq.style.display = 'none';
-        document.getElementById('hiddenPaid').value = total;
-        document.getElementById('hiddenCash').value = total;
-        document.getElementById('hiddenPos').value = 0;
-    } else if (mode === 'POS') {
-        document.getElementById('tabPos').classList.add('active');
-        partPaySec.style.display = 'none';
-        nameReq.style.display = 'none';
-        phoneReq.style.display = 'none';
-        document.getElementById('hiddenPaid').value = total;
-        document.getElementById('hiddenPos').value = total;
-        document.getElementById('hiddenCash').value = 0;
-    } else if (mode === 'DEBT') {
-        document.getElementById('tabDebt').classList.add('active');
-        partPaySec.style.display = 'block';
-        nameReq.style.display = 'inline';
-        phoneReq.style.display = 'inline';
-        document.getElementById('partPayInput').value = 0;
-        updateDebtCalculation();
-    }
-}
-
-function selectHandover(mode) {
-    const radioYes = document.getElementById('radioYes');
-    const radioNo = document.getElementById('radioNo');
-    const labelYes = document.getElementById('labelSuppliedYes');
-    const labelNo = document.getElementById('labelSuppliedNo');
-    const nameReq = document.getElementById('custNameReq');
-    const phoneReq = document.getElementById('custPhoneReq');
-
-    if (mode === 'yes') {
-        radioYes.checked = true;
-        labelYes.className = 'radio-card selected-yes';
-        labelNo.className = 'radio-card';
-        if (paymentMode !== 'DEBT') {
-            nameReq.style.display = 'none';
-            phoneReq.style.display = 'none';
-        }
-    } else {
-        radioNo.checked = true;
-        labelYes.className = 'radio-card';
-        labelNo.className = 'radio-card selected-no';
-        nameReq.style.display = 'inline';
-        phoneReq.style.display = 'inline';
-    }
-}
-
-function updateCartHiddenInputs() {
-    const form = document.getElementById('checkoutForm');
-    form.querySelectorAll('.cart-hidden-input').forEach(el => el.remove());
-
-    cart.forEach((item, index) => {
-        const idInput = document.createElement('input');
-        idInput.type = 'hidden';
-        idInput.name = `items[${index}][productId]`;
-        idInput.value = item.id;
-        idInput.className = 'cart-hidden-input';
-
-        const qtyInput = document.createElement('input');
-        qtyInput.type = 'hidden';
-        qtyInput.name = `items[${index}][quantity]`;
-        qtyInput.value = item.qty;
-        qtyInput.className = 'cart-hidden-input';
-
-        form.appendChild(idInput);
-        form.appendChild(qtyInput);
-    });
-
-    const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    document.getElementById('hiddenTotal').value = total;
-
-    if (paymentMode === 'CASH') {
-        document.getElementById('hiddenPaid').value = total;
-        document.getElementById('hiddenCash').value = total;
-        document.getElementById('hiddenPos').value = 0;
-    } else if (paymentMode === 'POS') {
-        document.getElementById('hiddenPaid').value = total;
-        document.getElementById('hiddenPos').value = total;
-        document.getElementById('hiddenCash').value = 0;
-    }
 }
 
 function submitSale() {
