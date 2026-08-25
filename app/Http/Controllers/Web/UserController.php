@@ -98,6 +98,64 @@ class UserController extends Controller
     }
 
     /**
+     * Update worker profile, assigned role, permissions, and branch location.
+     */
+    public function update(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:100',
+            'email' => 'required|email|unique:users,email,' . $user->id,
+            'role' => 'required|string',
+            'warehouse_id' => 'nullable',
+        ]);
+
+        $oldRole = $user->role;
+        $oldWarehouse = $user->warehouse->name ?? 'All Branches';
+        $newRole = $request->role;
+        $newWarehouseId = $request->warehouse_id ? (int) $request->warehouse_id : null;
+
+        $permissions = match($newRole) {
+            'admin' => ['all' => true],
+            'viewer' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
+            'manager' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true],
+            'sales_stock' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'debts' => true, 'returns' => true, 'adjustments' => true],
+            'storekeeper' => ['stockIn' => true, 'transfer' => true, 'count' => true, 'products' => true, 'adjustments' => true],
+            'cashier' => ['pos' => true, 'debts' => true, 'products' => true],
+            default => ['pos' => true],
+        };
+
+        $user->name = $request->name;
+        $user->email = strtolower(trim($request->email));
+        $user->role = $newRole;
+        $user->warehouse_id = $newWarehouseId;
+        $user->permissions = $permissions;
+
+        if ($request->filled('password')) {
+            $request->validate(['password' => 'min:6']);
+            $user->password = Hash::make($request->password);
+        }
+
+        $user->save();
+        $user->load('warehouse');
+
+        $newWarehouseName = $user->warehouse->name ?? 'All Branches';
+        $adminName = Auth::user()->name ?? 'Auditor / Admin';
+
+        Activity::create([
+            'id' => (string) Str::uuid(),
+            'type' => 'USER_UPDATED',
+            'description' => "{$adminName} updated worker {$user->name}: Role [{$oldRole} ➔ {$newRole}], Location [{$oldWarehouse} ➔ {$newWarehouseName}]",
+            'userId' => Auth::id() ?? 'ADMIN',
+            'userName' => $adminName,
+            'timestamp' => now()->toIso8601String(),
+        ]);
+
+        return redirect()->route('users.index')->with('success', "✓ Worker account for {$user->name} updated successfully (Assigned to: {$newWarehouseName}).");
+    }
+
+    /**
      * Reset worker password.
      */
     public function resetPassword(Request $request, $id)

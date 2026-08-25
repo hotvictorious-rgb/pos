@@ -12,6 +12,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
 
 ### Added
+- **Worker Profile Editing & Branch Reassignment Hub**:
+  - **Reassign Staff Across Branches**: Added the ability to transfer workers across different branch locations, update staff roles and permission hierarchies, or change login details under `Workers & Roles`.
+  - **Preserved Historical Auditing**: Historical sales, signatures, and receipts remain tied to the worker's user ID while their terminal immediately switches to the new location's stock levels.
+  - **Activity Logging & Live Review**: Added two-step confirmation popup and automatic immutable admin activity logging for every worker update and transfer.
 - **Role-Based Dynamic Dashboards & Transaction Privacy Scoping**:
   - **Cashier Privacy Isolation**: Enforced strict query scoping on transaction ledgers (`TransactionController::getSalesQuery`), ensuring cashiers can only view their own sales records and till collections (`userId == Auth::id()`).
   - **Cashier Shift Dashboard**: Added a dedicated *My Shift Summary* landing view for floor cashiers showing their invoices issued, counter cash in till, POS/transfer collections, and recent sales table.

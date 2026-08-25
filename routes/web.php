@@ -131,6 +131,7 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
 Route::prefix('users')->name('users.')->middleware([\App\Http\Middleware\RequireAdmin::class])->group(function () {
     Route::get('/',                       [\App\Http\Controllers\Web\UserController::class, 'index'])->name('index');
     Route::post('/',                      [\App\Http\Controllers\Web\UserController::class, 'store'])->name('store');
+    Route::post('/update/{id}',           [\App\Http\Controllers\Web\UserController::class, 'update'])->name('update');
     Route::post('/toggle/{id}',           [\App\Http\Controllers\Web\UserController::class, 'toggleStatus'])->name('toggle');
     Route::post('/reset-password/{id}',   [\App\Http\Controllers\Web\UserController::class, 'resetPassword'])->name('reset.password');
 });
