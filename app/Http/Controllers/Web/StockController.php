@@ -158,12 +158,19 @@ class StockController extends Controller
             'quantity' => 'required|integer|min:1',
         ]);
 
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $warehouseId = (int) $user->warehouse_id;
+        } else {
+            $warehouseId = (int) $request->warehouse_id;
+        }
+
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Storekeeper';
 
         $this->stockService->recordStockIn(
             $request->product_id,
-            (int) $request->warehouse_id,
+            $warehouseId,
             (int) $request->quantity,
             $request->supplier_name,
             $userId,
@@ -176,12 +183,25 @@ class StockController extends Controller
 
     /**
      * Action 2: Send Goods to Another Shop (Dispatch Transfer).
+     * Strictly locks Source Shop to the staff member's assigned branch.
      */
     public function transferOut(Request $request)
     {
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $sourceWarehouseId = (int) $user->warehouse_id;
+        } else {
+            $sourceWarehouseId = (int) $request->source_warehouse_id;
+        }
+
+        $destWarehouseId = (int) $request->destination_warehouse_id;
+
+        if ($sourceWarehouseId === $destWarehouseId) {
+            return back()->withErrors(['error' => 'Destination shop must be different from the source shop!'])->withInput();
+        }
+
         $request->validate([
-            'source_warehouse_id' => 'required',
-            'destination_warehouse_id' => 'required|different:source_warehouse_id',
+            'destination_warehouse_id' => 'required',
             'items' => 'required|array|min:1',
             'carrier_name' => 'required|string',
         ]);
@@ -190,8 +210,8 @@ class StockController extends Controller
         $userName = Auth::user()->name ?? 'Dispatch Officer';
 
         $transfer = $this->stockService->initiateTransfer(
-            (int) $request->source_warehouse_id,
-            (int) $request->destination_warehouse_id,
+            $sourceWarehouseId,
+            $destWarehouseId,
             $request->items,
             $request->carrier_name,
             $userId,
@@ -199,17 +219,27 @@ class StockController extends Controller
             $request->notes
         );
 
-        return redirect()->route('stock.index')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
+        return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
     }
 
     /**
      * Action 3: Receive & Count Goods from Transfer.
+     * Strictly verifies destination shop matches staff branch.
      */
     public function transferIn(Request $request, $id)
     {
         $request->validate([
             'counted_items' => 'required|array',
         ]);
+
+        $user = Auth::user();
+        $transferRecord = Transfer::findOrFail($id);
+
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            if ($transferRecord->destination_warehouse_id != $user->warehouse_id) {
+                return back()->withErrors(['error' => '🔒 Unauthorized: You can only receive and count transfers sent to your assigned branch!']);
+            }
+        }
 
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Receiving Storekeeper';
@@ -274,6 +304,10 @@ class StockController extends Controller
         $discrepancyCount = Transfer::where('status', 'DISCREPANCY')->count();
 
         $warehouses = Warehouse::where('is_active', true)->get();
+        $allWarehouses = Warehouse::where('is_active', true)->get();
+        $authUser = Auth::user();
+        $isBranchStaff = ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id));
+        $userWarehouse = $isBranchStaff ? Warehouse::find($authUser->warehouse_id) : null;
         $carriers = Transfer::distinct()->whereNotNull('carrier_name')->where('carrier_name', '!=', '')->pluck('carrier_name');
         $allProducts = Product::where('archived', false)->get();
 
@@ -283,6 +317,9 @@ class StockController extends Controller
             'receivedCount',
             'discrepancyCount',
             'warehouses',
+            'allWarehouses',
+            'isBranchStaff',
+            'userWarehouse',
             'carriers',
             'allProducts',
             'datePreset',
@@ -358,7 +395,13 @@ class StockController extends Controller
      */
     public function dispatchConfirm(Request $request, $saleId)
     {
-        $warehouseId = (int) session('active_warehouse_id', 1);
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $warehouseId = (int) $user->warehouse_id;
+        } else {
+            $warehouseId = (int) session('active_warehouse_id', 1);
+        }
+
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Dispatch Officer';
 
@@ -382,6 +425,14 @@ class StockController extends Controller
         $warehouseId = $request->get('warehouse_id');
         $search = trim($request->get('search', ''));
 
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $warehouseId = $user->warehouse_id;
+            $warehouses = Warehouse::where('id', $user->warehouse_id)->get();
+        } else {
+            $warehouses = Warehouse::where('is_active', true)->get();
+        }
+
         $query = StockAdjustment::with('warehouse');
         $this->applyDateFilter($query, 'created_at', $datePreset, $fromDate, $toDate);
 
@@ -403,7 +454,6 @@ class StockController extends Controller
         $totalAdjustmentsCount = (clone $query)->count();
         $totalUnitsLost = (clone $query)->sum('quantity');
 
-        $warehouses = Warehouse::where('is_active', true)->get();
         $products = Product::where('archived', false)->orderBy('name')->get();
 
         return view('stock.adjustments', compact(
@@ -426,8 +476,14 @@ class StockController extends Controller
      */
     public function recordAdjustment(Request $request)
     {
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $warehouseId = (int) $user->warehouse_id;
+        } else {
+            $warehouseId = (int) $request->warehouse_id;
+        }
+
         $request->validate([
-            'warehouse_id' => 'required',
             'product_id' => 'required',
             'type' => 'required|string',
             'quantity' => 'required|numeric|min:1',
@@ -440,7 +496,7 @@ class StockController extends Controller
         try {
             $this->stockService->recordStockAdjustment(
                 $request->product_id,
-                (int) $request->warehouse_id,
+                $warehouseId,
                 $request->type,
                 (int) $request->quantity,
                 $request->reason,

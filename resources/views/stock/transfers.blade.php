@@ -339,19 +339,32 @@
             <form id="dispatchForm" method="POST" action="{{ route('stock.transfer.out') }}" onsubmit="return validateTransferDispatch(event)">
                 @csrf
                 <div class="grid-2" style="gap: 1rem;">
-                    <div class="form-group">
-                        <label>Source Branch (Origin)</label>
-                        <select name="source_warehouse_id" id="dispSourceWh" required>
-                            @foreach($warehouses as $wh)
-                                <option value="{{ $wh->id }}">{{ $wh->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    @if(!empty($isBranchStaff) && !empty($userWarehouse))
+                        <div class="form-group">
+                            <label>Source Branch (Origin - Locked)</label>
+                            <div style="padding: 0.55rem 0.8rem; background: rgba(30,41,59,0.85); border: 1px solid #3b82f6; border-radius: 8px; font-weight: 700; color: #93c5fd; font-size: 0.88rem;">
+                                📍 {{ $userWarehouse->name }} [{{ $userWarehouse->code }}]
+                            </div>
+                            <input type="hidden" name="source_warehouse_id" id="dispSourceWh" value="{{ $userWarehouse->id }}">
+                        </div>
+                    @else
+                        <div class="form-group">
+                            <label>Source Branch (Origin)</label>
+                            <select name="source_warehouse_id" id="dispSourceWh" required>
+                                @foreach($warehouses as $wh)
+                                    <option value="{{ $wh->id }}">{{ $wh->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endif
+
                     <div class="form-group">
                         <label>Destination Branch (Receiving)</label>
                         <select name="destination_warehouse_id" id="dispDestWh" required>
-                            @foreach($warehouses as $wh)
-                                <option value="{{ $wh->id }}">{{ $wh->name }}</option>
+                            @foreach($allWarehouses ?? $warehouses as $wh)
+                                @if(empty($isBranchStaff) || empty($userWarehouse) || $wh->id != $userWarehouse->id)
+                                    <option value="{{ $wh->id }}">🏢 {{ $wh->name }} ({{ $wh->code }})</option>
+                                @endif
                             @endforeach
                         </select>
                     </div>

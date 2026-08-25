@@ -12,6 +12,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
 
 ### Added
+- **Inter-Branch Transfer Origin Auto-Lock & Anti-Tampering Engine**:
+  - **Fixed Origin (Source Shop)**: When branch staff initiate an inter-branch transfer, the Source Branch is strictly hardcoded and locked to their assigned shop (`user->warehouse_id`), eliminating the source dropdown and rendering a locked location badge.
+  - **Destination-Only Selection**: Staff can only pick receiving destination branches, preventing staff from dispatching goods out of another branch.
+  - **Backend Spoof Protection**: Backend controllers (`StockController::transferOut`, `transferIn`, `stockIn`, `recordAdjustment`) forcefully overwrite and validate the origin and destination IDs against the authenticated worker's branch assignment.
+  - **Cross-Branch Receipt Guard**: Workers are blocked from accepting or verifying transfers destined for other branch shops.
 - **Strict Multi-Branch Shop Isolation & Privacy Engine**:
   - **Zero Cross-Branch Leakage**: When a staff member is assigned to a specific branch (`user->warehouse_id`), the system strictly locks and scopes all 8 modules (Master Dashboard, POS Terminal, Stock Hub, Product Catalog, History & Ledgers, and Reports) to their assigned shop only.
   - **URL Parameter Bypass Protection**: Any manual GET/POST URL overrides attempting to access another shop's records or warehouse ID are intercepted and forcefully overridden to the worker's assigned branch.
