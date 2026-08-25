@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **SKU-Centric Product Display Architecture**:
+  - **SKU as Primary Unique Identifier**: Made the factory SKU (`$product->code`) the dominant, headline title displayed across the Point of Sale catalog, cart, physical receipts, stock inventory hub, transfer manifests, unsupplied pickup list, damaged goods write-offs, and transaction ledgers.
+  - **Clean Product Cards & Streamlined Views**: Removed long verbose titles from main labels, allowing fast recognition by factory codes (e.g. `M10DE`, `54X14-18D`, `P1`, `M12CP`) while retaining category and dimensions as subtle subtitles.
 - **Pre-Submission Business Rule Validation & Reason Pop-Up Engine**:
   - **Zero-Bypass Client-Side Interceptor (`showActionBlockedModal`)**: Replaced post-submission page reloads and generic alert boxes with instantaneous pre-submission constraint modals across POS checkout, stock transfers, customer debt payments, loss adjustments, and sales returns.
   - **POS Golden Law Stock Verification**: Blocks sale completion if attempting to sell with Handover = `🟢 SUPPLIED` when physical shelf stock is 0 or less than the requested quantity, explaining the exact deficiency and recommending `🟠 NOT SUPPLIED` for delayed pickup.

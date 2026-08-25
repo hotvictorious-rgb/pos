@@ -92,8 +92,12 @@
         </div>
     </div>
 
-    <div style="font-size: 0.85rem; margin-bottom: 0.75rem;">
-        Customer: <strong>{{ $sale->customerName }}</strong>
+    @php
+        $custObj = \App\Models\Customer::where('name', $sale->customerName)->first();
+    @endphp
+    <div style="font-size: 0.85rem; margin-bottom: 0.75rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.75rem;">
+        <div>Customer: <strong>{{ $sale->customerName }}</strong> @if($custObj && $custObj->customer_code)<span style="color: #2563eb; font-weight: 700;">[{{ $custObj->customer_code }}]</span>@endif</div>
+        @if($custObj && $custObj->phone)<div style="font-size: 0.75rem; color: #64748b;">Phone: {{ $custObj->phone }}</div>@endif
     </div>
 
     <!-- Line items -->
@@ -101,7 +105,7 @@
         @foreach($sale->items as $item)
         <div class="receipt-item">
             <div>
-                <strong>{{ $item->productName }}</strong>
+                <strong style="font-weight: 800; font-size: 0.95rem;">{{ $item->product->code ?? $item->productName }}</strong>
                 <div style="font-size: 0.75rem; color: #64748b;">₦{{ number_format($item->unitPrice, 0) }} x {{ $item->quantity }}</div>
             </div>
             <div style="font-weight: 700;">

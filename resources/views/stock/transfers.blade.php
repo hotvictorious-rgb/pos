@@ -350,10 +350,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Select Product</label>
+                    <label>Select Product SKU</label>
                     <select name="items[0][productId]" id="dispProduct" required>
                         @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->code }})</option>
+                            <option value="{{ $p->id }}">{{ $p->code }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -437,7 +437,7 @@ function openAcceptModal(trf) {
         html += `
         <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <strong>${item.product_name}</strong>
+                <strong style="color: #60a5fa;">${item.product_code || item.product_name}</strong>
                 <div style="font-size: 0.8rem; color: var(--text-muted);">Dispatched: ${item.dispatched_qty} units</div>
             </div>
             <div style="width: 140px;">

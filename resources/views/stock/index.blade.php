@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Stock Management')
+@section('title', 'Stock Management Hub')
 
 @push('styles')
 <style>
@@ -8,7 +8,7 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 1.25rem;
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
     }
 
     .stock-card {
@@ -37,7 +37,40 @@
         font-size: 2rem;
     }
 
-    /* Table */
+    .filter-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .summary-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.25rem;
+    }
+
+    .summary-card h4 {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        margin-bottom: 0.35rem;
+        letter-spacing: 0.05em;
+    }
+    .summary-card .val {
+        font-size: 1.35rem;
+        font-weight: 800;
+    }
+
     .table-wrap {
         background: var(--card-bg);
         border: 1px solid var(--border);
@@ -92,22 +125,23 @@
     <!-- Top Branch Switcher & Title -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-            <h2 style="font-size: 1.5rem; font-weight: 800;">Stock & Multi-Location Hub 📦</h2>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                <span style="font-size: 1.75rem;">📦</span>
+                <h2 style="font-size: 1.5rem; font-weight: 800;">Stock & Inventory Management Hub</h2>
+            </div>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Managing Physical Counts for: <strong style="color: #60a5fa;">{{ $activeWarehouse->name }}</strong>
+                Managing Physical Counts & Warehouse Stocks for: <strong style="color: #60a5fa;">{{ $activeWarehouse->name }}</strong>
             </p>
         </div>
 
-        <form method="GET" action="{{ route('stock.index') }}" style="display: flex; align-items: center; gap: 0.5rem;">
-            <label style="margin: 0; white-space: nowrap;">Change Shop:</label>
-            <select name="warehouse_id" onchange="this.form.submit()" style="width: auto; padding: 0.6rem 1rem;">
-                @foreach($warehouses as $wh)
-                    <option value="{{ $wh->id }}" {{ $activeWarehouse->id == $wh->id ? 'selected' : '' }}>
-                        🏢 {{ $wh->name }} ({{ $wh->code }})
-                    </option>
-                @endforeach
-            </select>
-        </form>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="{{ route('stock.transfers') }}" class="btn btn-secondary">
+                🚚 Shop Transfers
+            </a>
+            <a href="{{ route('transactions.index') }}" class="btn btn-secondary">
+                📜 Ledgers Hub
+            </a>
+        </div>
     </div>
 
     <!-- Incoming Transfer Notification (if any) -->
@@ -136,7 +170,7 @@
                 📥
             </div>
             <div>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">New Goods Arrived</h3>
+                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">New Goods Arrived (Stock In)</h3>
                 <p style="font-size: 0.85rem; color: var(--text-muted);">Receive stock from supplier into this shop.</p>
             </div>
         </div>
@@ -164,63 +198,131 @@
         </a>
     </div>
 
-    <!-- Stock Table -->
+    <!-- Stock Summary KPI Grid -->
+    <div class="summary-grid">
+        <div class="summary-card">
+            <h4>Total Tracked SKUs</h4>
+            <div class="val" style="color: #60a5fa;">{{ number_format($totalItemsCount) }}</div>
+        </div>
+        <div class="summary-card">
+            <h4>Total Physical Shelf Units</h4>
+            <div class="val" style="color: #4ade80;">{{ number_format($totalPhysicalUnits) }} units</div>
+        </div>
+        <div class="summary-card">
+            <h4>Low Stock Alerts (1 - 10)</h4>
+            <div class="val" style="color: #fbbf24;">{{ number_format($lowStockCount) }}</div>
+        </div>
+        <div class="summary-card">
+            <h4>Out of Stock Items</h4>
+            <div class="val" style="color: #f87171;">{{ number_format($outOfStockCount) }}</div>
+        </div>
+    </div>
+
+    <!-- Multi-Criteria Filter Bar for Stock -->
+    <div class="filter-card">
+        <form method="GET" action="{{ route('stock.index') }}" id="stockFilterForm">
+            <div class="grid-4" style="gap: 0.75rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Branch / Warehouse</label>
+                    <select name="warehouse_id" onchange="this.form.submit()">
+                        @foreach($warehouses as $wh)
+                            <option value="{{ $wh->id }}" {{ $activeWarehouse->id == $wh->id ? 'selected' : '' }}>
+                                🏢 {{ $wh->name }} ({{ $wh->code }})
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Stock Health Status</label>
+                    <select name="stock_status">
+                        <option value="">-- All Stock Statuses --</option>
+                        <option value="HEALTHY" {{ request('stock_status') === 'HEALTHY' ? 'selected' : '' }}>🟢 Healthy Stock (> 10)</option>
+                        <option value="LOW" {{ request('stock_status') === 'LOW' ? 'selected' : '' }}>⚠️ Low Stock (1 - 10)</option>
+                        <option value="OUT" {{ request('stock_status') === 'OUT' ? 'selected' : '' }}>🔴 Out of Stock (0)</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Category</label>
+                    <select name="category">
+                        <option value="">-- All Categories --</option>
+                        @foreach($categories as $cat)
+                            <option value="{{ $cat }}" {{ request('category') === $cat ? 'selected' : '' }}>{{ $cat }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Search Item / SKU</label>
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="🔍 Product name or SKU code...">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 0.85rem; justify-content: flex-end;">
+                <button type="submit" class="btn btn-primary" style="padding: 0.65rem 1.25rem;">
+                    🔍 Filter Stock
+                </button>
+                <a href="{{ route('stock.index', ['warehouse_id' => $activeWarehouse->id]) }}" class="btn btn-secondary" style="padding: 0.65rem 1rem;">
+                    Reset
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Stock Table Card with Live Filter Box -->
     <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
             <h3 style="font-size: 1.2rem; font-weight: 800;">
                 Physical Stock on Ground ({{ $activeWarehouse->name }})
             </h3>
+            <div style="width: 280px;">
+                <input type="text" placeholder="⚡ Live search table..." onkeyup="filterTableRows('stockTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
+            </div>
         </div>
 
         <div class="table-wrap">
-            <table>
+            <table id="stockTable">
                 <thead>
                     <tr>
-                        <th>Product Details</th>
+                        <th>Product SKU</th>
                         <th>Category</th>
                         <th>Unit Price</th>
-                        <th style="color: #4ade80;">Physical Count (On Ground)</th>
-                        <th style="color: #fbbf24;">Sold (Awaiting Pickup)</th>
-                        <th style="color: #60a5fa;">Available to Sell</th>
-                        <th>Status</th>
+                        <th style="color: #4ade80;">Physical Count (Units on Ground)</th>
+                        <th>Min Alert Level</th>
+                        <th>Stock Health</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($stockLevels as $level)
                     <tr>
                         <td>
-                            <strong>{{ $level->product->name ?? 'Unknown Product' }}</strong>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">Code: {{ $level->product->code ?? 'N/A' }}</div>
+                            <strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $level->product->code ?? 'N/A' }}</strong>
                         </td>
                         <td>{{ $level->product->category ?? 'General' }}</td>
                         <td style="font-weight: 700;">₦{{ number_format($level->product->unitPrice ?? 0, 0) }}</td>
                         <td>
-                            <span style="font-size: 1.1rem; font-weight: 800; color: #4ade80;">
-                                {{ $level->physical_stock }}
+                            <span style="font-size: 1.15rem; font-weight: 800; color: #4ade80;">
+                                {{ number_format($level->physical_stock) }}
                             </span> units
                         </td>
-                        <td>
-                            <span style="font-size: 1.1rem; font-weight: 800; color: #fbbf24;">
-                                {{ $level->allocated_stock }}
-                            </span> units
+                        <td style="color: var(--text-muted);">
+                            {{ $level->min_stock_alert ?? 5 }} units
                         </td>
                         <td>
-                            <span style="font-size: 1.1rem; font-weight: 800; color: #60a5fa;">
-                                {{ $level->available_stock }}
-                            </span> units
-                        </td>
-                        <td>
-                            @if($level->available_stock <= ($level->min_stock_alert ?? 5))
-                                <span class="badge badge-danger">⚠️ Low Stock</span>
+                            @if($level->physical_stock <= 0)
+                                <span class="badge badge-danger">🔴 Out of Stock</span>
+                            @elseif($level->physical_stock <= ($level->min_stock_alert ?? 5))
+                                <span class="badge badge-warning">⚠️ Low Stock ({{ $level->physical_stock }})</span>
                             @else
-                                <span class="badge badge-success">✓ Sufficient</span>
+                                <span class="badge badge-success">✓ Sufficient ({{ $level->physical_stock }})</span>
                             @endif
                         </td>
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
-                            No stock records found for this branch yet. Tap <strong>📥 New Goods Arrived</strong> to add inventory!
+                        <td colspan="6" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                            No stock records found matching filters. Tap <strong>📥 New Goods Arrived</strong> to add inventory!
                         </td>
                     </tr>
                     @endforelse
@@ -237,37 +339,37 @@
                 Add supplier delivery directly to <strong>{{ $activeWarehouse->name }}</strong> physical count.
             </p>
 
-            <form method="POST" action="{{ route('stock.in') }}" onsubmit="return confirm('📥 Confirm Receiving New Stock:\n\nThis will physically increase the shelf stock in {{ addslashes($activeWarehouse->name) }} and log a stock-in audit trail. Proceed?')">
+            <form id="stockInForm" method="POST" action="{{ route('stock.in') }}">
                 @csrf
                 <input type="hidden" name="warehouse_id" value="{{ $activeWarehouse->id }}">
 
                 <div class="form-group">
-                    <label>Select Product</label>
-                    <select name="product_id" required>
+                    <label>Select Product SKU</label>
+                    <select name="product_id" id="stockInProduct" required>
                         @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->code }})</option>
+                            <option value="{{ $p->id }}">{{ $p->code }}</option>
                         @endforeach
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label>Quantity Received (Units)</label>
-                    <input type="number" name="quantity" min="1" placeholder="e.g. 50" required>
+                    <input type="number" name="quantity" id="stockInQty" min="1" placeholder="e.g. 50" required>
                 </div>
 
                 <div class="form-group">
                     <label>Supplier Name / Invoice Ref</label>
-                    <input type="text" name="supplier_name" placeholder="e.g. Dangote Dist., Waybill #9821">
+                    <input type="text" name="supplier_name" id="stockInSupplier" placeholder="e.g. Dangote Dist., Waybill #9821">
                 </div>
 
                 <div class="form-group">
                     <label>Notes / Remarks</label>
-                    <input type="text" name="notes" placeholder="Optional notes">
+                    <input type="text" name="notes" id="stockInNotes" placeholder="Optional notes">
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalStockIn')">Cancel</button>
-                    <button type="submit" class="btn btn-success" style="flex: 1;">✓ Save & Increase Count</button>
+                    <button type="button" class="btn btn-success" style="flex: 1;" onclick="confirmStockIn()">✓ Save & Increase Count</button>
                 </div>
             </form>
         </div>
@@ -281,13 +383,13 @@
                 Dispatches items from <strong>{{ $activeWarehouse->name }}</strong>. Destination shop will verify count on arrival.
             </p>
 
-            <form method="POST" action="{{ route('stock.transfer.out') }}" onsubmit="return confirm('🚚 Confirm Inter-Branch Transfer Dispatch:\n\nThis will immediately deduct items from {{ addslashes($activeWarehouse->name) }} physical shelf count and place them In-Transit until the destination counts and receives them. Proceed?')">
+            <form id="transferOutForm" method="POST" action="{{ route('stock.transfer.out') }}">
                 @csrf
                 <input type="hidden" name="source_warehouse_id" value="{{ $activeWarehouse->id }}">
 
                 <div class="form-group">
                     <label>Destination Shop</label>
-                    <select name="destination_warehouse_id" required>
+                    <select name="destination_warehouse_id" id="transferDestWh" required>
                         @foreach($warehouses as $wh)
                             @if($wh->id != $activeWarehouse->id)
                                 <option value="{{ $wh->id }}">🏢 {{ $wh->name }} ({{ $wh->code }})</option>
@@ -297,27 +399,27 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Select Product</label>
-                    <select name="items[0][productId]" required>
+                    <label>Select Product SKU</label>
+                    <select name="items[0][productId]" id="transferProduct" required>
                         @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->code }})</option>
+                            <option value="{{ $p->id }}">{{ $p->code }}</option>
                         @endforeach
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label>Quantity to Send</label>
-                    <input type="number" name="items[0][quantity]" min="1" placeholder="e.g. 10" required>
+                    <input type="number" name="items[0][quantity]" id="transferQty" min="1" placeholder="e.g. 10" required>
                 </div>
 
                 <div class="form-group">
                     <label>Driver / Carrier Name</label>
-                    <input type="text" name="carrier_name" placeholder="e.g. Musa Delivery Van, Plate #KJA-123" required>
+                    <input type="text" name="carrier_name" id="transferCarrier" placeholder="e.g. Musa Delivery Van, Plate #KJA-123" required>
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalTransferOut')">Cancel</button>
-                    <button type="submit" class="btn btn-primary" style="flex: 1;">🚚 Dispatch Transfer</button>
+                    <button type="button" class="btn btn-primary" style="flex: 1;" onclick="confirmTransferOut()">🚚 Dispatch Transfer</button>
                 </div>
             </form>
         </div>
@@ -341,12 +443,12 @@
                     <span class="badge badge-info">In-Transit</span>
                 </div>
 
-                <form method="POST" action="{{ route('stock.transfer.in', $trf->id) }}" onsubmit="return confirm('📦 Confirm Transfer Receipt & Physical Count:\n\nThis will officially add the verified counted items into {{ addslashes($activeWarehouse->name) }} physical closing stock. Any shortage will log an auditor alert. Proceed?')">
+                <form id="recvTrfForm_{{ $trf->id }}" method="POST" action="{{ route('stock.transfer.in', $trf->id) }}">
                     @csrf
                     @foreach($trf->items as $tItem)
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem;">
                         <div>
-                            <strong>{{ $tItem->product_name }}</strong>
+                            <strong style="color: #60a5fa;">{{ $tItem->product_code ?? $tItem->product_name }}</strong>
                             <div style="font-size: 0.75rem; color: var(--text-muted);">Dispatched: {{ $tItem->dispatched_qty }} units</div>
                         </div>
                         <div style="max-width: 140px;">
@@ -361,7 +463,7 @@
                         <input type="text" name="discrepancy_notes" placeholder="Explain missing or damaged units">
                     </div>
 
-                    <button type="submit" class="btn btn-success btn-block" style="margin-top: 0.75rem;">
+                    <button type="button" class="btn btn-success btn-block" style="margin-top: 0.75rem;" onclick="confirmReceiveTransfer('{{ $trf->id }}', '{{ $trf->transfer_no }}', '{{ addslashes($trf->source->name ?? 'Shop') }}')">
                         ✓ Confirm Count & Receive into Stock
                     </button>
                 </form>
@@ -376,11 +478,123 @@
 
 @push('scripts')
 <script>
+function filterTableRows(tableId, query) {
+    const q = query.toLowerCase().trim();
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const rows = table.querySelectorAll('tbody tr');
+    rows.forEach(r => {
+        const text = r.textContent.toLowerCase();
+        r.style.display = text.includes(q) ? '' : 'none';
+    });
+}
+
 function openModal(id) {
     document.getElementById(id).style.display = 'flex';
 }
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
+}
+
+function confirmStockIn() {
+    const form = document.getElementById('stockInForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const prodSelect = document.getElementById('stockInProduct');
+    const prodName = prodSelect.options[prodSelect.selectedIndex].text;
+    const qty = document.getElementById('stockInQty').value;
+    const supplier = document.getElementById('stockInSupplier').value || 'Unspecified Supplier';
+
+    closeModal('modalStockIn');
+
+    showConfirmPopup({
+        icon: '📥',
+        title: 'Confirm Goods Arrival (Stock In)',
+        subtitle: 'Review incoming inventory before updating physical stock:',
+        borderColor: '#22c55e',
+        items: [
+            { label: 'Product', value: prodName, color: '#f8fafc' },
+            { label: 'Quantity Arrived', value: '+ ' + qty + ' units', color: '#4ade80', size: '1.05rem' },
+            { label: 'Location', value: '{{ addslashes($activeWarehouse->name) }}', color: '#60a5fa' },
+            { label: 'Supplier / Ref', value: supplier, color: '#cbd5e1' }
+        ],
+        impact: {
+            text: '🟢 PHYSICAL COUNT INCREMENT: Shelf stock in {{ addslashes($activeWarehouse->name) }} will increase by ' + qty + ' units with permanent audit logging.',
+            type: 'success'
+        },
+        confirmText: '📥 Yes, Record Stock In',
+        confirmClass: 'btn-success',
+        form: form
+    });
+}
+
+function confirmTransferOut() {
+    const form = document.getElementById('transferOutForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const destSelect = document.getElementById('transferDestWh');
+    const destName = destSelect.options[destSelect.selectedIndex].text;
+    const prodSelect = document.getElementById('transferProduct');
+    const prodName = prodSelect.options[prodSelect.selectedIndex].text;
+    const qty = document.getElementById('transferQty').value;
+    const carrier = document.getElementById('transferCarrier').value;
+
+    closeModal('modalTransferOut');
+
+    showConfirmPopup({
+        icon: '🚚',
+        title: 'Confirm Transfer Dispatch',
+        subtitle: 'Review goods leaving origin shop:',
+        borderColor: '#3b82f6',
+        items: [
+            { label: 'Origin Branch', value: '{{ addslashes($activeWarehouse->name) }}', color: '#f87171' },
+            { label: 'Destination', value: destName, color: '#60a5fa' },
+            { label: 'Product & Qty', value: qty + ' units (' + prodName + ')', color: '#fbbf24', size: '0.95rem' },
+            { label: 'Driver / Carrier', value: carrier, color: '#f8fafc' }
+        ],
+        impact: {
+            text: '🚚 IN-TRANSIT BUFFER: Deducts ' + qty + ' units from {{ addslashes($activeWarehouse->name) }} and moves them to in-transit holding until verified by destination.',
+            type: 'info'
+        },
+        confirmText: '🚚 Yes, Dispatch Transfer',
+        confirmClass: 'btn-primary',
+        form: form
+    });
+}
+
+function confirmReceiveTransfer(trfId, trfNo, sourceName) {
+    const form = document.getElementById('recvTrfForm_' + trfId);
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    closeModal('modalReceiveTransfers');
+
+    showConfirmPopup({
+        icon: '📦',
+        title: 'Confirm Transfer Physical Receipt',
+        subtitle: 'Review counted stock to be added to shelf balance:',
+        borderColor: '#22c55e',
+        items: [
+            { label: 'Transfer Waybill', value: '#' + trfNo, color: '#93c5fd' },
+            { label: 'Dispatched From', value: sourceName, color: '#cbd5e1' },
+            { label: 'Receiving Branch', value: '{{ addslashes($activeWarehouse->name) }}', color: '#4ade80' }
+        ],
+        impact: {
+            text: '📦 PHYSICAL STOCK ADDITION: Verified counted units will be added to this shop. Any shortage from dispatched count will be flagged on the Auditor Hub.',
+            type: 'success'
+        },
+        confirmText: '✓ Yes, Receive into Stock',
+        confirmClass: 'btn-success',
+        form: form
+    });
 }
 </script>
 @endpush

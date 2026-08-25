@@ -173,7 +173,7 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Product Item & SKU</th>
+                        <th>Product SKU</th>
                         <th>Dispatched Qty</th>
                         <th>Received Qty</th>
                         <th>Variance / Remarks</th>
@@ -184,8 +184,7 @@
                     <tr>
                         <td>{{ $index + 1 }}</td>
                         <td>
-                            <strong>{{ $item->product_name }}</strong>
-                            <div style="font-size: 0.75rem; color: #64748b;">{{ $item->product_code }}</div>
+                            <strong style="font-size: 1.05rem; color: #1e3a8a; letter-spacing: 0.03em;">{{ $item->product_code ?? $item->product_name }}</strong>
                         </td>
                         <td style="font-weight: 800; font-size: 1rem; color: #1e3a8a;">
                             {{ $item->dispatched_qty }} units

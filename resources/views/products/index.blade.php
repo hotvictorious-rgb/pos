@@ -136,8 +136,8 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Search Name / SKU</label>
-                    <input type="text" name="search" value="{{ request('search') }}" placeholder="e.g. Rice, Oil, PEAK">
+                    <label style="font-size: 0.75rem;">Search SKU Code</label>
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="e.g. M10DE, 54X14-18D, P1">
                 </div>
 
                 <div style="display: flex; gap: 0.5rem;">
@@ -158,7 +158,7 @@
             <table id="productsTable">
                 <thead>
                     <tr>
-                        <th>Product Name & SKU</th>
+                        <th>Product SKU</th>
                         <th>Category</th>
                         <th>Brand / Size</th>
                         <th>Selling Price (₦)</th>
@@ -174,8 +174,7 @@
                     @forelse($products as $p)
                     <tr>
                         <td>
-                            <strong style="font-size: 1rem; color: #f9fafb;">{{ $p->name }}</strong>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">SKU: {{ $p->code }}</div>
+                            <strong style="font-size: 1.05rem; color: #60a5fa; letter-spacing: 0.03em;">{{ $p->code }}</strong>
                         </td>
                         <td><span class="badge badge-info">{{ $p->category }}</span></td>
                         <td>{{ $p->brand ?? 'Standard' }} {{ $p->size ? '('.$p->size.')' : '' }}</td>
@@ -235,22 +234,22 @@
                 Register a new inventory SKU for sales and stock tracking.
             </p>
 
-            <form method="POST" action="{{ route('products.store') }}" onsubmit="return confirm('➕ Confirm Adding New Product:\n\nThis will register this new SKU into the central catalog and assign its initial opening stock. Proceed?')">
+            <form id="addProductForm" method="POST" action="{{ route('products.store') }}">
                 @csrf
                 <div class="form-group">
                     <label>Product Name</label>
-                    <input type="text" name="name" placeholder="e.g. Bag of Rice (50kg), Indomie Super Pack" required>
+                    <input type="text" name="name" id="addProdName" placeholder="e.g. Bag of Rice (50kg), Indomie Super Pack" required>
                 </div>
 
                 <div class="grid-2">
                     <div class="form-group">
                         <label>Item Code / SKU</label>
-                        <input type="text" name="code" placeholder="e.g. RICE-50KG" required>
+                        <input type="text" name="code" id="addProdCode" placeholder="e.g. RICE-50KG" required>
                     </div>
 
                     <div class="form-group">
                         <label>Category</label>
-                        <select name="category" required>
+                        <select name="category" id="addProdCat" required>
                             @foreach($categories as $cat)
                                 <option value="{{ $cat }}">{{ $cat }}</option>
                             @endforeach
@@ -265,12 +264,12 @@
                 <div class="grid-2">
                     <div class="form-group">
                         <label>Selling Price (₦)</label>
-                        <input type="number" name="unitPrice" step="any" placeholder="e.g. 85000" required>
+                        <input type="number" name="unitPrice" id="addProdPrice" step="any" placeholder="e.g. 85000" required>
                     </div>
 
                     <div class="form-group">
                         <label>Initial Opening Stock (Units)</label>
-                        <input type="number" name="initial_stock" min="0" placeholder="e.g. 20" value="0">
+                        <input type="number" name="initial_stock" id="addProdStock" min="0" placeholder="e.g. 20" value="0">
                     </div>
                 </div>
 
@@ -288,7 +287,7 @@
 
                 <div class="form-group">
                     <label>Assign Opening Stock to Branch</label>
-                    <select name="warehouse_id">
+                    <select name="warehouse_id" id="addProdWarehouse">
                         @foreach($warehouses as $wh)
                             <option value="{{ $wh->id }}">{{ $wh->name }}</option>
                         @endforeach
@@ -297,7 +296,7 @@
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalAddProduct')">Cancel</button>
-                    <button type="submit" class="btn btn-success" style="flex: 1;">✓ Save Product</button>
+                    <button type="button" class="btn btn-success" style="flex: 1;" onclick="confirmAddProduct()">✓ Save Product</button>
                 </div>
             </form>
         </div>
@@ -309,7 +308,7 @@
             <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">✏️ Edit Product</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;" id="editSubtitle"></p>
 
-            <form id="editProductForm" method="POST" action="" onsubmit="return confirm('✏️ Confirm Product Catalog Update:\n\nThis will update this product\'s name, category, and master selling price across all POS terminals. Proceed?')">
+            <form id="editProductForm" method="POST" action="">
                 @csrf
                 <div class="form-group">
                     <label>Product Name</label>
@@ -341,7 +340,7 @@
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalEditProduct')">Cancel</button>
-                    <button type="submit" class="btn btn-primary" style="flex: 1;">✓ Update Product</button>
+                    <button type="button" class="btn btn-primary" style="flex: 1;" onclick="confirmEditProduct()">✓ Update Product</button>
                 </div>
             </form>
         </div>
@@ -366,17 +365,17 @@
                 </div>
             </div>
 
-            <form method="POST" action="{{ route('products.import.csv') }}" enctype="multipart/form-data" onsubmit="return confirm('📥 Confirm Bulk CSV Import:\n\nThis will parse your spreadsheet and import new items into the central catalog. Proceed?')">
+            <form id="importCsvForm" method="POST" action="{{ route('products.import.csv') }}" enctype="multipart/form-data">
                 @csrf
 
                 <div class="form-group">
                     <label>Select CSV File (.csv)</label>
-                    <input type="file" name="csv_file" accept=".csv,text/csv" required style="padding: 0.5rem;">
+                    <input type="file" name="csv_file" id="csvFileInput" accept=".csv,text/csv" required style="padding: 0.5rem;">
                 </div>
 
                 <div class="form-group">
                     <label>Assign Initial Stock to Branch</label>
-                    <select name="warehouse_id">
+                    <select name="warehouse_id" id="importWhSelect">
                         @foreach($warehouses as $wh)
                             <option value="{{ $wh->id }}">{{ $wh->name }} ({{ $wh->code }})</option>
                         @endforeach
@@ -385,7 +384,7 @@
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalImportCsv')">Cancel</button>
-                    <button type="submit" class="btn btn-primary" style="flex: 1;">✓ Upload & Import Products</button>
+                    <button type="button" class="btn btn-primary" style="flex: 1;" onclick="confirmImportCsv()">✓ Upload & Import Products</button>
                 </div>
             </form>
         </div>
@@ -407,6 +406,111 @@ function openEditModal(id, name, cat, price, brand, size) {
     document.getElementById('editBrand').value = brand || '';
     document.getElementById('editSize').value = size || '';
     openModal('modalEditProduct');
+}
+
+function confirmAddProduct() {
+    const form = document.getElementById('addProductForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const name = document.getElementById('addProdName').value;
+    const code = document.getElementById('addProdCode').value;
+    const cat = document.getElementById('addProdCat').value;
+    const price = parseFloat(document.getElementById('addProdPrice').value) || 0;
+    const stock = parseInt(document.getElementById('addProdStock').value) || 0;
+    const whSelect = document.getElementById('addProdWarehouse');
+    const whName = whSelect.options[whSelect.selectedIndex].text;
+
+    closeModal('modalAddProduct');
+
+    showConfirmPopup({
+        icon: '➕',
+        title: 'Confirm Adding New Product',
+        subtitle: 'Review new catalog entry before saving:',
+        borderColor: '#22c55e',
+        items: [
+            { label: 'Product Name', value: name, color: '#f8fafc' },
+            { label: 'SKU / Code', value: code, color: '#93c5fd' },
+            { label: 'Category', value: cat, color: '#c084fc' },
+            { label: 'Master Unit Price', value: '₦' + Math.round(price).toLocaleString('en-US'), color: '#4ade80', size: '1rem' },
+            { label: 'Initial Stock on Hand', value: stock + ' units (' + whName + ')', color: '#fbbf24' }
+        ],
+        impact: {
+            text: '🛍️ CATALOG REGISTRATION: Product will immediately appear on all POS terminals and inventory ledgers.',
+            type: 'success'
+        },
+        confirmText: '✅ Yes, Save Product',
+        confirmClass: 'btn-success',
+        form: form
+    });
+}
+
+function confirmEditProduct() {
+    const form = document.getElementById('editProductForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const name = document.getElementById('editName').value;
+    const cat = document.getElementById('editCat').value;
+    const price = parseFloat(document.getElementById('editPrice').value) || 0;
+
+    closeModal('modalEditProduct');
+
+    showConfirmPopup({
+        icon: '✏️',
+        title: 'Confirm Product Update',
+        subtitle: 'Review changes to master product specs:',
+        borderColor: '#3b82f6',
+        items: [
+            { label: 'Product Name', value: name, color: '#f8fafc' },
+            { label: 'Category', value: cat, color: '#c084fc' },
+            { label: 'Master Selling Price', value: '₦' + Math.round(price).toLocaleString('en-US'), color: '#4ade80', size: '1rem' }
+        ],
+        impact: {
+            text: '🔄 MASTER PRICE UPDATE: New price and details will synchronize to all POS terminals instantly.',
+            type: 'info'
+        },
+        confirmText: '✏️ Yes, Update Product',
+        confirmClass: 'btn-primary',
+        form: form
+    });
+}
+
+function confirmImportCsv() {
+    const form = document.getElementById('importCsvForm');
+    const fileInput = document.getElementById('csvFileInput');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        fileInput.reportValidity();
+        return;
+    }
+
+    const fileName = fileInput.files[0].name;
+    const whSelect = document.getElementById('importWhSelect');
+    const whName = whSelect.options[whSelect.selectedIndex].text;
+
+    closeModal('modalImportCsv');
+
+    showConfirmPopup({
+        icon: '📥',
+        title: 'Confirm Bulk CSV Import',
+        subtitle: 'Review spreadsheet upload settings:',
+        borderColor: '#3b82f6',
+        items: [
+            { label: 'CSV File', value: fileName, color: '#93c5fd' },
+            { label: 'Assign Opening Stock To', value: whName, color: '#4ade80' }
+        ],
+        impact: {
+            text: '📊 BULK IMPORT: System will parse SKUs, create/update products, and populate physical opening stock levels.',
+            type: 'info'
+        },
+        confirmText: '📥 Yes, Upload & Import',
+        confirmClass: 'btn-primary',
+        form: form
+    });
 }
 
 function filterProdTable() {

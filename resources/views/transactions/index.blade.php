@@ -611,8 +611,7 @@
                     <thead>
                         <tr>
                             <th>Date & Time</th>
-                            <th>Product Name</th>
-                            <th>SKU Code</th>
+                            <th>Product SKU</th>
                             <th>Quantity Added</th>
                             <th>Description / Supplier</th>
                             <th>Received By</th>
@@ -625,8 +624,7 @@
                             <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
                                 {{ date('d M Y, h:i A', strtotime($log->timestamp)) }}
                             </td>
-                            <td><strong style="color: #f8fafc;">{{ $log->productName }}</strong></td>
-                            <td><span class="badge badge-info">{{ $log->productCode }}</span></td>
+                            <td><strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $log->productCode ?: $log->productName }}</strong></td>
                             <td style="font-weight: 800; font-size: 1.05rem; color: #4ade80;">
                                 +{{ number_format($log->quantity) }} units
                             </td>
@@ -634,10 +632,10 @@
                             <td><strong>{{ $log->userName ?: 'Storekeeper' }}</strong></td>
                             <td>
                                 <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('GOODS RECEIVED NOTE (GRN)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Source', '{{ addslashes($log->description ?: 'Official Supplier') }}', 'STOCK INFLOW', '#22c55e', [{name: '{{ addslashes($log->productName) }} ({{ $log->productCode }})', qty: '{{ $log->quantity }} units', note: 'Added directly to physical shelf count'}], 'Total Units: +{{ $log->quantity }} units', '{{ addslashes($log->userName ?: 'Storekeeper') }}', 'Physical stock verified and added to shelf balance.')">
+                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('GOODS RECEIVED NOTE (GRN)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Source', '{{ addslashes($log->description ?: 'Official Supplier') }}', 'STOCK INFLOW', '#22c55e', [{name: '{{ addslashes($log->productCode ?: $log->productName) }}', qty: '{{ $log->quantity }} units', note: 'Added directly to physical shelf count'}], 'Total Units: +{{ $log->quantity }} units', '{{ addslashes($log->userName ?: 'Storekeeper') }}', 'Physical stock verified and added to shelf balance.')">
                                         📄 Print GRN
                                     </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Goods Received Entry (Stock In)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Description', '{{ addslashes($log->description ?: 'Supplier Arrival') }}', 'Stock Inflow', '#22c55e', [{label: 'Product', val: '{{ addslashes($log->productName) }}'}, {label: 'SKU Code', val: '{{ $log->productCode }}'}, {label: 'Quantity Added', val: '+{{ $log->quantity }} units', color: '#4ade80'}, {label: 'Officer', val: '{{ addslashes($log->userName ?: 'Storekeeper') }}'}], 'Physical inventory count increased by {{ $log->quantity }} units.')">
+                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Goods Received Entry (Stock In)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Description', '{{ addslashes($log->description ?: 'Supplier Arrival') }}', 'Stock Inflow', '#22c55e', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Quantity Added', val: '+{{ $log->quantity }} units', color: '#4ade80'}, {label: 'Officer', val: '{{ addslashes($log->userName ?: 'Storekeeper') }}'}], 'Physical inventory count increased by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
                                 </div>
@@ -645,7 +643,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                            <td colspan="6" style="text-align: center; padding: 3rem; color: var(--text-muted);">
                                 No stock in entries found matching filters.
                             </td>
                         </tr>
@@ -664,16 +662,16 @@
     @elseif($activeTab === 'stock_out')
         <div class="summary-grid">
             <div class="summary-card">
-                <h4>Outflow Events</h4>
-                <div class="val" style="color: #fbbf24;">{{ number_format($stockOutCount) }}</div>
+                <h4>Total Outflow Events</h4>
+                <div class="val" style="color: #f87171;">{{ number_format($stockOutCount) }}</div>
             </div>
             <div class="summary-card">
-                <h4>Total Physical Units Dispatched</h4>
+                <h4>Total Physical Units Out</h4>
                 <div class="val" style="color: #f87171;">-{{ number_format($stockOutUnits) }} units</div>
             </div>
             <div class="summary-card">
-                <h4>Distinct Products Affected</h4>
-                <div class="val" style="color: #60a5fa;">{{ number_format($stockOutProducts) }} items</div>
+                <h4>Pickup Deliveries</h4>
+                <div class="val" style="color: #4ade80;">{{ number_format($stockOutFulfilled) }} orders</div>
             </div>
         </div>
 
@@ -695,8 +693,7 @@
                         <tr>
                             <th>Date & Time</th>
                             <th>Event Type</th>
-                            <th>Product Name</th>
-                            <th>SKU Code</th>
+                            <th>Product SKU</th>
                             <th>Units Out</th>
                             <th>Description</th>
                             <th>Authorized Officer</th>
@@ -724,8 +721,7 @@
                                     <span class="badge badge-secondary">{{ $log->type }}</span>
                                 @endif
                             </td>
-                            <td><strong style="color: #f8fafc;">{{ $log->productName }}</strong></td>
-                            <td><span class="badge badge-info">{{ $log->productCode }}</span></td>
+                            <td><strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $log->productCode ?: $log->productName }}</strong></td>
                             <td style="font-weight: 800; font-size: 1.05rem; color: #f87171;">
                                 {{ number_format($log->quantity) }} units
                             </td>
@@ -733,10 +729,10 @@
                             <td><strong>{{ $log->userName }}</strong></td>
                             <td>
                                 <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('STOCK DISPATCH & OUTFLOW SLIP', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Outflow Type', '{{ addslashes($log->type) }}', 'PHYSICAL OUTFLOW', '#ef4444', [{name: '{{ addslashes($log->productName) }} ({{ $log->productCode }})', qty: '-{{ $log->quantity }} units', note: '{{ addslashes($log->description) }}'}], 'Total Outflow: -{{ $log->quantity }} units', '{{ addslashes($log->userName) }}', 'Goods officially dispatched from physical shelf inventory.')">
+                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('STOCK DISPATCH & OUTFLOW SLIP', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Outflow Type', '{{ addslashes($log->type) }}', 'PHYSICAL OUTFLOW', '#ef4444', [{name: '{{ addslashes($log->productCode ?: $log->productName) }}', qty: '-{{ $log->quantity }} units', note: '{{ addslashes($log->description) }}'}], 'Total Outflow: -{{ $log->quantity }} units', '{{ addslashes($log->userName) }}', 'Goods officially dispatched from physical shelf inventory.')">
                                         📄 Print Slip
                                     </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Stock Outflow Record', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Event Type', '{{ addslashes($log->type) }}', 'Stock Outflow', '#ef4444', [{label: 'Product', val: '{{ addslashes($log->productName) }}'}, {label: 'SKU Code', val: '{{ $log->productCode }}'}, {label: 'Deducted Units', val: '-{{ $log->quantity }} units', color: '#f87171'}, {label: 'Description', val: '{{ addslashes($log->description) }}'}, {label: 'Authorized By', val: '{{ addslashes($log->userName) }}'}], 'Physical count reduced by {{ $log->quantity }} units.')">
+                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Stock Outflow Record', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Event Type', '{{ addslashes($log->type) }}', 'Stock Outflow', '#ef4444', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Deducted Units', val: '-{{ $log->quantity }} units', color: '#f87171'}, {label: 'Description', val: '{{ addslashes($log->description) }}'}, {label: 'Authorized By', val: '{{ addslashes($log->userName) }}'}], 'Physical count reduced by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
                                 </div>
@@ -744,7 +740,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                            <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
                                 No stock outflow records found matching filters.
                             </td>
                         </tr>

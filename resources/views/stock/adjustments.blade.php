@@ -181,7 +181,7 @@
                     <tr>
                         <th>Date & Time</th>
                         <th>Shop Branch</th>
-                        <th>Product</th>
+                        <th>Product SKU</th>
                         <th>Type</th>
                         <th style="color: #f87171;">Qty Deducted</th>
                         <th>Reason / Incident Note</th>
@@ -196,8 +196,7 @@
                         </td>
                         <td><strong>{{ $adj->warehouse->name ?? 'Shop' }}</strong></td>
                         <td>
-                            <strong>{{ $adj->product_name }}</strong>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);"><span class="badge badge-info">{{ $adj->product_code }}</span></div>
+                            <strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $adj->product_code ?? $adj->product_name }}</strong>
                         </td>
                         <td>
                             @php
@@ -251,10 +250,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Select Product</label>
+                    <label>Select Product SKU</label>
                     <select name="product_id" id="adjProduct" required>
                         @foreach($products as $p)
-                            <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->code }})</option>
+                            <option value="{{ $p->id }}">{{ $p->code }}</option>
                         @endforeach
                     </select>
                 </div>

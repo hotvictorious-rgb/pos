@@ -255,7 +255,7 @@
 
             <!-- Instant Search -->
             <div style="flex: 1; max-width: 300px;">
-                <input type="text" id="searchInput" placeholder="🔍 Search item name or SKU..." onkeyup="filterProducts()">
+                <input type="text" id="searchInput" placeholder="🔍 Search SKU code (e.g. M10DE, 54X14)..." onkeyup="filterProducts()">
             </div>
         </div>
 
@@ -279,11 +279,13 @@
                  data-price="{{ $product->unitPrice }}"
                  data-category="{{ $product->category }}"
                  data-stock="{{ $product->physical_stock }}"
-                 onclick="addToCart('{{ $product->id }}', '{{ addslashes($product->name) }}', {{ $product->unitPrice }}, {{ $product->physical_stock }})">
+                 onclick="addToCart('{{ $product->id }}', '{{ addslashes($product->code) }}', {{ $product->unitPrice }}, {{ $product->physical_stock }})">
                 <div style="flex: 1; min-width: 0;">
-                    <div class="p-name" title="{{ $product->name }}">{{ $product->name }}</div>
+                    <div class="p-name" title="SKU: {{ $product->code }}" style="font-size: 1.05rem; font-weight: 800; color: #60a5fa; letter-spacing: 0.03em;">
+                        {{ $product->code }}
+                    </div>
                     <div style="font-size: 0.72rem; color: #94a3b8; margin-bottom: 0.25rem;">
-                        SKU: <span style="color: #93c5fd; font-weight: 700;">{{ $product->code }}</span> · <span style="color: #c084fc;">{{ $product->category }}</span>
+                        <span style="color: #c084fc; font-weight: 600;">{{ $product->category }}</span>@if($product->size) · <span style="color: #cbd5e1;">{{ $product->size }}</span>@endif
                     </div>
                     <div class="p-price">₦{{ number_format($product->unitPrice, 0) }}</div>
                 </div>
