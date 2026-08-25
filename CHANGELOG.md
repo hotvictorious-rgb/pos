@@ -7,7 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+### Fixed
+- **POS Instant Multi-Attribute & SKU Code Search**:
+  - **The Root Cause**: The POS product cards were missing the `data-code` HTML attribute, and the client-side JavaScript search function was only comparing queries against the product name (`data-name`), ignoring factory SKU codes, brands, and sizes.
+  - **Multi-Attribute Matching**: Enhanced `applyProductFilters()` in `resources/views/pos/index.blade.php` to search across SKU code (`data-code`), commercial name (`data-name`), brand (`data-brand`), size (`data-size`), and category.
+  - **Fuzzy & Barcode Scanner Support**: Added symbol-tolerant matching (ignores spaces/hyphens) and instant `Enter` key handling for hardware barcode scanners to automatically select and add products to the cart upon scan.
+
 ### Added
+- **Production Master Catalog Initialization (Hysam Nwaniba)**:
+  - Cleaned all seeded/dummy test sales and transactions for a clean production start.
+  - Imported 529 verified SKU mattress, foam, and pillow products with 337 physical opening stock units (₦38.3M asset valuation) into the primary Nwaniba store.
 - **Multi-Branch Location Filtering & Sleek Executive Dashboard Redesign**:
   - **Clean Dropdown Controls**: Unified both Branch Location and Time Period controls into matching side-by-side executive dropdown selectors with auto-submit and collapsible custom date range picker.
   - **Branch Location Selector**: Added a top branch dropdown allowing instantaneous switching between `All Branches (Consolidated)` and specific shop/warehouse branches.
