@@ -305,8 +305,20 @@ class StockController extends Controller
         $carrier = $request->get('carrier_name');
         $search = trim($request->get('search', ''));
 
+        $authUser = Auth::user();
+        $isBranchStaff = ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id));
+        $userWarehouse = $isBranchStaff ? Warehouse::find($authUser->warehouse_id) : null;
+
         $query = Transfer::with(['source', 'destination', 'items']);
         $this->applyDateFilter($query, 'created_at', $datePreset, $fromDate, $toDate);
+
+        // 🔒 Strict Branch Scoping: Branch staff ONLY see transfers involving their assigned shop (Origin or Destination)
+        if ($isBranchStaff) {
+            $query->where(function ($q) use ($authUser) {
+                $q->where('source_warehouse_id', $authUser->warehouse_id)
+                  ->orWhere('destination_warehouse_id', $authUser->warehouse_id);
+            });
+        }
 
         if ($status) {
             $query->where('status', strtoupper($status));
@@ -331,15 +343,21 @@ class StockController extends Controller
 
         $allTransfers = $query->orderBy('created_at', 'desc')->paginate(25)->withQueryString();
 
-        $pendingCount = Transfer::where('status', 'DISPATCHED')->count();
-        $receivedCount = Transfer::where('status', 'RECEIVED')->count();
-        $discrepancyCount = Transfer::where('status', 'DISCREPANCY')->count();
+        // Scope KPI metrics strictly to this shop
+        $kpiQuery = Transfer::query();
+        if ($isBranchStaff) {
+            $kpiQuery->where(function ($q) use ($authUser) {
+                $q->where('source_warehouse_id', $authUser->warehouse_id)
+                  ->orWhere('destination_warehouse_id', $authUser->warehouse_id);
+            });
+        }
+
+        $pendingCount = (clone $kpiQuery)->where('status', 'DISPATCHED')->count();
+        $receivedCount = (clone $kpiQuery)->where('status', 'RECEIVED')->count();
+        $discrepancyCount = (clone $kpiQuery)->where('status', 'DISCREPANCY')->count();
 
         $warehouses = Warehouse::where('is_active', true)->get();
         $allWarehouses = Warehouse::where('is_active', true)->get();
-        $authUser = Auth::user();
-        $isBranchStaff = ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id));
-        $userWarehouse = $isBranchStaff ? Warehouse::find($authUser->warehouse_id) : null;
         $carriers = Transfer::distinct()->whereNotNull('carrier_name')->where('carrier_name', '!=', '')->pluck('carrier_name');
         $allProducts = Product::where('archived', false)->get();
 

@@ -194,22 +194,32 @@
         </form>
     </div>
 
-    <!-- Section 1: In-Transit Transfers Waiting to be Accepted -->
+    <!-- Section 1: In-Transit Transfers Waiting to be Handled -->
     @php
-        $pendingTransfers = $allTransfers->where('status', 'DISPATCHED');
+        $authUser = auth()->user();
+        $isBranchUser = ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id));
+        
+        $incomingTransfersList = $allTransfers->where('status', 'DISPATCHED')->filter(function ($t) use ($authUser, $isBranchUser) {
+            return !$isBranchUser || $t->destination_warehouse_id == $authUser->warehouse_id;
+        });
+
+        $outgoingTransfersList = $isBranchUser 
+            ? $allTransfers->where('status', 'DISPATCHED')->where('source_warehouse_id', $authUser->warehouse_id)
+            : collect();
     @endphp
-    @if($pendingTransfers->isNotEmpty())
+
+    @if($incomingTransfersList->isNotEmpty())
     <div style="margin-bottom: 2rem;">
         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-            <h3 style="font-size: 1.25rem; font-weight: 800; color: #93c5fd;">
-                📦 In-Transit Shipments Awaiting Physical Count ({{ $pendingTransfers->count() }})
+            <h3 style="font-size: 1.25rem; font-weight: 800; color: #86efac;">
+                📦 Incoming Shipments Arriving at Your Shop ({{ $incomingTransfersList->count() }})
             </h3>
-            <span class="badge badge-warning">Action Required</span>
+            <span class="badge badge-success">Verify & Count Required</span>
         </div>
 
         <div class="transfer-pending-grid">
-            @foreach($pendingTransfers as $trf)
-            <div class="transfer-card">
+            @foreach($incomingTransfersList as $trf)
+            <div class="transfer-card" style="border-color: rgba(34,197,94,0.35);">
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
                         <div>
@@ -218,16 +228,16 @@
                                 Sent: {{ date('d M Y, h:i A', strtotime($trf->created_at)) }}
                             </div>
                         </div>
-                        <span class="badge badge-info">🚚 In Transit</span>
+                        <span class="badge badge-info">🚚 Inbound</span>
                     </div>
 
                     <!-- Route visual -->
                     <div style="background: rgba(11,15,25,0.7); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
                         <div style="font-size: 0.85rem; margin-bottom: 0.35rem;">
-                            From: <strong style="color: #fca5a5;">🏢 {{ $trf->source->name ?? 'Origin Shop' }}</strong>
+                            Dispatched From: <strong style="color: #fca5a5;">🏢 {{ $trf->source->name ?? 'Origin Shop' }}</strong>
                         </div>
                         <div style="font-size: 0.85rem; margin-bottom: 0.35rem;">
-                            To: <strong style="color: #86efac;">🏢 {{ $trf->destination->name ?? 'Destination Shop' }}</strong>
+                            Arriving At: <strong style="color: #86efac;">🏪 {{ $trf->destination->name ?? 'Your Branch' }}</strong>
                         </div>
                         <div style="font-size: 0.8rem; color: var(--text-muted);">
                             Carrier / Driver: <strong style="color: #cbd5e1;">{{ $trf->carrier_name }}</strong>
@@ -254,6 +264,73 @@
                         <button class="btn btn-success" style="flex: 2; font-size: 0.95rem;" onclick="openAcceptModal({{ json_encode($trf) }})">
                             ✅ Accept & Count
                         </button>
+                    @endif
+                </div>
+            </div>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
+    @if($outgoingTransfersList->isNotEmpty())
+    <div style="margin-bottom: 2rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+            <h3 style="font-size: 1.25rem; font-weight: 800; color: #93c5fd;">
+                🚚 Outgoing Transfers Sent From Your Shop ({{ $outgoingTransfersList->count() }})
+            </h3>
+            <span class="badge badge-info">En Route (Awaiting Destination Verification)</span>
+        </div>
+
+        <div class="transfer-pending-grid">
+            @foreach($outgoingTransfersList as $trf)
+            <div class="transfer-card" style="border-color: rgba(59,130,246,0.35);">
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                        <div>
+                            <span class="badge badge-warning" style="font-size: 0.85rem;">{{ $trf->transfer_no }}</span>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                Sent: {{ date('d M Y, h:i A', strtotime($trf->created_at)) }}
+                            </div>
+                        </div>
+                        <span class="badge badge-warning">🚚 In Transit</span>
+                    </div>
+
+                    <!-- Route visual -->
+                    <div style="background: rgba(11,15,25,0.7); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
+                        <div style="font-size: 0.85rem; margin-bottom: 0.35rem;">
+                            Origin: <strong style="color: #93c5fd;">📍 Your Branch</strong>
+                        </div>
+                        <div style="font-size: 0.85rem; margin-bottom: 0.35rem;">
+                            En Route To: <strong style="color: #86efac;">🏢 {{ $trf->destination->name ?? 'Destination' }}</strong>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">
+                            Carrier / Driver: <strong style="color: #cbd5e1;">{{ $trf->carrier_name }}</strong>
+                        </div>
+                    </div>
+
+                    <!-- Items list -->
+                    <div style="margin-bottom: 1rem;">
+                        <div style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.35rem;">Items in Shipment:</div>
+                        @foreach($trf->items as $item)
+                            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.25rem 0; border-bottom: 1px dashed rgba(255,255,255,0.08);">
+                                <span>{{ $item->product_name }}</span>
+                                <strong style="color: #60a5fa;">{{ $item->dispatched_qty }} units</strong>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                    <a href="{{ route('stock.waybill', $trf->id) }}" class="btn btn-secondary" style="flex: 1;" target="_blank">
+                        📄 Waybill
+                    </a>
+                    @if(auth()->user()?->role !== 'viewer')
+                        <form method="POST" action="{{ route('stock.transfer.recall', $trf->id) }}" style="flex: 2; margin: 0;" onsubmit="return confirm('Recall this transfer back to your shop? Deducted goods will be restored immediately.')">
+                            @csrf
+                            <button type="submit" class="btn btn-danger btn-block" style="font-size: 0.85rem; padding: 0.55rem;">
+                                ↩ Recall / Cancel
+                            </button>
+                        </form>
                     @endif
                 </div>
             </div>

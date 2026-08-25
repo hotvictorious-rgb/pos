@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ### Added
 - **Inter-Branch Transfer Origin Auto-Lock & Anti-Tampering Engine**:
+  - **Shop-Scoped Transfer Visibility**: Branch workers ONLY see transfers involving their assigned shop (either as Origin or Destination). Transfers occurring between other shops are 100% invisible.
+  - **Split In-Transit Shipments Radar**:
+    - **Incoming Shipments Arriving at Your Shop**: Features **`✅ Accept & Count`** button to verify and accept physical inventory into shelf stock.
+    - **Outgoing Shipments Sent from Your Shop**: Shows **`🚚 In Transit (En Route)`** with **`↩ Recall / Cancel`** button (Accept button is completely absent).
   - **Fixed Origin (Source Shop)**: When branch staff initiate an inter-branch transfer, the Source Branch is strictly hardcoded and locked to their assigned shop (`user->warehouse_id`), eliminating the source dropdown and rendering a locked location badge.
   - **Destination-Only Selection**: Staff can only pick receiving destination branches, preventing staff from dispatching goods out of another branch.
   - **Destination-Only Physical Verification**: Source shop workers cannot accept or verify transfers they dispatched; only the destination receiving shop (or executive admin) can count and accept goods into stock.
