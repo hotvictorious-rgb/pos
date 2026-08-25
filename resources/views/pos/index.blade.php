@@ -346,14 +346,13 @@
                 </div>
                 
                 <select id="customerSelect" style="width: 100%; padding: 0.45rem 0.65rem; font-size: 0.82rem; background: #0b0f19; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; margin-bottom: 0.5rem;" onchange="onCustomerSelected(this)">
-                    <option value="" data-name="Walk-in Customer" data-phone="" data-debt="0" data-limit="0" data-code="">-- 🛒 Walk-in Customer (Paid in Full Only) --</option>
+                    <option value="" data-name="Walk-in Customer" data-phone="" data-debt="0" data-code="">-- 🛒 Walk-in Customer (Paid in Full Only) --</option>
                     @foreach($customers as $c)
                         <option value="{{ $c->id }}" 
                                 data-id="{{ $c->id }}"
                                 data-name="{{ $c->name }}" 
                                 data-phone="{{ $c->phone }}" 
                                 data-debt="{{ $c->total_debt }}" 
-                                data-limit="{{ $c->credit_limit }}"
                                 data-code="{{ $c->customer_code }}">
                             {{ $c->name }} ({{ $c->phone ?: 'No Phone' }}) [{{ $c->customer_code }}] — Debt: ₦{{ number_format($c->total_debt) }}
                         </option>
@@ -373,12 +372,11 @@
                     </div>
                 </div>
 
-                <!-- Live Debt & Credit Limit Badge for Selected Customer -->
+                <!-- Live Debt Badge for Selected Customer -->
                 <div id="customerFinancialBadge" style="display: none; margin-top: 0.5rem; background: rgba(15,23,42,0.85); border: 1px solid #334155; border-radius: 8px; padding: 0.45rem 0.65rem; font-size: 0.75rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span>Code: <strong id="badgeCustCode" style="color: #60a5fa;">CUST-0001</strong></span>
                         <span>Current Debt: <strong id="badgeCustDebt" style="color: #f87171;">₦0</strong></span>
-                        <span>Credit Limit: <strong id="badgeCustLimit" style="color: #4ade80;">Unlimited</strong></span>
                     </div>
                 </div>
             </div>
@@ -465,10 +463,6 @@
             <div class="form-group" style="margin-bottom: 0.75rem;">
                 <label style="font-size: 0.75rem;">Shop / Delivery Address</label>
                 <input type="text" id="qc_address" placeholder="e.g. Shop 12 Main Market">
-            </div>
-            <div class="form-group" style="margin-bottom: 0.75rem;">
-                <label style="font-size: 0.75rem;">Credit Limit (₦) [0 for Unlimited]</label>
-                <input type="number" id="qc_credit_limit" placeholder="e.g. 100000" min="0" step="any">
             </div>
 
             <div style="display: flex; gap: 0.5rem; margin-top: 1.25rem;">
@@ -683,7 +677,6 @@ function onCustomerSelected(sel) {
     const name = opt.getAttribute('data-name') || '';
     const phone = opt.getAttribute('data-phone') || '';
     const debt = parseFloat(opt.getAttribute('data-debt') || 0);
-    const limit = parseFloat(opt.getAttribute('data-limit') || 0);
     const code = opt.getAttribute('data-code') || '';
 
     document.getElementById('hiddenCustomerId').value = custId;
@@ -695,7 +688,6 @@ function onCustomerSelected(sel) {
         badge.style.display = 'block';
         document.getElementById('badgeCustCode').textContent = code;
         document.getElementById('badgeCustDebt').textContent = '₦' + Math.round(debt).toLocaleString('en-US');
-        document.getElementById('badgeCustLimit').textContent = limit > 0 ? ('₦' + Math.round(limit).toLocaleString('en-US')) : 'Unlimited';
     } else {
         badge.style.display = 'none';
     }
@@ -781,8 +773,7 @@ function submitQuickCustomer(e) {
         _token: "{{ csrf_token() }}",
         name: document.getElementById('qc_name').value.trim(),
         phone: pCheck.phone,
-        address: document.getElementById('qc_address').value.trim(),
-        credit_limit: document.getElementById('qc_credit_limit').value || 0
+        address: document.getElementById('qc_address').value.trim()
     };
 
     fetch("{{ route('pos.customer.quick_register') }}", {
@@ -810,7 +801,6 @@ function submitQuickCustomer(e) {
             opt.setAttribute('data-name', c.name);
             opt.setAttribute('data-phone', c.phone);
             opt.setAttribute('data-debt', c.total_debt);
-            opt.setAttribute('data-limit', c.credit_limit);
             opt.setAttribute('data-code', c.customer_code);
             opt.textContent = `${c.name} (${c.phone}) [${c.customer_code}] — Debt: ₦${Math.round(c.total_debt).toLocaleString('en-US')}`;
             
@@ -1027,22 +1017,6 @@ function submitSale() {
                     desc: 'Credit / Debt sales cannot be issued to an anonymous "Walk-in Customer". Please enter customer name or tap "+ Quick Add".',
                     focus: 'customerNameInput'
                 });
-            }
-
-            // Check Customer Credit Limit
-            const sel = document.getElementById('customerSelect');
-            if (sel && sel.value) {
-                const opt = sel.options[sel.selectedIndex];
-                const currentDebt = parseFloat(opt.getAttribute('data-debt') || 0);
-                const creditLimit = parseFloat(opt.getAttribute('data-limit') || 0);
-                if (creditLimit > 0 && (currentDebt + remaining) > creditLimit) {
-                    const overage = (currentDebt + remaining) - creditLimit;
-                    errors.push({
-                        title: 'Customer Credit Limit Exceeded',
-                        desc: `Customer <strong>${custName}</strong> has an allowed credit limit of <strong>₦${Math.round(creditLimit).toLocaleString('en-US')}</strong> with current debt of <strong>₦${Math.round(currentDebt).toLocaleString('en-US')}</strong>.<br>This new debt of ₦${Math.round(remaining).toLocaleString('en-US')} exceeds their limit by <strong>₦${Math.round(overage).toLocaleString('en-US')}</strong>.`,
-                        focus: 'partPayInput'
-                    });
-                }
             }
         }
     }

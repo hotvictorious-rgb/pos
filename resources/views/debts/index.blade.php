@@ -177,9 +177,6 @@
                             <strong style="font-size: 1.05rem; color: #f8fafc;">{{ $debtor->name }}</strong>
                             <div style="font-size: 0.75rem; margin-top: 0.2rem;">
                                 <span class="badge badge-info">{{ $debtor->customer_code ?? 'CUST-' . str_pad($debtor->id, 4, '0', STR_PAD_LEFT) }}</span>
-                                @if($debtor->credit_limit > 0)
-                                    <span style="color: #94a3b8; font-size: 0.72rem;">· Limit: ₦{{ number_format($debtor->credit_limit) }}</span>
-                                @endif
                             </div>
                         </td>
                         <td>

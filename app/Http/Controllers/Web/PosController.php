@@ -76,27 +76,23 @@ class PosController extends Controller
             'name' => 'required|string|max:255',
             'phone' => ['required', 'string', 'regex:/^0\d{10}$/'],
             'address' => 'nullable|string|max:500',
-            'credit_limit' => 'nullable|numeric|min:0',
         ], [
             'phone.regex' => 'Customer phone number must be exactly 11 digits (e.g. 08031234567).',
         ]);
 
         $phone = $rawPhone;
         $name = trim($request->name);
-        $creditLimit = (float) ($request->credit_limit ?? 0);
 
         $customer = Customer::where('phone', $phone)->first();
         if ($customer) {
             $customer->name = $name;
             if ($request->filled('address')) $customer->address = $request->address;
-            if ($request->filled('credit_limit')) $customer->credit_limit = $creditLimit;
             $customer->save();
         } else {
             $customer = Customer::create([
                 'name' => $name,
                 'phone' => $phone,
                 'address' => $request->address,
-                'credit_limit' => $creditLimit,
                 'total_debt' => 0,
             ]);
         }
@@ -110,7 +106,6 @@ class PosController extends Controller
                 'name' => $customer->name,
                 'phone' => $customer->phone,
                 'total_debt' => (float) $customer->total_debt,
-                'credit_limit' => (float) $customer->credit_limit,
                 'address' => $customer->address,
             ],
         ]);
@@ -205,19 +200,6 @@ class PosController extends Controller
             $customerId = $customer->id;
             $customerName = $customer->name;
             $customerPhone = $customer->phone;
-        }
-
-        // 🔒 CREDIT LIMIT ENFORCEMENT
-        if ($hasDebt && $customer) {
-            $debtAmount = $totalAmount - $paidAmount;
-            if ($customer->credit_limit > 0 && ($customer->total_debt + $debtAmount) > $customer->credit_limit) {
-                $limitFormatted = '₦' . number_format($customer->credit_limit, 0);
-                $currDebtFormatted = '₦' . number_format($customer->total_debt, 0);
-                $newTotalDebt = '₦' . number_format($customer->total_debt + $debtAmount, 0);
-                $errorMsg = "⚠️ Credit Limit Exceeded! Customer {$customer->name} ({$customer->customer_code}) has credit limit of {$limitFormatted} and current debt of {$currDebtFormatted}. This sale would raise debt to {$newTotalDebt}.";
-                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
-                return back()->withErrors(['error' => $errorMsg])->withInput();
-            }
         }
 
         $saleData = [

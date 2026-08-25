@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+### Removed
+- **Credit Limits System**:
+  - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
+
 ### Added
 - **Branch Shop & Warehouse Location Editing Hub**:
   - **Edit Branch Details**: Added full editing capabilities (`name`, unique `code`, `address`, `phone`, and `manager_name`) for shop branches and warehouse locations under `Settings -> Branch Locations`.

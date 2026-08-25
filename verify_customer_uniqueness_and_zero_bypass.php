@@ -55,8 +55,7 @@ assert($data['customer']['phone'] === $phone, 'Proof 1 Failed: Phone mismatch');
 echo "✅ [PROOF 1 PASSED] Quick Customer Registration & Auto-Code\n";
 echo "   • Name: {$data['customer']['name']}\n";
 echo "   • Unique Code: {$data['customer']['customer_code']}\n";
-echo "   • Phone: {$data['customer']['phone']}\n";
-echo "   • Credit Limit: ₦" . number_format($data['customer']['credit_limit']) . "\n\n";
+echo "   • Phone: {$data['customer']['phone']}\n\n";
 
 $registeredCustomer = Customer::find($data['customer']['id']);
 
@@ -114,32 +113,30 @@ echo "   • Attempted: Delayed Pickup under 'Walk-in Customer' with no phone\n"
 echo "   • Intercepted Error: {$blockedPickupData['error']}\n\n";
 
 // ─────────────────────────────────────────────────────────────
-// PROOF 4: Credit Limit Enforcement Test
+// PROOF 4: Zero-Bypass Test: Credit Sale with Invalid Phone MUST BE BLOCKED
 // ─────────────────────────────────────────────────────────────
-// Registered Customer limit = ₦50,000. Try to take ₦60,000 debt.
-$exceedCreditReq = Request::create('/pos/checkout', 'POST', [
+$invalidPhoneCreditReq = Request::create('/pos/checkout', 'POST', [
     'warehouse_id' => $warehouse->id,
     'items' => [
         ['productId' => $product->id, 'quantity' => 7, 'unitPrice' => 10000]
     ],
     'totalAmount' => 70000,
-    'paidAmount' => 10000, // ₦60,000 Debt (Exceeds ₦50,000 limit)
+    'paidAmount' => 10000, // ₦60,000 Debt
     'is_supplied' => 'yes',
-    'customerId' => $registeredCustomer->id,
-    'customerName' => $registeredCustomer->name,
-    'customerPhone' => $registeredCustomer->phone,
+    'customerName' => 'Alhaji Musa',
+    'customerPhone' => '080123', // Short invalid phone
 ]);
-$exceedCreditReq->headers->set('Accept', 'application/json');
+$invalidPhoneCreditReq->headers->set('Accept', 'application/json');
 
-$exceedCreditRes = $controller->checkout($exceedCreditReq);
-$exceedCreditData = json_decode($exceedCreditRes->getContent(), true);
+$invalidPhoneCreditRes = $controller->checkout($invalidPhoneCreditReq);
+$invalidPhoneCreditData = json_decode($invalidPhoneCreditRes->getContent(), true);
 
-assert($exceedCreditRes->getStatusCode() === 422, 'Proof 4 Failed: Expected 422 for exceeding credit limit');
-assert(str_contains($exceedCreditData['error'], 'Credit Limit Exceeded'), 'Proof 4 Failed: Error does not mention Credit Limit');
+assert($invalidPhoneCreditRes->getStatusCode() === 422, 'Proof 4 Failed: Expected 422 for invalid phone');
+assert(str_contains($invalidPhoneCreditData['error'], '11 digits'), 'Proof 4 Failed: Error does not mention 11 digits');
 
-echo "✅ [PROOF 4 PASSED] Credit Limit Enforcement: Over-limit credit sale is STRICTLY BLOCKED\n";
-echo "   • Customer Limit: ₦50,000 | Attempted Debt: ₦60,000\n";
-echo "   • Intercepted Error: {$exceedCreditData['error']}\n\n";
+echo "✅ [PROOF 4 PASSED] Invalid Phone Intercepted: Short phone on credit sale is STRICTLY BLOCKED\n";
+echo "   • Attempted: Phone '080123' with ₦60,000 Debt\n";
+echo "   • Intercepted Error: {$invalidPhoneCreditData['error']}\n\n";
 
 // ─────────────────────────────────────────────────────────────
 // PROOF 5: Legitimate Credit Sale with Verified Customer & Phone
