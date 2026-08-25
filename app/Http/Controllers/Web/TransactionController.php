@@ -454,6 +454,7 @@ class TransactionController extends Controller
         $stockOutCount = (clone $stockOutQuery)->count();
         $stockOutUnits = abs((clone $stockOutQuery)->sum('quantity'));
         $stockOutProducts = (clone $stockOutQuery)->distinct('productId')->count('productId');
+        $stockOutFulfilled = (clone $stockOutQuery)->where('type', 'DISPATCH_FULFILLED')->count();
         $stockOutLogs = (clone $stockOutQuery)->orderBy('timestamp', 'desc')->paginate(20, ['*'], 'stock_out_page')->withQueryString();
 
         // TAB 4: IN-TRANSIT
@@ -511,7 +512,7 @@ class TransactionController extends Controller
             // Tab 2: Stock In
             'stockInLogs', 'stockInBatches', 'stockInUnits', 'stockInProducts',
             // Tab 3: Stock Out
-            'stockOutLogs', 'stockOutCount', 'stockOutUnits', 'stockOutProducts',
+            'stockOutLogs', 'stockOutCount', 'stockOutUnits', 'stockOutProducts', 'stockOutFulfilled',
             // Tab 4: In-Transit
             'inTransitTransfers', 'inTransitCount', 'inTransitUnits', 'inTransitCarriers',
             // Tab 5: Incoming Transfers
