@@ -372,7 +372,7 @@
 
                 <input type="hidden" name="customerId" id="hiddenCustomerId" value="">
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                <div id="manualCustomerFields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.72rem;">Customer Name <span id="custNameReq" style="color: #f87171; display: none;">*</span></label>
                         <input type="text" name="customerName" id="customerNameInput" placeholder="Walk-in (or Name)" style="padding: 0.4rem 0.6rem; font-size: 0.82rem;" oninput="onManualCustomerTyping()">
@@ -401,7 +401,7 @@
             </div>
 
             <!-- Handover / Physical Stock Rule Selector -->
-            <div class="handover-box">
+            <div class="handover-box" id="handoverSection">
                 <div style="font-size: 0.8rem; font-weight: 800; color: #fbbf24; text-transform: uppercase;">
                     📦 Goods Delivery: Supplied Now or Not Supplied?
                 </div>
@@ -567,8 +567,8 @@ function setSaleMode(mode) {
     const retailPaySec = document.getElementById('retailPaymentSection');
     const wholesaleBox = document.getElementById('wholesaleNoticeBox');
     const wholesaleBadge = document.getElementById('wholesaleCustReqBadge');
-    const nameReq = document.getElementById('custNameReq');
-    const phoneReq = document.getElementById('custPhoneReq');
+    const manualCustFields = document.getElementById('manualCustomerFields');
+    const handoverSec = document.getElementById('handoverSection');
 
     if (mode === 'WHOLESALE_DISPATCH') {
         btnWholesale.className = 'btn btn-primary';
@@ -579,11 +579,14 @@ function setSaleMode(mode) {
         btnRetail.style.background = '';
         btnRetail.style.color = '';
 
+        // Hide unneeded controls in Wholesale mode
+        if (manualCustFields) manualCustFields.style.display = 'none';
+        if (handoverSec) handoverSec.style.display = 'none';
+        selectHandover('yes'); // Always supplied on wholesale pickup
+
         retailPaySec.style.display = 'none';
         wholesaleBox.style.display = 'block';
         wholesaleBadge.style.display = 'inline';
-        nameReq.style.display = 'inline';
-        phoneReq.style.display = 'inline';
         document.getElementById('totalBillLabel').textContent = 'Wholesale Units:';
     } else {
         btnRetail.className = 'btn btn-primary';
@@ -593,6 +596,10 @@ function setSaleMode(mode) {
         btnWholesale.style.background = '';
         btnWholesale.style.color = '#c084fc';
         btnWholesale.style.borderColor = 'rgba(139,92,246,0.4)';
+
+        // Restore standard Retail controls
+        if (manualCustFields) manualCustFields.style.display = 'grid';
+        if (handoverSec) handoverSec.style.display = 'block';
 
         retailPaySec.style.display = 'block';
         wholesaleBox.style.display = 'none';
@@ -967,18 +974,13 @@ function submitSale() {
 
     // 2. Customer Validation (Mandatory for Wholesale Dispatch)
     if (isWholesale) {
-        if (!custName || custName.toLowerCase() === 'walk-in customer') {
+        const selCust = document.getElementById('customerSelect');
+        const selVal = selCust ? selCust.value : '';
+        if (!selVal || !custName || custName.toLowerCase() === 'walk-in customer') {
             errors.push({
                 title: 'Wholesaler Account Required',
-                desc: 'Wholesale dispatch notes must be issued to a registered wholesale customer. Please select customer from dropdown or tap "+ Quick Add".',
+                desc: 'Please select a registered wholesaler from the dropdown list (or tap "➕ Quick Add" to register a new one).',
                 focus: 'customerSelect'
-            });
-        }
-        if (!rawCustPhone || !phoneCheck.valid) {
-            errors.push({
-                title: '11-Digit Phone Number Mandatory',
-                desc: 'A valid 11-digit Nigerian phone number is required on all wholesale dispatch waybills.',
-                focus: 'customerPhoneInput'
             });
         }
     } else {
