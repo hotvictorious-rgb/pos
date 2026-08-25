@@ -540,10 +540,12 @@ let paymentMode = 'CASH';
 
 function addToCart(id, name, price, stock) {
     const existing = cart.find(i => i.id === id);
+    const numericStock = (typeof stock === 'number') ? stock : (parseInt(stock) || 0);
     if (existing) {
         existing.qty += 1;
+        existing.stock = numericStock;
     } else {
-        cart.push({ id, name, price, qty: 1 });
+        cart.push({ id, name, price, stock: numericStock, qty: 1 });
     }
     renderCart();
 }
@@ -817,8 +819,6 @@ function updateDebtCalculation() {
 
 function submitSale() {
     const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
-    if (total <= 0 || cart.length === 0) return;
-
     const custName = document.getElementById('customerNameInput').value.trim() || 'Walk-in Customer';
     const custPhone = document.getElementById('customerPhoneInput').value.trim();
     const isSupplied = document.getElementById('radioYes').checked;
@@ -826,31 +826,116 @@ function submitSale() {
     const remaining = Math.max(0, total - paid);
     const totalUnits = cart.reduce((sum, item) => sum + item.qty, 0);
 
-    // 🔒 ZERO BYPASS CHECK FOR CREDIT & NOT SUPPLIED ORDERS
-    if (remaining > 0 || !isSupplied) {
-        const reason = remaining > 0 ? 'Credit / Part-Payment' : 'Delayed Pickup (Not Supplied)';
-        if (!custPhone || custPhone.length < 7) {
-            alert(`🔒 PHONE NUMBER REQUIRED!\n\nA verified GSM Phone Number is mandatory for ${reason} to track debts and verify customer pickup.\n\nPlease enter the phone number or tap "+ Quick Add" to select a customer.`);
-            document.getElementById('customerPhoneInput').focus();
-            return;
-        }
-        if (!custName || custName.toLowerCase() === 'walk-in customer') {
-            alert(`🔒 CUSTOMER NAME REQUIRED!\n\nA specific Customer Name is mandatory for ${reason}.\n\nPlease enter the customer name or select an account.`);
-            document.getElementById('customerNameInput').focus();
-            return;
+    const errors = [];
+
+    // 1. Empty Cart Check
+    if (cart.length === 0 || total <= 0) {
+        errors.push({
+            title: 'Cart is Empty',
+            desc: 'Please select at least one product from the catalog on the left to begin a sale.',
+            focus: 'searchInput'
+        });
+    }
+
+    // 2. Physical Stock Handover Validation (The Golden Law)
+    if (isSupplied && cart.length > 0) {
+        cart.forEach(item => {
+            const availStock = (typeof item.stock === 'number') ? item.stock : 0;
+            if (availStock <= 0) {
+                errors.push({
+                    title: `Out of Stock: ${item.name}`,
+                    desc: `<strong>"${item.name}"</strong> has <strong>0 physical units</strong> on ground in this shop.<br><span style="color:#fbbf24;font-size:0.78rem;">👉 Resolution: Switch Delivery below to "🟠 NOT SUPPLIED" if customer is paying in advance for delayed pickup or transfer.</span>`,
+                    focus: 'labelSuppliedNo'
+                });
+            } else if (item.qty > availStock) {
+                errors.push({
+                    title: `Insufficient Stock: ${item.name}`,
+                    desc: `You requested <strong>${item.qty} units</strong> of "${item.name}", but only <strong>${availStock} unit(s)</strong> physically exist in this shop.<br><span style="color:#fbbf24;font-size:0.78rem;">👉 Resolution: Reduce quantity to ${availStock} or switch Delivery to "🟠 NOT SUPPLIED".</span>`,
+                    focus: 'labelSuppliedNo'
+                });
+            }
+        });
+    }
+
+    // 3. Payment Mode & Debt Validation
+    if (paymentMode === 'DEBT') {
+        const partPayRaw = document.getElementById('partPayInput').value;
+        const partPayInput = parseFloat(partPayRaw);
+
+        if (isNaN(partPayInput) || partPayInput < 0) {
+            errors.push({
+                title: 'Invalid Payment Amount',
+                desc: 'Please enter a valid amount paying now (enter 0 if totally unpaid).',
+                focus: 'partPayInput'
+            });
+        } else if (partPayInput > total) {
+            errors.push({
+                title: 'Payment Amount Exceeds Total Bill',
+                desc: `Amount paying now (₦${Math.round(partPayInput).toLocaleString('en-US')}) cannot be greater than the total bill (₦${Math.round(total).toLocaleString('en-US')}).`,
+                focus: 'partPayInput'
+            });
         }
 
-        // Check Credit Limit
-        const sel = document.getElementById('customerSelect');
-        if (sel.value) {
-            const opt = sel.options[sel.selectedIndex];
-            const currentDebt = parseFloat(opt.getAttribute('data-debt') || 0);
-            const creditLimit = parseFloat(opt.getAttribute('data-limit') || 0);
-            if (creditLimit > 0 && (currentDebt + remaining) > creditLimit) {
-                alert(`⚠️ CREDIT LIMIT EXCEEDED!\n\nCustomer ${custName} has an allowed credit limit of ₦${Math.round(creditLimit).toLocaleString('en-US')} and current debt of ₦${Math.round(currentDebt).toLocaleString('en-US')}.\n\nThis new debt of ₦${Math.round(remaining).toLocaleString('en-US')} would bring total debt to ₦${Math.round(currentDebt + remaining).toLocaleString('en-US')}.`);
-                return;
+        if (remaining > 0) {
+            if (!custPhone || custPhone.length < 7) {
+                errors.push({
+                    title: 'Customer Phone Number Mandatory',
+                    desc: 'A verified GSM Phone Number (min 7 digits) is required for debt & credit sales to track customer debt recovery.',
+                    focus: 'customerPhoneInput'
+                });
+            }
+            if (!custName || custName.toLowerCase() === 'walk-in customer') {
+                errors.push({
+                    title: 'Customer Name / Account Mandatory',
+                    desc: 'Credit / Debt sales cannot be issued to an anonymous "Walk-in Customer". Please enter customer name or tap "+ Quick Add".',
+                    focus: 'customerNameInput'
+                });
+            }
+
+            // Check Customer Credit Limit
+            const sel = document.getElementById('customerSelect');
+            if (sel && sel.value) {
+                const opt = sel.options[sel.selectedIndex];
+                const currentDebt = parseFloat(opt.getAttribute('data-debt') || 0);
+                const creditLimit = parseFloat(opt.getAttribute('data-limit') || 0);
+                if (creditLimit > 0 && (currentDebt + remaining) > creditLimit) {
+                    const overage = (currentDebt + remaining) - creditLimit;
+                    errors.push({
+                        title: 'Customer Credit Limit Exceeded',
+                        desc: `Customer <strong>${custName}</strong> has an allowed credit limit of <strong>₦${Math.round(creditLimit).toLocaleString('en-US')}</strong> with current debt of <strong>₦${Math.round(currentDebt).toLocaleString('en-US')}</strong>.<br>This new debt of ₦${Math.round(remaining).toLocaleString('en-US')} exceeds their limit by <strong>₦${Math.round(overage).toLocaleString('en-US')}</strong>.`,
+                        focus: 'partPayInput'
+                    });
+                }
             }
         }
+    }
+
+    // 4. Delayed Pickup (Not Supplied) Rule
+    if (!isSupplied) {
+        if (!custPhone || custPhone.length < 7) {
+            errors.push({
+                title: 'Customer Phone Required for Delayed Pickup',
+                desc: 'A customer phone number is mandatory for unsupplied goods to contact and verify the customer during pickup.',
+                focus: 'customerPhoneInput'
+            });
+        }
+        if (!custName || custName.toLowerCase() === 'walk-in customer') {
+            errors.push({
+                title: 'Specific Customer Name Required',
+                desc: 'Delayed pickup orders must be assigned to a specific customer name so the warehouse knows who owns the buffer goods.',
+                focus: 'customerNameInput'
+            });
+        }
+    }
+
+    // ⛔ IF ANY BUSINESS RULE IS VIOLATED: BLOCK SUBMISSION AND SHOW REASON POPUP MODAL!
+    if (errors.length > 0) {
+        showActionBlockedModal({
+            title: 'Sale Cannot Be Completed',
+            subtitle: 'Please resolve the following business rule requirements:',
+            errors: errors
+        });
+        return;
     }
 
     // Populate Products & Quantities List

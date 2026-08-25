@@ -370,9 +370,9 @@
                 <span>📉</span> <span>Damaged Goods</span>
             </a>
 
-            <div class="menu-category">Sales & Customer Debts</div>
+            <div class="menu-category">Ledgers & History</div>
             <a href="{{ route('transactions.index') }}" class="nav-item {{ request()->routeIs('transactions.*') ? 'active' : '' }}">
-                <span>📑</span> <span>Sales History</span>
+                <span>📜</span> <span>History & Ledgers</span>
             </a>
             <a href="{{ route('pos.returns') }}" class="nav-item {{ request()->routeIs('pos.returns') ? 'active' : '' }}">
                 <span>🔄</span> <span>Returns & Refunds</span>
@@ -458,6 +458,33 @@
         </main>
     </div>
 
+    <!-- Universal Action Confirmation Modal (What Will Happen) -->
+    <div id="modalGlobalConfirm" class="modal-backdrop" style="display: none; z-index: 9999;">
+        <div class="modal" id="globalConfirmCard" style="max-width: 480px; padding: 1.75rem; background: #0f172a; border: 2px solid #3b82f6; border-radius: 20px; box-shadow: 0 25px 60px rgba(0,0,0,0.7); animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);">
+            <div style="text-align: center; margin-bottom: 1.25rem;">
+                <div id="globalConfirmIcon" style="font-size: 2.75rem; margin-bottom: 0.35rem; line-height: 1;">⚡</div>
+                <h3 id="globalConfirmTitle" style="font-size: 1.25rem; font-weight: 800; color: #f8fafc;">Confirm Action</h3>
+                <p id="globalConfirmSubtitle" style="font-size: 0.82rem; color: #94a3b8; margin-top: 0.25rem;">Review what will happen before proceeding:</p>
+            </div>
+
+            <div id="globalConfirmBody" style="background: rgba(15,23,42,0.85); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+            </div>
+
+            <div id="globalConfirmImpactWrap" style="margin-bottom: 1.25rem; display: none;">
+                <div id="globalConfirmImpact" style="font-weight: 700; padding: 0.65rem 0.85rem; border-radius: 10px; font-size: 0.82rem;"></div>
+            </div>
+
+            <div style="display: flex; gap: 0.75rem;">
+                <button type="button" class="btn btn-secondary" style="flex: 1; padding: 0.75rem; font-weight: 700;" onclick="closeGlobalConfirm()">
+                    ✕ Cancel / Edit
+                </button>
+                <button type="button" id="globalConfirmProceedBtn" class="btn btn-success" style="flex: 1.3; padding: 0.75rem; font-weight: 800;" onclick="executeGlobalConfirm()">
+                    ✅ Yes, Proceed
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Quick Header Calculator Modal -->
     <div id="modalCalculator" class="modal-backdrop" style="display: none;">
         <div class="modal" style="max-width: 360px; padding: 1.5rem; background: #111827; border: 2px solid #374151;">
@@ -498,6 +525,34 @@
                 <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('.')">.</button>
                 <button type="button" class="btn btn-success" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcEquals()">=</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Global Action Blocked / Business Rule Constraint Reason Modal -->
+    <div id="modalActionBlocked" class="modal-backdrop" style="display: none; z-index: 1200;">
+        <div class="modal" style="max-width: 480px; padding: 1.75rem; background: #0f172a; border: 2px solid #ef4444; border-radius: 20px; box-shadow: 0 25px 70px rgba(239,68,68,0.25);">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                <div style="width: 46px; height: 46px; border-radius: 12px; background: rgba(239,68,68,0.15); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;">
+                    ⛔
+                </div>
+                <div>
+                    <h3 style="font-size: 1.2rem; font-weight: 800; color: #f87171; margin-bottom: 0.15rem;" id="actionBlockedTitle">Action Blocked</h3>
+                    <span style="font-size: 0.78rem; color: #94a3b8;" id="actionBlockedSubtitle">Business Rule & Constraint Validation Failed</span>
+                </div>
+                <button type="button" onclick="closeActionBlockedModal()" style="margin-left: auto; background: none; border: none; color: #94a3b8; font-size: 1.25rem; cursor: pointer;">✕</button>
+            </div>
+
+            <p style="font-size: 0.84rem; color: #cbd5e1; margin-bottom: 0.75rem;">
+                This request cannot be submitted because the following rules were not met:
+            </p>
+
+            <div id="actionBlockedReasonsList" style="background: rgba(15,23,42,0.85); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 250px; overflow-y: auto;">
+                <!-- Dynamically populated reason rows -->
+            </div>
+
+            <button type="button" class="btn btn-primary btn-block" style="font-weight: 800; padding: 0.75rem; border-radius: 10px; background: #ef4444; border-color: #dc2626; box-shadow: 0 4px 15px rgba(239,68,68,0.35);" onclick="closeActionBlockedModal()">
+                🔧 Fix Requirements & Continue
+            </button>
         </div>
     </div>
 
@@ -564,6 +619,203 @@
             calcExpression = '';
         }
     }
+
+    // 3. Universal Action Confirmation Modal Engine
+    let pendingConfirmAction = null;
+
+    function showConfirmPopup({
+        icon = '⚡',
+        title = 'Confirm Action',
+        subtitle = 'Review what will happen before proceeding:',
+        items = [], // Array of { label: '...', value: '...', color: '...', size: '...' }
+        message = '',
+        impact = null, // { text: '...', type: 'success'|'warning'|'danger'|'info' }
+        confirmText = '✅ Yes, Proceed',
+        confirmClass = 'btn-success',
+        borderColor = '#3b82f6',
+        onConfirm = null,
+        form = null
+    }) {
+        document.getElementById('globalConfirmIcon').textContent = icon;
+        document.getElementById('globalConfirmTitle').textContent = title;
+        document.getElementById('globalConfirmSubtitle').textContent = subtitle;
+
+        const card = document.getElementById('globalConfirmCard');
+        if (card) card.style.borderColor = borderColor;
+
+        const bodyEl = document.getElementById('globalConfirmBody');
+        bodyEl.innerHTML = '';
+
+        if (items && items.length > 0) {
+            items.forEach(item => {
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.justifyContent = 'space-between';
+                row.style.alignItems = 'center';
+                row.style.borderBottom = '1px dashed #334155';
+                row.style.paddingBottom = '0.45rem';
+
+                const labelSpan = document.createElement('span');
+                labelSpan.style.color = '#94a3b8';
+                labelSpan.textContent = item.label + ':';
+
+                const valSpan = document.createElement('strong');
+                valSpan.textContent = item.value;
+                valSpan.style.color = item.color || '#f8fafc';
+                if (item.size) valSpan.style.fontSize = item.size;
+
+                row.appendChild(labelSpan);
+                row.appendChild(valSpan);
+                bodyEl.appendChild(row);
+            });
+        } else if (message) {
+            const p = document.createElement('div');
+            p.style.color = '#cbd5e1';
+            p.style.lineHeight = '1.5';
+            p.innerHTML = message;
+            bodyEl.appendChild(p);
+        }
+
+        const impactWrap = document.getElementById('globalConfirmImpactWrap');
+        const impactEl = document.getElementById('globalConfirmImpact');
+        if (impact && impact.text) {
+            impactWrap.style.display = 'block';
+            impactEl.textContent = impact.text;
+            if (impact.type === 'danger') {
+                impactEl.style.background = 'rgba(220,38,38,0.15)';
+                impactEl.style.color = '#f87171';
+                impactEl.style.border = '1px solid #ef4444';
+            } else if (impact.type === 'warning') {
+                impactEl.style.background = 'rgba(245,158,11,0.15)';
+                impactEl.style.color = '#fbbf24';
+                impactEl.style.border = '1px solid #f59e0b';
+            } else if (impact.type === 'info') {
+                impactEl.style.background = 'rgba(59,130,246,0.15)';
+                impactEl.style.color = '#60a5fa';
+                impactEl.style.border = '1px solid #3b82f6';
+            } else {
+                impactEl.style.background = 'rgba(34,197,94,0.15)';
+                impactEl.style.color = '#4ade80';
+                impactEl.style.border = '1px solid #22c55e';
+            }
+        } else {
+            impactWrap.style.display = 'none';
+        }
+
+        const proceedBtn = document.getElementById('globalConfirmProceedBtn');
+        proceedBtn.textContent = confirmText;
+        proceedBtn.className = 'btn ' + confirmClass;
+
+        pendingConfirmAction = () => {
+            if (typeof onConfirm === 'function') {
+                onConfirm();
+            } else if (form) {
+                if (typeof form.submit === 'function') {
+                    form.submit();
+                } else {
+                    HTMLFormElement.prototype.submit.call(form);
+                }
+            }
+        };
+
+        document.getElementById('modalGlobalConfirm').style.display = 'flex';
+    }
+
+    function closeGlobalConfirm() {
+        document.getElementById('modalGlobalConfirm').style.display = 'none';
+        pendingConfirmAction = null;
+    }
+
+    function executeGlobalConfirm() {
+        const act = pendingConfirmAction;
+        closeGlobalConfirm();
+        if (act) act();
+    }
+
+    // 4. Universal Action Blocked & Business Rule Interceptor Engine
+    let actionBlockedFocusTarget = null;
+
+    function showActionBlockedModal({
+        title = 'Action Blocked',
+        subtitle = 'Business Rule & Constraint Validation Failed',
+        errors = [], // Array of { title: '...', desc: '...', focus: 'elementId' }
+        focus = null
+    }) {
+        const titleEl = document.getElementById('actionBlockedTitle');
+        const subEl = document.getElementById('actionBlockedSubtitle');
+        if (titleEl) titleEl.textContent = title;
+        if (subEl) subEl.textContent = subtitle;
+
+        const listEl = document.getElementById('actionBlockedReasonsList');
+        if (listEl) {
+            listEl.innerHTML = '';
+            actionBlockedFocusTarget = focus || (errors.length > 0 ? errors[0].focus : null);
+
+            errors.forEach(err => {
+                const item = document.createElement('div');
+                item.style.display = 'flex';
+                item.style.alignItems = 'flex-start';
+                item.style.gap = '0.65rem';
+                item.innerHTML = `
+                    <span style="color: #ef4444; font-size: 1.1rem; line-height: 1.2;">⚠️</span>
+                    <div style="flex: 1;">
+                        <strong style="color: #f8fafc; font-size: 0.88rem; display: block;">${err.title || 'Validation Error'}</strong>
+                        <div style="font-size: 0.8rem; color: #cbd5e1; margin-top: 0.15rem; line-height: 1.35;">${err.desc || err}</div>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        const modal = document.getElementById('modalActionBlocked');
+        if (modal) modal.style.display = 'flex';
+    }
+
+    function closeActionBlockedModal() {
+        const modal = document.getElementById('modalActionBlocked');
+        if (modal) modal.style.display = 'none';
+
+        if (actionBlockedFocusTarget) {
+            const target = typeof actionBlockedFocusTarget === 'string' ? document.getElementById(actionBlockedFocusTarget) : actionBlockedFocusTarget;
+            if (target && typeof target.focus === 'function') {
+                target.focus();
+                if (typeof target.select === 'function') target.select();
+            }
+            actionBlockedFocusTarget = null;
+        }
+    }
+
+    function openModal(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    }
+
+    // Global click listener to close modals when clicking on the backdrop
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('modal-backdrop')) {
+            e.target.style.display = 'none';
+            if (e.target.id === 'modalGlobalConfirm') {
+                pendingConfirmAction = null;
+            }
+        }
+    });
+
+    // Global keyboard listener (Escape to close all modals)
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-backdrop').forEach(modal => {
+                if (modal.style.display !== 'none') {
+                    modal.style.display = 'none';
+                }
+            });
+            pendingConfirmAction = null;
+        }
+    });
     </script>
 
     @stack('scripts')

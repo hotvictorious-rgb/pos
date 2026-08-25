@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+### Added
+- **Pre-Submission Business Rule Validation & Reason Pop-Up Engine**:
+  - **Zero-Bypass Client-Side Interceptor (`showActionBlockedModal`)**: Replaced post-submission page reloads and generic alert boxes with instantaneous pre-submission constraint modals across POS checkout, stock transfers, customer debt payments, loss adjustments, and sales returns.
+  - **POS Golden Law Stock Verification**: Blocks sale completion if attempting to sell with Handover = `🟢 SUPPLIED` when physical shelf stock is 0 or less than the requested quantity, explaining the exact deficiency and recommending `🟠 NOT SUPPLIED` for delayed pickup.
+  - **Credit & Debt Limit Enforcement**: Blocks credit sales if GSM phone number is missing/invalid, if customer is an anonymous "Walk-in", or if new debt exceeds the customer's credit limit with exact overage amounts.
+  - **Unsupplied Order Identification**: Prevents delayed pickup orders from being booked anonymously to ensure audit tracking.
+  - **Cross-Module Constraint Enforcements**:
+    - **Stock Transfers**: Blocks identical source/destination branch dispatches, zero quantities, and missing driver names.
+    - **Debt Repayments**: Blocks overpayments exceeding outstanding debt balance, zero/negative amounts, and missing payment modes.
+    - **Loss & Damage Adjustments**: Blocks write-offs with missing incident reasons or invalid quantities.
+    - **Sales Returns**: Blocks returns exceeding original invoice quantities or missing return reasons.
+
 ### Fixed
 - **POS Instant Multi-Attribute & SKU Code Search**:
   - **The Root Cause**: The POS product cards were missing the `data-code` HTML attribute, and the client-side JavaScript search function was only comparing queries against the product name (`data-name`), ignoring factory SKU codes, brands, and sizes.
