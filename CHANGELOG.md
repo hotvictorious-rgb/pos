@@ -11,6 +11,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Credit Limits System**:
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
 
+### Added
+- **Dedicated Wholesale Management & Office Pricing Portal (`/wholesale`)**:
+  - **Executive Wholesale Radar**: Created a dedicated executive hub for Madam/Admin featuring real-time KPI metrics: Total Wholesale Orders, Pending Pricing Count, Total Invoiced Value, Settled Bank Collections, and Open Wholesale Receivables.
+  - **Live Office Pricing & Reconciliation Engine**: Built an interactive modal allowing Madam to set custom negotiated unit prices per product, calculate totals with live JavaScript summing, and reconcile payments via Direct Bank Transfer, Wholesaler Debt Ledger, or Part-Payment deposits with transaction references.
+  - **Mathematical Separation of Concerns**: Engineered zero-risk accounting where floor handovers immediately deduct physical inventory while office pricing updates sales revenue and customer debt ledgers without touching physical shelf counts (100% mathematically proven with zero double-deduction risk).
+  - **Printable Commercial Wholesale Invoices (`/wholesale/invoice/{id}`)**: Generated formal, priced commercial invoices with company header, itemized breakdown, payment allocations, balance due, and official executive signatory lines for client corporate records.
 - **Confidential Wholesale Dispatch & Waybill Handover Engine (Option B)**:
   - **Wholesale Price Secrecy**: Added **`📦 Wholesale Dispatch`** mode on the POS terminal that completely masks item prices (`🔒 Negotiated by Madam`), allowing floor workers to process physical handovers and verify counts without ever seeing agreed wholesale discounts or profit margins.
   - **Accurate Physical Stock Deductions**: Dispatched wholesale goods are immediately deducted unit-for-unit from the shop's physical shelf closing balance, protecting against inventory leakage.

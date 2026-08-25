@@ -393,6 +393,9 @@
                 <a href="{{ route('debts.index') }}" class="nav-item {{ request()->routeIs('debts.*') ? 'active' : '' }}">
                     <span>💳</span> <span>Customer Debts</span>
                 </a>
+                <a href="{{ route('wholesale.index') }}" class="nav-item {{ request()->routeIs('wholesale.*') ? 'active' : '' }}">
+                    <span>📦</span> <span>Wholesale Hub</span>
+                </a>
             @endif
 
             @if(in_array($currentRole, ['admin', 'manager', 'viewer']))
