@@ -342,58 +342,80 @@
             </div>
         </div>
 
+        @php
+            $currentRole = auth()->user()->role ?? $authUser->role ?? 'admin';
+        @endphp
         <nav class="sidebar-menu">
             <div class="menu-category">Main Operations</div>
             <a href="{{ route('dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
-                <span>🏠</span> <span>Dashboard</span>
+                <span>🏠</span> <span>{{ $currentRole === 'cashier' ? 'My Shift Summary' : ($currentRole === 'storekeeper' ? 'Stock Hub' : 'Dashboard') }}</span>
             </a>
 
-            <!-- Big POS Button -->
-            <a href="{{ route('pos.index') }}" class="nav-item pos-btn {{ request()->routeIs('pos.index') ? 'active' : '' }}">
-                <span>💰</span> <span>Sell Goods (POS)</span>
-            </a>
+            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'cashier']))
+                <!-- Big POS Button -->
+                <a href="{{ route('pos.index') }}" class="nav-item pos-btn {{ request()->routeIs('pos.index') ? 'active' : '' }}">
+                    <span>💰</span> <span>Sell Goods (POS)</span>
+                </a>
+            @endif
 
             <div class="menu-category">Inventory & Stock</div>
             <a href="{{ route('products.index') }}" class="nav-item {{ request()->routeIs('products.*') ? 'active' : '' }}">
                 <span>🛍️</span> <span>Products Catalog</span>
             </a>
-            <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
-                <span>📦</span> <span>Stock In / Out</span>
-            </a>
-            <a href="{{ route('stock.transfers') }}" class="nav-item {{ request()->routeIs('stock.transfers') ? 'active' : '' }}">
-                <span>🚚</span> <span>Shop Transfers</span>
-            </a>
-            <a href="{{ route('stock.unsupplied') }}" class="nav-item {{ request()->routeIs('stock.unsupplied') ? 'active' : '' }}">
-                <span>⏳</span> <span>Pickup Orders</span>
-            </a>
-            <a href="{{ route('stock.adjustments') }}" class="nav-item {{ request()->routeIs('stock.adjustments') ? 'active' : '' }}">
-                <span>📉</span> <span>Damaged Goods</span>
-            </a>
+
+            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'storekeeper']))
+                <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
+                    <span>📦</span> <span>Stock In / Out</span>
+                </a>
+                <a href="{{ route('stock.transfers') }}" class="nav-item {{ request()->routeIs('stock.transfers') ? 'active' : '' }}">
+                    <span>🚚</span> <span>Shop Transfers</span>
+                </a>
+                <a href="{{ route('stock.unsupplied') }}" class="nav-item {{ request()->routeIs('stock.unsupplied') ? 'active' : '' }}">
+                    <span>⏳</span> <span>Pickup Orders</span>
+                </a>
+                <a href="{{ route('stock.adjustments') }}" class="nav-item {{ request()->routeIs('stock.adjustments') ? 'active' : '' }}">
+                    <span>📉</span> <span>Damaged Goods</span>
+                </a>
+            @endif
 
             <div class="menu-category">Ledgers & History</div>
             <a href="{{ route('transactions.index') }}" class="nav-item {{ request()->routeIs('transactions.*') ? 'active' : '' }}">
-                <span>📜</span> <span>History & Ledgers</span>
-            </a>
-            <a href="{{ route('pos.returns') }}" class="nav-item {{ request()->routeIs('pos.returns') ? 'active' : '' }}">
-                <span>🔄</span> <span>Returns & Refunds</span>
-            </a>
-            <a href="{{ route('debts.index') }}" class="nav-item {{ request()->routeIs('debts.*') ? 'active' : '' }}">
-                <span>💳</span> <span>Customer Debts</span>
+                <span>📜</span> <span>{{ $currentRole === 'cashier' ? 'My Sales History' : 'History & Ledgers' }}</span>
             </a>
 
-            <div class="menu-category">Auditor & Management</div>
-            <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
-                <span>🚨</span> <span>Auditor Control Hub</span>
-            </a>
-            <a href="{{ route('reports.index') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
-                <span>📊</span> <span>Reports & AI Exports</span>
-            </a>
-            <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
-                <span>👥</span> <span>Workers & Roles</span>
-            </a>
-            <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
-                <span>⚙️</span> <span>System Settings</span>
-            </a>
+            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'cashier']))
+                <a href="{{ route('pos.returns') }}" class="nav-item {{ request()->routeIs('pos.returns') ? 'active' : '' }}">
+                    <span>🔄</span> <span>Returns & Refunds</span>
+                </a>
+            @endif
+
+            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'viewer']))
+                <a href="{{ route('debts.index') }}" class="nav-item {{ request()->routeIs('debts.*') ? 'active' : '' }}">
+                    <span>💳</span> <span>Customer Debts</span>
+                </a>
+            @endif
+
+            @if(in_array($currentRole, ['admin', 'manager', 'viewer']))
+                <div class="menu-category">Management & Reports</div>
+                @if(in_array($currentRole, ['admin', 'viewer']))
+                    <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
+                        <span>🚨</span> <span>Auditor Control Hub</span>
+                    </a>
+                @endif
+                <a href="{{ route('reports.index') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
+                    <span>📊</span> <span>Reports & AI Exports</span>
+                </a>
+                @if($currentRole === 'admin')
+                    <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
+                        <span>👥</span> <span>Workers & Roles</span>
+                    </a>
+                    <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
+                        <span>⚙️</span> <span>System Settings</span>
+                    </a>
+                @endif
+            @endif
+
+            <div class="menu-category">Support & Help</div>
             <a href="{{ route('help.index') }}" class="nav-item {{ request()->routeIs('help.*') ? 'active' : '' }}" style="color: #93c5fd;">
                 <span>📖</span> <span>User Guide & FAQs</span>
             </a>

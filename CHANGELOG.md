@@ -12,6 +12,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
 
 ### Added
+- **Role-Based Dynamic Dashboards & Transaction Privacy Scoping**:
+  - **Cashier Privacy Isolation**: Enforced strict query scoping on transaction ledgers (`TransactionController::getSalesQuery`), ensuring cashiers can only view their own sales records and till collections (`userId == Auth::id()`).
+  - **Cashier Shift Dashboard**: Added a dedicated *My Shift Summary* landing view for floor cashiers showing their invoices issued, counter cash in till, POS/transfer collections, and recent sales table.
+  - **Administrative Route Protection**: Added `RequireAdmin` middleware to block non-administrators from accessing `/settings`, `/users`, and `/auditor` (intercepting with `403 Forbidden` / redirect).
+  - **Dynamic Sidebar Navigation**: Automatically tailors sidebar navigation menu items based on the active user role (`admin`, `manager`, `sales_stock`, `cashier`, `storekeeper`, `viewer`).
 - **Branch Shop & Warehouse Location Editing Hub**:
   - **Edit Branch Details**: Added full editing capabilities (`name`, unique `code`, `address`, `phone`, and `manager_name`) for shop branches and warehouse locations under `Settings -> Branch Locations`.
   - **Two-Step Confirmation & Activity Logging**: Added live change confirmation pop-up and immutable admin activity logging for branch modifications.

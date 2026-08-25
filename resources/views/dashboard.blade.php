@@ -399,6 +399,92 @@
         </form>
     </div>
 
+    @if($userRole === 'cashier')
+        <!-- CASHIER SHIFT SUMMARY HERO -->
+        <div style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 18px; padding: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                <div>
+                    <h3 style="font-size: 1.25rem; font-weight: 800; color: #93c5fd; margin-bottom: 0.2rem;">👤 My Personal Shift & Till Summary</h3>
+                    <p style="color: #cbd5e1; font-size: 0.82rem; margin-bottom: 0;">Showing transactions processed specifically by <strong>{{ auth()->user()->name ?? 'Me' }}</strong> for <strong>{{ $rangeLabel }}</strong>.</p>
+                </div>
+                <a href="{{ route('pos.index') }}" class="btn btn-success" style="font-weight: 800; padding: 0.5rem 1.25rem; border-radius: 10px; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);">
+                    💰 Open POS Checkout
+                </a>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Invoices Issued</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #f8fafc; margin-top: 0.2rem;">{{ $mySalesCount }}</div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">My Total Sales</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #34d399; margin-top: 0.2rem;">₦{{ number_format($mySalesAmount) }}</div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cash in My Drawer (Till)</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #38bdf8; margin-top: 0.2rem;">₦{{ number_format($myCashAmount) }}</div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">POS / Bank Transfers</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #a78bfa; margin-top: 0.2rem;">₦{{ number_format($myPosAmount + $myTransferAmount) }}</div>
+                </div>
+
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Credit / Debt Recorded</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #f87171; margin-top: 0.2rem;">₦{{ number_format($myDebtAmount) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CASHIER RECENT SALES TABLE -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.1rem; font-weight: 800; color: #f8fafc; margin: 0;">📜 Recent Invoices Handled by Me</h3>
+                <a href="{{ route('transactions.index') }}" class="btn btn-outline-secondary btn-sm" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">View All My Invoices →</a>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border); color: #94a3b8; text-align: left;">
+                            <th style="padding: 0.6rem;">Invoice #</th>
+                            <th style="padding: 0.6rem;">Customer</th>
+                            <th style="padding: 0.6rem;">Delivery</th>
+                            <th style="padding: 0.6rem;">Total Bill</th>
+                            <th style="padding: 0.6rem;">Paid</th>
+                            <th style="padding: 0.6rem;">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($myRecentSales as $s)
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                                <td style="padding: 0.65rem; font-weight: 700; color: #93c5fd;">{{ substr($s->id, 0, 8) }}...</td>
+                                <td style="padding: 0.65rem; color: #f8fafc;">{{ $s->customerName }}</td>
+                                <td style="padding: 0.65rem;">
+                                    <span class="badge {{ in_array(strtoupper($s->deliveryStatus), ['DELIVERED', 'SUPPLIED']) ? 'badge-success' : 'badge-warning' }}">
+                                        {{ $s->deliveryStatus }}
+                                    </span>
+                                </td>
+                                <td style="padding: 0.65rem; font-weight: 700; color: #34d399;">₦{{ number_format($s->totalAmount) }}</td>
+                                <td style="padding: 0.65rem; color: #38bdf8;">₦{{ number_format($s->paidAmount) }}</td>
+                                <td style="padding: 0.65rem; color: #94a3b8; font-size: 0.75rem;">{{ \Carbon\Carbon::parse($s->createdAt)->format('d M H:i') }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" style="padding: 1.5rem; text-align: center; color: #64748b;">No invoices recorded by you in this period yet.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+
+    @if($userRole !== 'cashier')
     <!-- 4 HERO KEY METRIC CARDS -->
     <div class="hero-grid">
         <!-- 1. Gross Sales -->
@@ -676,6 +762,7 @@
                 </div>
             @endforeach
         </div>
+    @endif
     @endif
 
 @endsection

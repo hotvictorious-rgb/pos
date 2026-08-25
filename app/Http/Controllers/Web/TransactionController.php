@@ -14,6 +14,7 @@ use App\Models\Customer;
 use App\Models\CustomerLedger;
 use App\Models\StockAdjustment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Carbon\Carbon;
 
@@ -80,12 +81,22 @@ class TransactionController extends Controller
     }
 
     /**
-     * Shared Query Builders for each of the 8 Tabs
+     * Shared Query Builders for each of the 8 Tabs (Role-Scoped for Privacy & Fraud Prevention)
      */
     public function getSalesQuery(Request $request)
     {
         $query = Sale::with('items');
         $this->applyDateFilter($query, 'createdAt', $request);
+
+        // 🔒 Role Privacy Scoping: Cashiers only see their own sales
+        $user = Auth::user();
+        if ($user && $user->role === 'cashier') {
+            $query->where('userId', $user->id);
+        } elseif ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
+            $query->where('warehouse_id', $user->warehouse_id);
+        } elseif ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->warehouse_id);
+        }
 
         if ($request->filled('payment_status')) {
             $pStatus = strtoupper($request->payment_status);
@@ -132,6 +143,12 @@ class TransactionController extends Controller
         $query = InventoryLog::where('type', 'STOCK_IN');
         $this->applyDateFilter($query, 'timestamp', $request);
 
+        // 🔒 Privacy Scoping: Cashiers only see their own recorded stock inflows
+        $user = Auth::user();
+        if ($user && $user->role === 'cashier') {
+            $query->where('userId', $user->id);
+        }
+
         if ($request->filled('inflow_category')) {
             $cat = strtoupper($request->inflow_category);
             if ($cat === 'SUPPLIER') {
@@ -175,6 +192,12 @@ class TransactionController extends Controller
         });
         $this->applyDateFilter($query, 'timestamp', $request);
 
+        // 🔒 Privacy Scoping: Cashiers only see their own recorded stock outflows
+        $user = Auth::user();
+        if ($user && $user->role === 'cashier') {
+            $query->where('userId', $user->id);
+        }
+
         if ($request->filled('outflow_type')) {
             $oType = strtoupper($request->outflow_type);
             if ($oType === 'CUSTOMER_PICKUP') {
@@ -213,6 +236,15 @@ class TransactionController extends Controller
             ->where('status', 'DISPATCHED');
         $this->applyDateFilter($query, 'dispatched_at', $request);
 
+        // 🔒 Branch Privacy Scoping
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
+            $query->where(function ($q) use ($user) {
+                $q->where('source_warehouse_id', $user->warehouse_id)
+                  ->orWhere('destination_warehouse_id', $user->warehouse_id);
+            });
+        }
+
         if ($request->filled('carrier_name')) {
             $query->where('carrier_name', $request->carrier_name);
         }
@@ -249,6 +281,12 @@ class TransactionController extends Controller
         $query = Transfer::with(['items', 'sourceWarehouse', 'destinationWarehouse']);
         $this->applyDateFilter($query, 'created_at', $request);
 
+        // 🔒 Branch Privacy Scoping
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
+            $query->where('destination_warehouse_id', $user->warehouse_id);
+        }
+
         if ($request->filled('warehouse_id')) {
             $query->where('destination_warehouse_id', $request->warehouse_id);
         }
@@ -282,6 +320,12 @@ class TransactionController extends Controller
         $query = SalesReturn::query();
         $this->applyDateFilter($query, 'createdAt', $request);
 
+        // 🔒 Role Privacy Scoping: Cashiers only see returns they processed
+        $user = Auth::user();
+        if ($user && $user->role === 'cashier') {
+            $query->where('userId', $user->id);
+        }
+
         if ($request->filled('return_reason')) {
             $query->where('reason', 'like', "%{$request->return_reason}%");
         }
@@ -307,6 +351,12 @@ class TransactionController extends Controller
     {
         $query = SalesReturn::where('refundAmount', '>', 0);
         $this->applyDateFilter($query, 'createdAt', $request);
+
+        // 🔒 Role Privacy Scoping: Cashiers only see refunds they processed
+        $user = Auth::user();
+        if ($user && $user->role === 'cashier') {
+            $query->where('userId', $user->id);
+        }
 
         if ($request->filled('min_amount')) {
             $query->where('refundAmount', '>=', (float)$request->min_amount);
@@ -334,6 +384,12 @@ class TransactionController extends Controller
     {
         $query = CustomerLedger::with('customer');
         $this->applyDateFilter($query, 'created_at', $request);
+
+        // 🔒 Role Privacy Scoping: Cashiers only see debts/payments they recorded
+        $user = Auth::user();
+        if ($user && $user->role === 'cashier') {
+            $query->where('recorded_by', $user->name);
+        }
 
         if ($request->filled('ledger_type')) {
             $query->where('type', strtoupper($request->ledger_type));

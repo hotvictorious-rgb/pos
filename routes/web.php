@@ -110,7 +110,7 @@ Route::prefix('reports')->name('reports.')->group(function () {
 
 
 // 5. Auditor Anti-Theft & Reconciliation Hub
-Route::prefix('auditor')->name('auditor.')->group(function () {
+Route::prefix('auditor')->name('auditor.')->middleware([\App\Http\Middleware\RequireAdmin::class])->group(function () {
     Route::get('/',             [AuditorController::class, 'index'])->name('index');
 });
 
@@ -127,17 +127,16 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
     Route::get('/export-json/{tab}', [\App\Http\Controllers\Web\TransactionController::class, 'exportJson'])->name('export.json');
 });
 
-
-// 7. Workers & Role Permissions Hub
-Route::prefix('users')->name('users.')->group(function () {
+// 8. Workers & Role Permissions Hub
+Route::prefix('users')->name('users.')->middleware([\App\Http\Middleware\RequireAdmin::class])->group(function () {
     Route::get('/',                       [\App\Http\Controllers\Web\UserController::class, 'index'])->name('index');
     Route::post('/',                      [\App\Http\Controllers\Web\UserController::class, 'store'])->name('store');
     Route::post('/toggle/{id}',           [\App\Http\Controllers\Web\UserController::class, 'toggleStatus'])->name('toggle');
     Route::post('/reset-password/{id}',   [\App\Http\Controllers\Web\UserController::class, 'resetPassword'])->name('reset.password');
 });
 
-// 8. System Settings Hub
-Route::prefix('settings')->name('settings.')->group(function () {
+// 9. System Settings Hub
+Route::prefix('settings')->name('settings.')->middleware([\App\Http\Middleware\RequireAdmin::class])->group(function () {
     Route::get('/',                       [\App\Http\Controllers\Web\SettingController::class, 'index'])->name('index');
     Route::post('/',                      [\App\Http\Controllers\Web\SettingController::class, 'update'])->name('update');
     Route::post('/warehouse',             [\App\Http\Controllers\Web\SettingController::class, 'storeWarehouse'])->name('warehouse.store');

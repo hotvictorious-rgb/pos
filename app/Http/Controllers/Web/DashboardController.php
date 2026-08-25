@@ -86,8 +86,30 @@ class DashboardController extends Controller
             }
         };
 
+        $authUser = \Illuminate\Support\Facades\Auth::user();
+        $userRole = $authUser->role ?? 'admin';
+
+        // Auto-scope branch if user is a manager/storekeeper/cashier assigned to a specific branch
+        if ($userRole !== 'admin' && !empty($authUser->warehouse_id) && empty($warehouseId)) {
+            $warehouseId = $authUser->warehouse_id;
+            $selectedWarehouse = Warehouse::find($warehouseId);
+            $locationLabel = $selectedWarehouse ? $selectedWarehouse->name : 'My Branch';
+        }
+
         // Staff assigned to selected location
         $branchUserIds = $warehouseId ? User::where('warehouse_id', $warehouseId)->pluck('id') : collect([]);
+
+        // Cashier Personal Shift Metrics
+        $mySalesQuery = Sale::with('items')->where('userId', $authUser->id ?? '');
+        $applyDateFilter($mySalesQuery, 'createdAt');
+        $mySalesCount = (clone $mySalesQuery)->count();
+        $mySalesAmount = (float) (clone $mySalesQuery)->sum('totalAmount');
+        $myCashAmount = (float) (clone $mySalesQuery)->sum('cashAmount');
+        $myPosAmount = (float) (clone $mySalesQuery)->sum('posAmount');
+        $myTransferAmount = (float) (clone $mySalesQuery)->sum('transferAmount');
+        $myPaidAmount = (float) (clone $mySalesQuery)->sum('paidAmount');
+        $myDebtAmount = max(0, $mySalesAmount - $myPaidAmount);
+        $myRecentSales = (clone $mySalesQuery)->orderBy('createdAt', 'desc')->take(15)->get();
 
         // 2. Sales & Revenue Aggregates
         $salesQuery = Sale::query();
@@ -240,7 +262,16 @@ class DashboardController extends Controller
             'totalStockValuation',
             'lowStockCount',
             'outOfStockCount',
-            'branchBreakdown'
+            'branchBreakdown',
+            'userRole',
+            'mySalesCount',
+            'mySalesAmount',
+            'myCashAmount',
+            'myPosAmount',
+            'myTransferAmount',
+            'myPaidAmount',
+            'myDebtAmount',
+            'myRecentSales'
         ));
     }
 }
