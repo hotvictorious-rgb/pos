@@ -518,7 +518,12 @@
                             <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
                                 {{ date('d M Y, h:i A', strtotime($sale->createdAt)) }}
                             </td>
-                            <td><strong style="color: #93c5fd;">#{{ substr($sale->id, 0, 8) }}</strong></td>
+                            <td>
+                                <strong style="color: #93c5fd;">#{{ substr($sale->id, 0, 8) }}</strong>
+                                @if(($sale->sale_type ?? '') === 'WHOLESALE_DISPATCH')
+                                    <div><span class="badge" style="background: rgba(139,92,246,0.18); color: #c084fc; border: 1px solid rgba(139,92,246,0.35); font-size: 0.7rem; padding: 0.15rem 0.4rem; margin-top: 0.2rem;">📦 Wholesale</span></div>
+                                @endif
+                            </td>
                             <td>
                                 <strong>{{ $sale->customerName ?: 'Walk-in Customer' }}</strong>
                                 @if($sale->customerPhone)
@@ -527,13 +532,23 @@
                             </td>
                             <td><span class="badge badge-info">{{ count($sale->items ?? []) }} items</span></td>
                             <td style="font-weight: 800; font-size: 1rem; color: #f8fafc;">
-                                ₦{{ number_format($sale->totalAmount, 0) }}
+                                @if(($sale->sale_type ?? '') === 'WHOLESALE_DISPATCH')
+                                    <span style="color: #c084fc; font-size: 0.85rem; font-weight: 700;">🔒 Confidential</span>
+                                @else
+                                    ₦{{ number_format($sale->totalAmount, 0) }}
+                                @endif
                             </td>
                             <td style="font-weight: 700; color: #4ade80;">
-                                ₦{{ number_format($sale->paidAmount, 0) }}
+                                @if(($sale->sale_type ?? '') === 'WHOLESALE_DISPATCH')
+                                    <span style="color: #94a3b8; font-size: 0.8rem; font-weight: 600;">Office Billing</span>
+                                @else
+                                    ₦{{ number_format($sale->paidAmount, 0) }}
+                                @endif
                             </td>
                             <td>
-                                @if($sale->paidAmount >= $sale->totalAmount)
+                                @if(($sale->sale_type ?? '') === 'WHOLESALE_DISPATCH')
+                                    <span class="badge" style="background: rgba(139,92,246,0.15); color: #c084fc; border: 1px solid rgba(139,92,246,0.3);">🤝 Madam's Office</span>
+                                @elseif($sale->paidAmount >= $sale->totalAmount)
                                     <span class="badge badge-success">✓ Paid</span>
                                 @elseif($sale->paidAmount > 0)
                                     <span class="badge badge-warning">💳 Part-Paid (Owes ₦{{ number_format($balance, 0) }})</span>
