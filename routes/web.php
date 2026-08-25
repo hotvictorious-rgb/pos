@@ -120,8 +120,8 @@ Route::prefix('debts')->name('debts.')->group(function () {
     Route::post('/pay/{id}',    [DebtController::class, 'recordPayment'])->name('pay');
 });
 
-// 7. Dedicated Wholesale Operations & Office Pricing Hub
-Route::prefix('wholesale')->name('wholesale.')->group(function () {
+// 7. Dedicated Wholesale Operations & Office Pricing Hub (Admin/Executive Only)
+Route::prefix('wholesale')->name('wholesale.')->middleware([\App\Http\Middleware\RequireAdmin::class])->group(function () {
     Route::get('/',                     [\App\Http\Controllers\Web\WholesaleController::class, 'index'])->name('index');
     Route::post('/price/{id}',          [\App\Http\Controllers\Web\WholesaleController::class, 'priceOrder'])->name('price');
     Route::get('/invoice/{id}',         [\App\Http\Controllers\Web\WholesaleController::class, 'commercialInvoice'])->name('invoice');

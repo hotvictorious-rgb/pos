@@ -144,6 +144,7 @@ class StockService
                     $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
                     $product->save();
 
+                    $logPrefix = ($saleType === 'WHOLESALE_DISPATCH') ? 'Wholesale Dispatch' : 'Sale';
                     InventoryLog::create([
                         'id' => (string) Str::uuid(),
                         'productId' => $product->id,
@@ -153,7 +154,7 @@ class StockService
                         'userName' => $userName,
                         'productCode' => $product->code,
                         'productName' => $product->name,
-                        'description' => "Sale #{$saleId} (Supplied to {$customerName})",
+                        'description' => "{$logPrefix} #{$saleId} (Supplied to {$customerName})",
                         'timestamp' => now()->toIso8601String(),
                     ]);
                 } else {
