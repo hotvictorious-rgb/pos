@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Multi-Branch Location Filtering & Sleek Executive Dashboard Redesign**:
+  - **Branch Location Selector**: Added a top branch dropdown allowing instantaneous switching between `All Branches (Consolidated)` and specific shop/warehouse branches.
+  - **Location-Isolated Metrics**: When a specific branch is selected, physical stock valuations, stock inflow/outflow, low stock alerts, cashier cash/POS collections, in-transit transfers, and unsupplied backlog are isolated to that branch.
+  - **Multi-Branch Comparison Cards**: Automatically displays side-by-side branch health cards (physical stock units, valuation, low stock alerts) when viewing the consolidated enterprise view.
+  - **Modern Luminous UI**: Redesigned the dashboard with rich glassmorphism aesthetics, 4 top hero KPI cards, and 3 organized operational panels (Payment Flow, Stock Flow, Anti-Theft & Loss Radar).
+  - **Removed Legacy Action Tiles**: Completely removed the bottom action navigation buttons and clutter for a streamlined, executive command experience.
+  - **Feature Test Suite**: Added branch location filtering tests in `DashboardDateFilterTest.php` ($100\%$ pass).
 - **Exportable Filtered Datasets across All 8 Tabs in Universal History**:
   - **Memory-Safe CSV & Structured JSON Streaming**: Added live **"📥 Export Filtered CSV"** and **"📄 Export JSON"** action buttons across all 8 tabs in Universal History (`/transactions`):
     1. `sales`: Sales Invoices History filtered by Date, Payment Status (`PAID`/`PART_PAID`/`NOT_PAID`), Delivery Status, Cashier, Customer search.

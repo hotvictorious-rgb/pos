@@ -122,16 +122,16 @@
             </div>
 
             <div class="step-box">
-                <strong style="color: #4ade80;">1. Live Remote Monitoring with Date Filter Presets</strong>
+                <strong style="color: #4ade80;">1. Live Remote Monitoring by Branch Location & Date Range</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    The main Executive Dashboard now features fast date filter buttons (<strong>Today</strong>, <strong>Yesterday</strong>, <strong>This Week</strong>, <strong>This Month</strong>, <strong>This Year</strong>, <strong>All-Time</strong>, or <strong>Custom Date Range</strong>). Instantly monitor gross sales revenue, physical cash drawer collections, POS/transfer payments, new debt issued, stock movements in/out, customer refunds, and debt recoveries in that exact time window.
+                    The main Executive Dashboard features a top <strong>Branch / Location Dropdown</strong> (switch between <em>All Branches (Consolidated)</em> or any specific shop branch) combined with fast date presets (<strong>Today</strong>, <strong>Yesterday</strong>, <strong>This Week</strong>, <strong>This Month</strong>, <strong>This Year</strong>, <strong>All-Time</strong>, or <strong>Custom Date Range</strong>). Instantly view isolated gross sales revenue, physical drawer cash collections, POS payments, new debt issued, and debt recoveries for any specific branch.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #60a5fa;">2. Multi-Branch Inventory Valuation (₦)</strong>
+                <strong style="color: #60a5fa;">2. Multi-Branch Inventory Valuation & Stock Telemetry</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    See the total physical stock count on ground in each shop branch and the total gross monetary value of your entire inventory.
+                    View physical shelf stock counts, monetary valuations (₦), out-of-stock and low-stock SKU alerts, in-transit buffer shipments, and unsupplied order liabilities isolated per branch or consolidated across the entire enterprise.
                 </p>
             </div>
 

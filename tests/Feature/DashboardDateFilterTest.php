@@ -22,11 +22,22 @@ class DashboardDateFilterTest extends TestCase
 
     protected User $user;
     protected Warehouse $warehouse;
+    protected Warehouse $branchB;
     protected Product $product;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->warehouse = Warehouse::firstOrCreate(
+            ['code' => 'DASH-WH-1'],
+            ['name' => 'Dashboard Main WH', 'address' => 'HQ', 'is_active' => true]
+        );
+
+        $this->branchB = Warehouse::firstOrCreate(
+            ['code' => 'DASH-WH-2'],
+            ['name' => 'Branch Shop 2', 'address' => 'Market', 'is_active' => true]
+        );
 
         $this->user = User::firstOrCreate(
             ['id' => 'ADMIN-DASH-1'],
@@ -35,16 +46,12 @@ class DashboardDateFilterTest extends TestCase
                 'email' => 'dashtest@hysam.com',
                 'password' => Hash::make('secret123'),
                 'role' => 'admin',
+                'warehouse_id' => $this->warehouse->id,
                 'disabled' => false,
             ]
         );
         $this->actingAs($this->user);
         session(['user_id' => $this->user->id, 'user_role' => 'admin']);
-
-        $this->warehouse = Warehouse::firstOrCreate(
-            ['code' => 'DASH-WH-1'],
-            ['name' => 'Dashboard Main WH', 'address' => 'HQ', 'is_active' => true]
-        );
 
         $this->product = Product::firstOrCreate(
             ['code' => 'DASH-PROD-01'],
@@ -62,6 +69,11 @@ class DashboardDateFilterTest extends TestCase
         StockLevel::firstOrCreate(
             ['product_id' => $this->product->id, 'warehouse_id' => $this->warehouse->id],
             ['physical_stock' => 50, 'allocated_stock' => 0, 'min_stock_alert' => 5]
+        );
+
+        StockLevel::firstOrCreate(
+            ['product_id' => $this->product->id, 'warehouse_id' => $this->branchB->id],
+            ['physical_stock' => 20, 'allocated_stock' => 0, 'min_stock_alert' => 5]
         );
     }
 
@@ -85,7 +97,6 @@ class DashboardDateFilterTest extends TestCase
         $response = $this->get(route('dashboard'));
 
         $response->assertStatus(200);
-        $response->assertSee('Executive Hub');
         $response->assertSee('Gross Sales');
         $response->assertSee('₦70,000');
         $response->assertSee('₦30,000'); // Cash
@@ -158,6 +169,16 @@ class DashboardDateFilterTest extends TestCase
         $response = $this->get(route('dashboard', ['date_preset' => 'TODAY']));
         $response->assertStatus(200);
         $response->assertSee('₦15,000'); // Debt recovered
-        $response->assertSee('+100'); // Stock In
+        $response->assertSee('+100 units'); // Stock In
+    }
+
+    public function test_dashboard_filters_by_specific_branch_location()
+    {
+        // Branch B has 20 units * 35,000 = 700,000 valuation
+        $response = $this->get(route('dashboard', ['warehouse_id' => $this->branchB->id]));
+        $response->assertStatus(200);
+        $response->assertSee('Branch Shop 2');
+        $response->assertSee('₦700,000'); // Branch B Valuation
+        $response->assertSee('20 units on shelves');
     }
 }
