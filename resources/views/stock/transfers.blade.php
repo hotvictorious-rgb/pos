@@ -308,9 +308,35 @@
                             @endif
                         </td>
                         <td>
-                            <a href="{{ route('stock.waybill', $cTrf->id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" target="_blank">
-                                📄 Waybill
-                            </a>
+                            <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                                <a href="{{ route('stock.waybill', $cTrf->id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" target="_blank">
+                                    📄 Waybill
+                                </a>
+                                @if($cTrf->status === 'DISPATCHED')
+                                    @php
+                                        $authUser = auth()->user();
+                                        $canReceive = ($authUser && ($authUser->role === 'admin' || $authUser->warehouse_id == $cTrf->destination_warehouse_id));
+                                        $canRecall = ($authUser && ($authUser->role === 'admin' || $authUser->warehouse_id == $cTrf->source_warehouse_id));
+                                    @endphp
+
+                                    @if($canReceive)
+                                        <button type="button" class="btn btn-success" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick='openAcceptModal(@json($cTrf))'>
+                                            ✓ Receive & Count
+                                        </button>
+                                    @endif
+
+                                    @if($canRecall && !$canReceive)
+                                        <form method="POST" action="{{ route('stock.transfer.recall', $cTrf->id) }}" style="display: inline;" onsubmit="return confirm('Recall this transfer back to {{ $cTrf->source->name ?? 'Origin' }}? Deducted goods will be restored immediately to your shop shelf count.')">
+                                            @csrf
+                                            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">
+                                                ↩ Recall / Cancel
+                                            </button>
+                                        </form>
+                                    @endif
+                                @elseif($cTrf->status === 'CANCELLED')
+                                    <span class="badge badge-secondary" style="font-size: 0.75rem;">Cancelled & Restocked</span>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                     @empty

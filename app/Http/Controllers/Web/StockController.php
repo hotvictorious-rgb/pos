@@ -260,6 +260,38 @@ class StockController extends Controller
     }
 
     /**
+     * Action 4: Recall / Cancel Dispatched Transfer.
+     * Allows source shop or admin to cancel an in-transit transfer and restore shelf stock.
+     */
+    public function recallTransfer(Request $request, $id)
+    {
+        $user = Auth::user();
+        $transferRecord = Transfer::findOrFail($id);
+
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            if ($transferRecord->source_warehouse_id != $user->warehouse_id) {
+                return back()->withErrors(['error' => '🔒 Unauthorized: You can only recall transfers dispatched out of your assigned branch!']);
+            }
+        }
+
+        $userId = Auth::id() ?? 'USER-1';
+        $userName = Auth::user()->name ?? 'Dispatch Officer';
+
+        try {
+            $transfer = $this->stockService->recallTransfer(
+                (int) $id,
+                $userId,
+                $userName,
+                $request->reason ?? 'Cancelled by source branch'
+            );
+
+            return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} has been cancelled! All items have been restored to your shop physical inventory.");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Dedicated Transfers Management Hub (Accept & Dispatch) with full filters.
      */
     public function transfersList(Request $request)

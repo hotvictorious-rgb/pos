@@ -433,6 +433,63 @@ class StockService
     }
 
     /**
+     * Recall / Cancel Dispatched Transfer (Restores physical stock back to source shop).
+     */
+    public function recallTransfer(int $transferId, string $userId, string $userName, ?string $reason = null): Transfer
+    {
+        return DB::transaction(function () use ($transferId, $userId, $userName, $reason) {
+            $transfer = Transfer::with(['items', 'source', 'destination'])->findOrFail($transferId);
+
+            if ($transfer->status !== 'DISPATCHED') {
+                throw new \Exception('Only in-transit (DISPATCHED) transfers can be recalled or cancelled.');
+            }
+
+            foreach ($transfer->items as $item) {
+                $qty = (int) $item->dispatched_qty;
+
+                // Restore stock back to source warehouse
+                $stock = $this->getStockLevel($item->product_id, $transfer->source_warehouse_id);
+                $stock->physical_stock += $qty;
+                $stock->save();
+
+                $product = Product::find($item->product_id);
+                if ($product) {
+                    $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
+                    $product->save();
+                }
+
+                InventoryLog::create([
+                    'id' => (string) Str::uuid(),
+                    'productId' => $item->product_id,
+                    'type' => 'TRANSFER_CANCELLED',
+                    'quantity' => $qty,
+                    'userId' => $userId,
+                    'userName' => $userName,
+                    'productCode' => $item->product_code,
+                    'productName' => $item->product_name,
+                    'description' => "Transfer #{$transfer->transfer_no} Recalled/Cancelled back to " . ($transfer->source->name ?? 'Source') . ". Reason: " . ($reason ?? 'Trip cancelled'),
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+            }
+
+            $transfer->status = 'CANCELLED';
+            $transfer->notes = trim(($transfer->notes ?? '') . " [Recalled by {$userName}: " . ($reason ?? 'Delivery cancelled') . "]");
+            $transfer->save();
+
+            Activity::create([
+                'id' => (string) Str::uuid(),
+                'type' => 'TRANSFER_CANCELLED',
+                'description' => "Transfer #{$transfer->transfer_no} cancelled by {$userName}. Stock restored to " . ($transfer->source->name ?? 'Source') . ".",
+                'userId' => $userId,
+                'userName' => $userName,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
+            return $transfer;
+        });
+    }
+
+    /**
      * Record Customer Debt Payment (Part payment recovery).
      */
     public function recordCustomerPayment(int $customerId, float $amount, string $paymentMethod, ?string $refNo, string $userId, string $userName, ?string $notes = null): CustomerLedger

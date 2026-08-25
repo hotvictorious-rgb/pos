@@ -15,7 +15,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 - **Inter-Branch Transfer Origin Auto-Lock & Anti-Tampering Engine**:
   - **Fixed Origin (Source Shop)**: When branch staff initiate an inter-branch transfer, the Source Branch is strictly hardcoded and locked to their assigned shop (`user->warehouse_id`), eliminating the source dropdown and rendering a locked location badge.
   - **Destination-Only Selection**: Staff can only pick receiving destination branches, preventing staff from dispatching goods out of another branch.
-  - **Backend Spoof Protection**: Backend controllers (`StockController::transferOut`, `transferIn`, `stockIn`, `recordAdjustment`) forcefully overwrite and validate the origin and destination IDs against the authenticated worker's branch assignment.
+  - **Destination-Only Physical Verification**: Source shop workers cannot accept or verify transfers they dispatched; only the destination receiving shop (or executive admin) can count and accept goods into stock.
+  - **One-Click Transfer Recall & Stock Restoration (`/stock/transfer-recall/{id}`)**: If an in-transit transfer is aborted, misplaced, or rerouted, source shop staff can recall/cancel the transfer, immediately restoring the physical items back to their local closing stock.
+  - **Backend Spoof Protection**: Backend controllers (`StockController::transferOut`, `transferIn`, `recallTransfer`, `stockIn`, `recordAdjustment`) forcefully overwrite and validate the origin and destination IDs against the authenticated worker's branch assignment.
   - **Cross-Branch Receipt Guard**: Workers are blocked from accepting or verifying transfers destined for other branch shops.
 - **Strict Multi-Branch Shop Isolation & Privacy Engine**:
   - **Zero Cross-Branch Leakage**: When a staff member is assigned to a specific branch (`user->warehouse_id`), the system strictly locks and scopes all 8 modules (Master Dashboard, POS Terminal, Stock Hub, Product Catalog, History & Ledgers, and Reports) to their assigned shop only.

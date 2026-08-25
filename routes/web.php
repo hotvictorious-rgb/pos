@@ -95,6 +95,7 @@ Route::prefix('stock')->name('stock.')->group(function () {
     Route::post('/in',                  [StockController::class, 'stockIn'])->name('in');
     Route::post('/transfer-out',        [StockController::class, 'transferOut'])->name('transfer.out');
     Route::post('/transfer-in/{id}',    [StockController::class, 'transferIn'])->name('transfer.in');
+    Route::post('/transfer-recall/{id}',[StockController::class, 'recallTransfer'])->name('transfer.recall');
     Route::get('/unsupplied',           [StockController::class, 'unsuppliedList'])->name('unsupplied');
     Route::post('/dispatch/{saleId}',   [StockController::class, 'dispatchConfirm'])->name('dispatch');
     Route::get('/adjustments',          [StockController::class, 'adjustments'])->name('adjustments');
