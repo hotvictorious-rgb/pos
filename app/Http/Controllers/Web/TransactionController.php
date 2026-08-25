@@ -88,12 +88,18 @@ class TransactionController extends Controller
         $query = Sale::with('items');
         $this->applyDateFilter($query, 'createdAt', $request);
 
-        // 🔒 Role Privacy Scoping: Cashiers only see their own sales
+        // 🔒 Role Privacy Scoping: Cashiers only see their own sales, branch staff see their shop
         $user = Auth::user();
         if ($user && $user->role === 'cashier') {
             $query->where('userId', $user->id);
-        } elseif ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
-            $query->where('warehouse_id', $user->warehouse_id);
+        } elseif ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $shopStaffIds = User::where('warehouse_id', $user->warehouse_id)->pluck('id');
+            $query->where(function($sq) use ($user, $shopStaffIds) {
+                $sq->where('warehouse_id', $user->warehouse_id);
+                if ($shopStaffIds->isNotEmpty()) {
+                    $sq->orWhereIn('userId', $shopStaffIds);
+                }
+            });
         } elseif ($request->filled('warehouse_id')) {
             $query->where('warehouse_id', $request->warehouse_id);
         }
@@ -143,10 +149,13 @@ class TransactionController extends Controller
         $query = InventoryLog::where('type', 'STOCK_IN');
         $this->applyDateFilter($query, 'timestamp', $request);
 
-        // 🔒 Privacy Scoping: Cashiers only see their own recorded stock inflows
+        // 🔒 Privacy Scoping: Cashiers see their own; Branch staff see their shop
         $user = Auth::user();
         if ($user && $user->role === 'cashier') {
             $query->where('userId', $user->id);
+        } elseif ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $shopStaffIds = User::where('warehouse_id', $user->warehouse_id)->pluck('id');
+            $query->whereIn('userId', $shopStaffIds);
         }
 
         if ($request->filled('inflow_category')) {
@@ -192,10 +201,13 @@ class TransactionController extends Controller
         });
         $this->applyDateFilter($query, 'timestamp', $request);
 
-        // 🔒 Privacy Scoping: Cashiers only see their own recorded stock outflows
+        // 🔒 Privacy Scoping: Cashiers see their own; Branch staff see their shop
         $user = Auth::user();
         if ($user && $user->role === 'cashier') {
             $query->where('userId', $user->id);
+        } elseif ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $shopStaffIds = User::where('warehouse_id', $user->warehouse_id)->pluck('id');
+            $query->whereIn('userId', $shopStaffIds);
         }
 
         if ($request->filled('outflow_type')) {

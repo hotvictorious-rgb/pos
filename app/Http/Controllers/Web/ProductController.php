@@ -41,12 +41,18 @@ class ProductController extends Controller
             });
         }
 
-        $warehouses = Warehouse::where('is_active', true)->get();
+        $authUser = Auth::user();
+        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+            $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
+        } else {
+            $warehouses = Warehouse::where('is_active', true)->get();
+        }
+
         $products = $query->orderBy('name')->get();
 
         // Attach per-branch physical stocks and calculate total
         $products = $products->map(function ($p) use ($warehouses) {
-            $p->branch_stocks = StockLevel::where('product_id', $p->id)->pluck('physical_stock', 'warehouse_id')->toArray();
+            $p->branch_stocks = StockLevel::where('product_id', $p->id)->whereIn('warehouse_id', $warehouses->pluck('id'))->pluck('physical_stock', 'warehouse_id')->toArray();
             $p->total_physical_stock = array_sum($p->branch_stocks);
             return $p;
         });

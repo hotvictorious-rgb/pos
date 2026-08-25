@@ -15,6 +15,7 @@ use App\Models\Activity;
 use App\Models\User;
 use App\Models\SalesReturn;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Carbon\Carbon;
 
@@ -26,12 +27,27 @@ class ReportController extends Controller
     public function index(Request $request)
     {
         $activeTab = $request->get('tab', 'overview');
-        $warehouses = Warehouse::where('is_active', true)->get();
-        $staffList = User::all();
-        $categories = Product::distinct()->pluck('category')->filter()->values();
+        $authUser = Auth::user();
 
         // 1. Build Filter Query for Sales
         $salesQuery = Sale::with('items');
+
+        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+            $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
+            $staffList = User::where('warehouse_id', $authUser->warehouse_id)->get();
+            $shopStaffIds = $staffList->pluck('id');
+            $salesQuery->where(function($sq) use ($authUser, $shopStaffIds) {
+                $sq->where('warehouse_id', $authUser->warehouse_id);
+                if ($shopStaffIds->isNotEmpty()) {
+                    $sq->orWhereIn('userId', $shopStaffIds);
+                }
+            });
+        } else {
+            $warehouses = Warehouse::where('is_active', true)->get();
+            $staffList = User::all();
+        }
+
+        $categories = Product::distinct()->pluck('category')->filter()->values();
 
         $datePreset = $request->get('date_preset', 'ALL');
         $fromDate = $request->get('from_date');

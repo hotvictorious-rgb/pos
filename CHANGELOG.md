@@ -12,6 +12,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
 
 ### Added
+- **Strict Multi-Branch Shop Isolation & Privacy Engine**:
+  - **Zero Cross-Branch Leakage**: When a staff member is assigned to a specific branch (`user->warehouse_id`), the system strictly locks and scopes all 8 modules (Master Dashboard, POS Terminal, Stock Hub, Product Catalog, History & Ledgers, and Reports) to their assigned shop only.
+  - **URL Parameter Bypass Protection**: Any manual GET/POST URL overrides attempting to access another shop's records or warehouse ID are intercepted and forcefully overridden to the worker's assigned branch.
+  - **Consolidated Admin Visibility**: Executive Admins (`admin`) and Observers (`viewer`) retain full, unrestricted multi-branch switching and consolidated overview across all business locations.
 - **Dedicated Wholesale Management & Office Pricing Portal (`/wholesale`)**:
   - **Executive Wholesale Radar**: Created a dedicated executive hub for Madam/Admin featuring real-time KPI metrics: Total Wholesale Orders, Pending Pricing Count, Total Invoiced Value, Settled Bank Collections, and Open Wholesale Receivables.
   - **Live Office Pricing & Reconciliation Engine**: Built an interactive modal allowing Madam to set custom negotiated unit prices per product, calculate totals with live JavaScript summing, and reconcile payments via Direct Bank Transfer, Wholesaler Debt Ledger, or Part-Payment deposits with transaction references.

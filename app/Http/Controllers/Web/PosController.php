@@ -38,7 +38,13 @@ class PosController extends Controller
             $warehouses = collect([$default]);
         }
 
-        $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
+        $user = Auth::user();
+        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+            $activeWarehouseId = $user->warehouse_id;
+            $warehouses = Warehouse::where('id', $user->warehouse_id)->get();
+        } else {
+            $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
+        }
         session(['active_warehouse_id' => $activeWarehouseId]);
 
         $activeWarehouse = Warehouse::find($activeWarehouseId) ?? $warehouses->first();
@@ -125,7 +131,12 @@ class PosController extends Controller
             'is_supplied' => 'required', // 'yes' or 'no'
         ]);
 
-        $warehouseId = (int) $request->warehouse_id;
+        $authUser = Auth::user();
+        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+            $warehouseId = (int) $authUser->warehouse_id;
+        } else {
+            $warehouseId = (int) $request->warehouse_id;
+        }
         $isSuppliedNow = in_array(strtolower($request->is_supplied), ['1', 'yes', 'true', 'on']);
         $userId = Auth::id() ?? 'POS-USER-1';
         $userName = Auth::user()->name ?? 'Sales Officer';

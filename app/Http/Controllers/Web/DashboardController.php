@@ -89,9 +89,10 @@ class DashboardController extends Controller
         $authUser = \Illuminate\Support\Facades\Auth::user();
         $userRole = $authUser->role ?? 'admin';
 
-        // Auto-scope branch if user is a manager/storekeeper/cashier assigned to a specific branch
-        if ($userRole !== 'admin' && !empty($authUser->warehouse_id) && empty($warehouseId)) {
+        // 🔒 Strict Shop Isolation: non-admin/viewer users assigned to a branch are strictly locked to their branch
+        if ($userRole !== 'admin' && $userRole !== 'viewer' && !empty($authUser->warehouse_id)) {
             $warehouseId = $authUser->warehouse_id;
+            $warehouses = Warehouse::where('id', $warehouseId)->get();
             $selectedWarehouse = Warehouse::find($warehouseId);
             $locationLabel = $selectedWarehouse ? $selectedWarehouse->name : 'My Branch';
         }
@@ -114,8 +115,13 @@ class DashboardController extends Controller
         // 2. Sales & Revenue Aggregates
         $salesQuery = Sale::query();
         $applyDateFilter($salesQuery, 'createdAt');
-        if ($warehouseId && $branchUserIds->isNotEmpty()) {
-            $salesQuery->whereIn('userId', $branchUserIds);
+        if ($warehouseId) {
+            $salesQuery->where(function($sq) use ($warehouseId, $branchUserIds) {
+                $sq->where('warehouse_id', $warehouseId);
+                if ($branchUserIds->isNotEmpty()) {
+                    $sq->orWhereIn('userId', $branchUserIds);
+                }
+            });
         }
 
         $salesCount = (clone $salesQuery)->count();

@@ -10,6 +10,7 @@ use App\Models\Transfer;
 use App\Models\Sale;
 use App\Models\Supplier;
 use App\Models\StockAdjustment;
+use App\Models\User;
 use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -62,7 +63,13 @@ class StockController extends Controller
             $warehouses = collect([$default]);
         }
 
-        $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
+        $authUser = Auth::user();
+        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+            $activeWarehouseId = $authUser->warehouse_id;
+            $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
+        } else {
+            $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
+        }
         $activeWarehouse = Warehouse::find($activeWarehouseId) ?? $warehouses->first();
         session(['active_warehouse_id' => $activeWarehouse->id]);
 
@@ -106,7 +113,14 @@ class StockController extends Controller
             ->get();
 
         // Count of unsupplied sales waiting in this shop
-        $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')->count();
+        $branchUserIds = User::where('warehouse_id', $activeWarehouse->id)->pluck('id');
+        $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')
+            ->where(function($q) use ($activeWarehouse, $branchUserIds) {
+                $q->where('warehouse_id', $activeWarehouse->id);
+                if ($branchUserIds->isNotEmpty()) {
+                    $q->orWhereIn('userId', $branchUserIds);
+                }
+            })->count();
 
         // Stock Summary Metrics for this shop
         $totalItemsCount = $stockLevels->count();
