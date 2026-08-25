@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Strict 11-Digit Nigerian Phone Number Enforcement**:
+  - **Standardized 11-Digit GSM Format**: Mandated exactly 11 digits starting with `0` (e.g. `08031234567`, `09012345678`, `08123456789`) for all customer phone entries across the POS register, checkout validation, debt ledger binding, and server-side controller rules.
+  - **Automatic Normalization**: Automatically strips spaces, hyphens, and converts international `+234` format into standard 11-digit local format (`080...`).
+  - **Instant Interception**: Rejects inputs that fail the 11-digit rule with clear reason pop-up guidance.
 - **SKU-Centric Product Display Architecture**:
   - **SKU as Primary Unique Identifier**: Made the factory SKU (`$product->code`) the dominant, headline title displayed across the Point of Sale catalog, cart, physical receipts, stock inventory hub, transfer manifests, unsupplied pickup list, damaged goods write-offs, and transaction ledgers.
   - **Clean Product Cards & Streamlined Views**: Removed long verbose titles from main labels, allowing fast recognition by factory codes (e.g. `M10DE`, `54X14-18D`, `P1`, `M12CP`) while retaining category and dimensions as subtle subtitles.

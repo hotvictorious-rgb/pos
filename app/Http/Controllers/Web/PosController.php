@@ -51,7 +51,7 @@ class PosController extends Controller
 
             $product->physical_stock = $stock ? $stock->physical_stock : 0;
             $product->allocated_stock = $stock ? $stock->allocated_stock : 0;
-            $product->available_stock = max(0, $product->physical_stock - $product->allocated_stock);
+            $product->available_stock = $product->physical_stock; // All physical items on ground are sellable
             return $product;
         });
 
@@ -62,7 +62,63 @@ class PosController extends Controller
     }
 
     /**
+     * Quick-Register or Update Customer directly from POS checkout.
+     */
+    public function quickRegisterCustomer(Request $request)
+    {
+        $rawPhone = preg_replace('/[\s\-\(\)\+]/', '', trim($request->phone ?? ''));
+        if (str_starts_with($rawPhone, '234') && strlen($rawPhone) === 13) {
+            $rawPhone = '0' . substr($rawPhone, 3);
+        }
+        $request->merge(['phone' => $rawPhone]);
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'phone' => ['required', 'string', 'regex:/^0\d{10}$/'],
+            'address' => 'nullable|string|max:500',
+            'credit_limit' => 'nullable|numeric|min:0',
+        ], [
+            'phone.regex' => 'Customer phone number must be exactly 11 digits (e.g. 08031234567).',
+        ]);
+
+        $phone = $rawPhone;
+        $name = trim($request->name);
+        $creditLimit = (float) ($request->credit_limit ?? 0);
+
+        $customer = Customer::where('phone', $phone)->first();
+        if ($customer) {
+            $customer->name = $name;
+            if ($request->filled('address')) $customer->address = $request->address;
+            if ($request->filled('credit_limit')) $customer->credit_limit = $creditLimit;
+            $customer->save();
+        } else {
+            $customer = Customer::create([
+                'name' => $name,
+                'phone' => $phone,
+                'address' => $request->address,
+                'credit_limit' => $creditLimit,
+                'total_debt' => 0,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Customer {$customer->name} ({$customer->customer_code}) registered successfully!",
+            'customer' => [
+                'id' => $customer->id,
+                'customer_code' => $customer->customer_code,
+                'name' => $customer->name,
+                'phone' => $customer->phone,
+                'total_debt' => (float) $customer->total_debt,
+                'credit_limit' => (float) $customer->credit_limit,
+                'address' => $customer->address,
+            ],
+        ]);
+    }
+
+    /**
      * Process POS Checkout (Full or Part-Payment, Supplied vs. Unsupplied).
+     * Strictly enforces Zero-Bypass of Customer Phone & Name for Credit / Part-Payment and Delayed Pickup.
      */
     public function checkout(Request $request)
     {
@@ -79,15 +135,100 @@ class PosController extends Controller
         $userId = Auth::id() ?? 'POS-USER-1';
         $userName = Auth::user()->name ?? 'Sales Officer';
 
+        $totalAmount = (float) $request->totalAmount;
+        $paidAmount = (float) $request->paidAmount;
+        $hasDebt = ($paidAmount < $totalAmount);
+        $isNotSupplied = !$isSuppliedNow;
+
+        $customerId = $request->customerId ? (int) $request->customerId : null;
+        $customerPhone = preg_replace('/[\s\-\(\)\+]/', '', trim($request->customerPhone ?? ''));
+        if (str_starts_with($customerPhone, '234') && strlen($customerPhone) === 13) {
+            $customerPhone = '0' . substr($customerPhone, 3);
+        }
+        $request->merge(['customerPhone' => $customerPhone]);
+
+        if (!empty($customerPhone) && !preg_match('/^0\d{10}$/', $customerPhone)) {
+            $errorMsg = "Customer phone number must be exactly 11 digits (e.g. 08031234567).";
+            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+            return back()->withErrors(['error' => $errorMsg])->withInput();
+        }
+
+        $customerName = trim($request->customerName ?? '');
+
+        // 🔒 ZERO BYPASS RULE FOR DEBT & PICKUP ORDERS
+        if ($hasDebt || $isNotSupplied) {
+            $reason = $hasDebt ? 'Credit / Part-Payment' : 'Delayed Pickup (Not Supplied)';
+
+            if ((empty($customerPhone) || !preg_match('/^0\d{10}$/', $customerPhone)) && empty($customerId)) {
+                $errorMsg = "🔒 Exactly 11-digit Phone Number (e.g. 08031234567) & Registered Customer required for {$reason}! Walk-in Customer cannot take credit or delayed pickup.";
+                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                return back()->withErrors(['error' => $errorMsg])->withInput();
+            }
+
+            if (empty($customerName) || strtolower($customerName) === 'walk-in customer') {
+                if (!empty($customerPhone)) {
+                    $existing = Customer::where('phone', $customerPhone)->first();
+                    if ($existing) {
+                        $customerName = $existing->name;
+                        $customerId = $existing->id;
+                    } else {
+                        $errorMsg = "🔒 Customer Name and Phone Number are required for {$reason}.";
+                        if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                        return back()->withErrors(['error' => $errorMsg])->withInput();
+                    }
+                } else {
+                    $errorMsg = "🔒 Customer Name and Phone Number are required for {$reason}.";
+                    if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+            }
+        }
+
+        // Resolve or create customer record
+        $customer = null;
+        if ($customerId) {
+            $customer = Customer::find($customerId);
+        }
+        if (!$customer && !empty($customerPhone)) {
+            $customer = Customer::where('phone', $customerPhone)->first();
+        }
+        if (!$customer && !empty($customerName) && strtolower($customerName) !== 'walk-in customer' && !empty($customerPhone)) {
+            $customer = Customer::create([
+                'name' => $customerName,
+                'phone' => $customerPhone,
+                'address' => $request->customerAddress ?? null,
+                'total_debt' => 0,
+            ]);
+        }
+
+        if ($customer) {
+            $customerId = $customer->id;
+            $customerName = $customer->name;
+            $customerPhone = $customer->phone;
+        }
+
+        // 🔒 CREDIT LIMIT ENFORCEMENT
+        if ($hasDebt && $customer) {
+            $debtAmount = $totalAmount - $paidAmount;
+            if ($customer->credit_limit > 0 && ($customer->total_debt + $debtAmount) > $customer->credit_limit) {
+                $limitFormatted = '₦' . number_format($customer->credit_limit, 0);
+                $currDebtFormatted = '₦' . number_format($customer->total_debt, 0);
+                $newTotalDebt = '₦' . number_format($customer->total_debt + $debtAmount, 0);
+                $errorMsg = "⚠️ Credit Limit Exceeded! Customer {$customer->name} ({$customer->customer_code}) has credit limit of {$limitFormatted} and current debt of {$currDebtFormatted}. This sale would raise debt to {$newTotalDebt}.";
+                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                return back()->withErrors(['error' => $errorMsg])->withInput();
+            }
+        }
+
         $saleData = [
-            'totalAmount' => (float) $request->totalAmount,
-            'paidAmount' => (float) $request->paidAmount,
+            'totalAmount' => $totalAmount,
+            'paidAmount' => $paidAmount,
             'cashAmount' => (float) ($request->cashAmount ?? 0),
             'posAmount' => (float) ($request->posAmount ?? 0),
             'transferAmount' => (float) ($request->transferAmount ?? 0),
-            'customerName' => $request->customerName ?: 'Walk-in Customer',
-            'customerPhone' => $request->customerPhone,
-            'customerId' => $request->customerId,
+            'customerName' => $customerName ?: 'Walk-in Customer',
+            'customerPhone' => $customerPhone ?: null,
+            'customerId' => $customerId,
             'note' => $request->note,
         ];
 
@@ -124,15 +265,74 @@ class PosController extends Controller
     }
 
     /**
-     * Display Sales Returns & Customer Refunds screen.
+     * Display Sales Returns & Customer Refunds screen with full filters.
      */
     public function returns(Request $request)
     {
-        $sales = Sale::with('items')->orderBy('created_at', 'desc')->take(20)->get();
-        $recentReturns = \App\Models\SalesReturn::orderBy('created_at', 'desc')->take(15)->get();
+        $datePreset = $request->get('date_preset', 'ALL');
+        $fromDate = $request->get('from_date');
+        $toDate = $request->get('to_date');
+        $reason = $request->get('return_reason');
+        $search = trim($request->get('search', ''));
+
+        $query = \App\Models\SalesReturn::query();
+
+        if ($fromDate && $toDate) {
+            $query->whereBetween('createdAt', [
+                \Carbon\Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
+                \Carbon\Carbon::parse($toDate)->endOfDay()->toIso8601String()
+            ]);
+        } elseif ($datePreset === 'TODAY') {
+            $query->whereDate('createdAt', \Carbon\Carbon::today());
+        } elseif ($datePreset === 'YESTERDAY') {
+            $query->whereDate('createdAt', \Carbon\Carbon::yesterday());
+        } elseif ($datePreset === 'THIS_WEEK') {
+            $query->whereBetween('createdAt', [
+                \Carbon\Carbon::now()->startOfWeek()->toIso8601String(),
+                \Carbon\Carbon::now()->endOfWeek()->toIso8601String()
+            ]);
+        } elseif ($datePreset === 'THIS_MONTH') {
+            $query->whereBetween('createdAt', [
+                \Carbon\Carbon::now()->startOfMonth()->toIso8601String(),
+                \Carbon\Carbon::now()->endOfMonth()->toIso8601String()
+            ]);
+        }
+
+        if ($reason) {
+            $query->where('reason', 'like', "%{$reason}%");
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                  ->orWhere('saleId', 'like', "%{$search}%")
+                  ->orWhere('customerName', 'like', "%{$search}%")
+                  ->orWhere('productName', 'like', "%{$search}%")
+                  ->orWhere('userName', 'like', "%{$search}%");
+            });
+        }
+
+        $recentReturns = $query->orderBy('createdAt', 'desc')->paginate(25)->withQueryString();
+        $totalReturnsCount = (clone $query)->count();
+        $totalUnitsRestocked = (clone $query)->sum('quantity');
+        $totalRefundValue = (clone $query)->sum('refundAmount');
+
+        $sales = Sale::with('items')->orderBy('createdAt', 'desc')->take(30)->get();
         $warehouses = Warehouse::where('is_active', true)->get();
 
-        return view('pos.returns', compact('sales', 'recentReturns', 'warehouses'));
+        return view('pos.returns', compact(
+            'sales',
+            'recentReturns',
+            'warehouses',
+            'totalReturnsCount',
+            'totalUnitsRestocked',
+            'totalRefundValue',
+            'datePreset',
+            'fromDate',
+            'toDate',
+            'reason',
+            'search'
+        ));
     }
 
     /**

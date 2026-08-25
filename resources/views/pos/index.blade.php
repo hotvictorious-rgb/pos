@@ -368,8 +368,8 @@
                         <input type="text" name="customerName" id="customerNameInput" placeholder="Walk-in (or Name)" style="padding: 0.4rem 0.6rem; font-size: 0.82rem;" oninput="onManualCustomerTyping()">
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-size: 0.72rem;">Phone Number <span id="custPhoneReq" style="color: #f87171; display: none;">* (Required for Credit/Pickup)</span></label>
-                        <input type="text" name="customerPhone" id="customerPhoneInput" placeholder="080..." style="padding: 0.4rem 0.6rem; font-size: 0.82rem;" oninput="onManualPhoneTyping()">
+                        <label style="font-size: 0.72rem;">Phone Number (11 Digits) <span id="custPhoneReq" style="color: #f87171; display: none;">* (Required for Credit/Pickup)</span></label>
+                        <input type="tel" name="customerPhone" id="customerPhoneInput" placeholder="08031234567" maxlength="11" inputmode="numeric" style="padding: 0.4rem 0.6rem; font-size: 0.82rem;" oninput="onManualPhoneTyping()">
                     </div>
                 </div>
 
@@ -450,7 +450,7 @@
             <button type="button" onclick="closeQuickCustomerModal()" style="background: none; border: none; color: #94a3b8; font-size: 1.25rem; cursor: pointer;">✕</button>
         </div>
         <p style="font-size: 0.78rem; color: #94a3b8; margin-bottom: 1rem;">
-            Enforce verified phone number and unique account code for debt tracking & delayed pickups.
+            Enforce verified 11-digit phone number and unique account code for debt tracking & delayed pickups.
         </p>
 
         <form id="quickCustomerForm" onsubmit="submitQuickCustomer(event)">
@@ -459,8 +459,8 @@
                 <input type="text" id="qc_name" required placeholder="e.g. Alhaji Musa Stores">
             </div>
             <div class="form-group" style="margin-bottom: 0.75rem;">
-                <label style="font-size: 0.75rem;">GSM Phone Number (Unique Identifier) *</label>
-                <input type="tel" id="qc_phone" required placeholder="e.g. 08012345678" pattern="[0-9+ ]{7,20}">
+                <label style="font-size: 0.75rem;">GSM Phone Number (Exactly 11 Digits) *</label>
+                <input type="tel" id="qc_phone" required placeholder="08031234567" maxlength="11" pattern="0[0-9]{10}" inputmode="numeric">
             </div>
             <div class="form-group" style="margin-bottom: 0.75rem;">
                 <label style="font-size: 0.75rem;">Shop / Delivery Address</label>
@@ -701,6 +701,16 @@ function onCustomerSelected(sel) {
     }
 }
 
+function validateNigerianPhone(rawPhone) {
+    if (!rawPhone) return { valid: false, phone: '' };
+    let clean = String(rawPhone).replace(/[\s\-\(\)\+]/g, '');
+    if (clean.startsWith('234') && clean.length === 13) {
+        clean = '0' + clean.slice(3);
+    }
+    const isValid = /^0\d{10}$/.test(clean);
+    return { valid: isValid, phone: clean };
+}
+
 function onManualCustomerTyping() {
     const sel = document.getElementById('customerSelect');
     if (sel.value) {
@@ -711,12 +721,18 @@ function onManualCustomerTyping() {
 }
 
 function onManualPhoneTyping() {
-    const phoneInput = document.getElementById('customerPhoneInput').value.trim();
+    const input = document.getElementById('customerPhoneInput');
+    let raw = input.value.replace(/[\s\-\(\)\+]/g, '');
+    if (raw.startsWith('234') && raw.length === 13) {
+        raw = '0' + raw.slice(3);
+        input.value = raw;
+    }
+    const phoneInput = raw.trim();
     const sel = document.getElementById('customerSelect');
     let matched = false;
     for (let i = 1; i < sel.options.length; i++) {
-        const p = sel.options[i].getAttribute('data-phone');
-        if (p && p.trim() === phoneInput) {
+        const p = (sel.options[i].getAttribute('data-phone') || '').trim();
+        if (p && p === phoneInput) {
             sel.selectedIndex = i;
             onCustomerSelected(sel);
             matched = true;
@@ -741,6 +757,22 @@ function closeQuickCustomerModal() {
 
 function submitQuickCustomer(e) {
     e.preventDefault();
+    const rawPhone = document.getElementById('qc_phone').value.trim();
+    const pCheck = validateNigerianPhone(rawPhone);
+
+    if (!pCheck.valid) {
+        showActionBlockedModal({
+            title: 'Invalid Phone Number',
+            subtitle: 'Nigerian Phone Number Validation Failed',
+            errors: [{
+                title: 'Exactly 11 Digits Required',
+                desc: 'Phone number must be exactly 11 digits starting with 0 (e.g. 08031234567 or 09012345678).',
+                focus: 'qc_phone'
+            }]
+        });
+        return;
+    }
+
     const btn = document.getElementById('btnSaveQuickCust');
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -748,7 +780,7 @@ function submitQuickCustomer(e) {
     const data = {
         _token: "{{ csrf_token() }}",
         name: document.getElementById('qc_name').value.trim(),
-        phone: document.getElementById('qc_phone').value.trim(),
+        phone: pCheck.phone,
         address: document.getElementById('qc_address').value.trim(),
         credit_limit: document.getElementById('qc_credit_limit').value || 0
     };
@@ -787,7 +819,15 @@ function submitQuickCustomer(e) {
             closeQuickCustomerModal();
             document.getElementById('quickCustomerForm').reset();
         } else {
-            alert(res.error || 'Failed to save customer');
+            showActionBlockedModal({
+                title: 'Registration Error',
+                subtitle: 'Customer Creation Failed',
+                errors: [{
+                    title: 'Validation Error',
+                    desc: res.error || (res.errors && res.errors.phone ? res.errors.phone[0] : 'Failed to register customer'),
+                    focus: 'qc_phone'
+                }]
+            });
         }
     })
     .catch(err => {
@@ -799,16 +839,100 @@ function submitQuickCustomer(e) {
 
 function updateDebtCalculation() {
     const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
-    const partPayInput = document.getElementById('partPayInput');
-    const remainingDisplay = document.getElementById('remainingDebtDisplay');
+    const partPay = parseFloat(document.getElementById('partPayInput').value) || 0;
+    const remaining = Math.max(0, total - partPay);
+    
+    document.getElementById('displayRemainingDebt').textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
+    document.getElementById('hiddenPaid').value = partPay;
+    document.getElementById('hiddenCash').value = partPay;
+    document.getElementById('hiddenPos').value = 0;
+}
 
-    if (paymentMode === 'DEBT') {
-        const payingNow = parseFloat(partPayInput.value) || 0;
-        const remaining = Math.max(0, total - payingNow);
-        remainingDisplay.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
-        document.getElementById('hiddenPaid').value = payingNow;
-        document.getElementById('hiddenCash').value = payingNow;
-    } else if (paymentMode === 'CASH') {
+function selectPayment(mode) {
+    paymentMode = mode;
+    document.querySelectorAll('.pay-tab').forEach(t => t.classList.remove('active'));
+    
+    const partPaySec = document.getElementById('partPaymentSection');
+    const nameReq = document.getElementById('custNameReq');
+    const phoneReq = document.getElementById('custPhoneReq');
+    const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
+
+    if (mode === 'CASH') {
+        document.getElementById('tabCash').classList.add('active');
+        partPaySec.style.display = 'none';
+        nameReq.style.display = 'none';
+        phoneReq.style.display = 'none';
+        document.getElementById('hiddenPaid').value = total;
+        document.getElementById('hiddenCash').value = total;
+        document.getElementById('hiddenPos').value = 0;
+    } else if (mode === 'POS') {
+        document.getElementById('tabPos').classList.add('active');
+        partPaySec.style.display = 'none';
+        nameReq.style.display = 'none';
+        phoneReq.style.display = 'none';
+        document.getElementById('hiddenPaid').value = total;
+        document.getElementById('hiddenPos').value = total;
+        document.getElementById('hiddenCash').value = 0;
+    } else if (mode === 'DEBT') {
+        document.getElementById('tabDebt').classList.add('active');
+        partPaySec.style.display = 'block';
+        nameReq.style.display = 'inline';
+        phoneReq.style.display = 'inline';
+        document.getElementById('partPayInput').value = 0;
+        updateDebtCalculation();
+    }
+}
+
+function selectHandover(mode) {
+    const radioYes = document.getElementById('radioYes');
+    const radioNo = document.getElementById('radioNo');
+    const labelYes = document.getElementById('labelSuppliedYes');
+    const labelNo = document.getElementById('labelSuppliedNo');
+    const nameReq = document.getElementById('custNameReq');
+    const phoneReq = document.getElementById('custPhoneReq');
+
+    if (mode === 'yes') {
+        radioYes.checked = true;
+        labelYes.className = 'radio-card selected-yes';
+        labelNo.className = 'radio-card';
+        if (paymentMode !== 'DEBT') {
+            nameReq.style.display = 'none';
+            phoneReq.style.display = 'none';
+        }
+    } else {
+        radioNo.checked = true;
+        labelYes.className = 'radio-card';
+        labelNo.className = 'radio-card selected-no';
+        nameReq.style.display = 'inline';
+        phoneReq.style.display = 'inline';
+    }
+}
+
+function updateCartHiddenInputs() {
+    const form = document.getElementById('checkoutForm');
+    form.querySelectorAll('.cart-hidden-input').forEach(el => el.remove());
+
+    cart.forEach((item, index) => {
+        const idInput = document.createElement('input');
+        idInput.type = 'hidden';
+        idInput.name = `items[${index}][productId]`;
+        idInput.value = item.id;
+        idInput.className = 'cart-hidden-input';
+
+        const qtyInput = document.createElement('input');
+        qtyInput.type = 'hidden';
+        qtyInput.name = `items[${index}][quantity]`;
+        qtyInput.value = item.qty;
+        qtyInput.className = 'cart-hidden-input';
+
+        form.appendChild(idInput);
+        form.appendChild(qtyInput);
+    });
+
+    const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    document.getElementById('hiddenTotal').value = total;
+
+    if (paymentMode === 'CASH') {
         document.getElementById('hiddenPaid').value = total;
         document.getElementById('hiddenCash').value = total;
         document.getElementById('hiddenPos').value = 0;
@@ -822,7 +946,9 @@ function updateDebtCalculation() {
 function submitSale() {
     const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
     const custName = document.getElementById('customerNameInput').value.trim() || 'Walk-in Customer';
-    const custPhone = document.getElementById('customerPhoneInput').value.trim();
+    const rawCustPhone = document.getElementById('customerPhoneInput').value.trim();
+    const phoneCheck = validateNigerianPhone(rawCustPhone);
+    const custPhone = phoneCheck.phone;
     const isSupplied = document.getElementById('radioYes').checked;
     const paid = parseFloat(document.getElementById('hiddenPaid').value) || 0;
     const remaining = Math.max(0, total - paid);
@@ -836,6 +962,15 @@ function submitSale() {
             title: 'Cart is Empty',
             desc: 'Please select at least one product from the catalog on the left to begin a sale.',
             focus: 'searchInput'
+        });
+    }
+
+    // Optional phone validation if typed for a regular cash sale
+    if (rawCustPhone && !phoneCheck.valid) {
+        errors.push({
+            title: 'Invalid Nigerian Phone Number',
+            desc: 'Customer phone number must be exactly 11 digits starting with 0 (e.g. 08031234567, 09012345678).',
+            focus: 'customerPhoneInput'
         });
     }
 
@@ -879,10 +1014,10 @@ function submitSale() {
         }
 
         if (remaining > 0) {
-            if (!custPhone || custPhone.length < 7) {
+            if (!rawCustPhone || !phoneCheck.valid) {
                 errors.push({
-                    title: 'Customer Phone Number Mandatory',
-                    desc: 'A verified GSM Phone Number (min 7 digits) is required for debt & credit sales to track customer debt recovery.',
+                    title: '11-Digit Phone Number Mandatory for Credit',
+                    desc: 'A verified 11-digit Nigerian GSM phone number (e.g. 08031234567) is required for debt & credit sales to track customer debt recovery.',
                     focus: 'customerPhoneInput'
                 });
             }
@@ -914,10 +1049,10 @@ function submitSale() {
 
     // 4. Delayed Pickup (Not Supplied) Rule
     if (!isSupplied) {
-        if (!custPhone || custPhone.length < 7) {
+        if (!rawCustPhone || !phoneCheck.valid) {
             errors.push({
-                title: 'Customer Phone Required for Delayed Pickup',
-                desc: 'A customer phone number is mandatory for unsupplied goods to contact and verify the customer during pickup.',
+                title: '11-Digit Phone Number Required for Delayed Pickup',
+                desc: 'A verified 11-digit Nigerian GSM phone number (e.g. 08031234567) is mandatory for unsupplied goods to contact and verify the customer during pickup.',
                 focus: 'customerPhoneInput'
             });
         }
