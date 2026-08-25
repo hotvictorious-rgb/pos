@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Branch Shop & Warehouse Location Editing Hub**:
+  - **Edit Branch Details**: Added full editing capabilities (`name`, unique `code`, `address`, `phone`, and `manager_name`) for shop branches and warehouse locations under `Settings -> Branch Locations`.
+  - **Two-Step Confirmation & Activity Logging**: Added live change confirmation pop-up and immutable admin activity logging for branch modifications.
 - **Strict 11-Digit Nigerian Phone Number Enforcement**:
   - **Standardized 11-Digit GSM Format**: Mandated exactly 11 digits starting with `0` (e.g. `08031234567`, `09012345678`, `08123456789`) for all customer phone entries across the POS register, checkout validation, debt ledger binding, and server-side controller rules.
   - **Automatic Normalization**: Automatically strips spaces, hyphens, and converts international `+234` format into standard 11-digit local format (`080...`).

@@ -110,6 +110,42 @@ class SettingController extends Controller
     }
 
     /**
+     * Update an Existing Branch Shop or Warehouse Location.
+     */
+    public function updateWarehouse(Request $request, $id)
+    {
+        $wh = Warehouse::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:100',
+            'code' => 'required|string|unique:warehouses,code,' . $wh->id,
+            'address' => 'nullable|string',
+            'phone' => 'nullable|string',
+            'manager_name' => 'nullable|string',
+        ]);
+
+        $wh->update([
+            'name' => $request->name,
+            'code' => strtoupper($request->code),
+            'address' => $request->address,
+            'phone' => $request->phone,
+            'manager_name' => $request->manager_name,
+        ]);
+
+        $userName = Auth::user()->name ?? 'Admin';
+        Activity::create([
+            'id' => (string) Str::uuid(),
+            'type' => 'SETTINGS_UPDATED',
+            'description' => "{$userName} updated branch details for '{$wh->name}' ({$wh->code})",
+            'userId' => Auth::id() ?? 'ADMIN',
+            'userName' => $userName,
+            'timestamp' => now()->toIso8601String(),
+        ]);
+
+        return redirect()->route('settings.index')->with('success', "✓ Branch '{$wh->name}' updated successfully!");
+    }
+
+    /**
      * Toggle Branch Location Active Status.
      */
     public function toggleWarehouse($id)

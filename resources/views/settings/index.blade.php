@@ -62,40 +62,40 @@
                 🏢 Business Profile & Printable Receipt Customizer
             </h3>
 
-            <form method="POST" action="{{ route('settings.update') }}" onsubmit="return confirm('🏢 Confirm Settings Update:\n\nThis will update your business profile, currency symbol, and receipt template across the entire system. Proceed?')">
+            <form id="settingsForm" method="POST" action="{{ route('settings.update') }}">
                 @csrf
 
                 <div class="form-group">
                     <label>Business Name (Shows on top of receipts & reports)</label>
-                    <input type="text" name="businessName" value="{{ old('businessName', $settings->businessName) }}" required>
+                    <input type="text" name="businessName" id="setBizName" value="{{ old('businessName', $settings->businessName) }}" required>
                 </div>
 
                 <div class="grid-2">
                     <div class="form-group">
                         <label>Business Phone Number(s)</label>
-                        <input type="text" name="businessPhone" value="{{ old('businessPhone', $settings->businessPhone) }}" placeholder="+234 800 000 0000">
+                        <input type="text" name="businessPhone" id="setBizPhone" value="{{ old('businessPhone', $settings->businessPhone) }}" placeholder="+234 800 000 0000">
                     </div>
 
                     <div class="form-group">
                         <label>Official Email</label>
-                        <input type="email" name="businessEmail" value="{{ old('businessEmail', $settings->businessEmail) }}" placeholder="admin@hysam.com">
+                        <input type="email" name="businessEmail" id="setBizEmail" value="{{ old('businessEmail', $settings->businessEmail) }}" placeholder="admin@hysam.com">
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label>Headquarters / Business Address</label>
-                    <textarea name="businessAddress" rows="2">{{ old('businessAddress', $settings->businessAddress) }}</textarea>
+                    <textarea name="businessAddress" id="setBizAddress" rows="2">{{ old('businessAddress', $settings->businessAddress) }}</textarea>
                 </div>
 
                 <div class="grid-2">
                     <div class="form-group">
                         <label>Currency Symbol</label>
-                        <input type="text" name="currency" value="{{ old('currency', $settings->currency ?? '₦') }}" required>
+                        <input type="text" name="currency" id="setCurrency" value="{{ old('currency', $settings->currency ?? '₦') }}" required>
                     </div>
 
                     <div class="form-group">
                         <label>Default Low Stock Alert Threshold</label>
-                        <input type="number" name="lowStockThreshold" value="{{ old('lowStockThreshold', $settings->lowStockThreshold ?? 5) }}" min="1" required>
+                        <input type="number" name="lowStockThreshold" id="setThreshold" value="{{ old('lowStockThreshold', $settings->lowStockThreshold ?? 5) }}" min="1" required>
                     </div>
                 </div>
 
@@ -109,7 +109,7 @@
                     <textarea name="reportFooter" rows="2">{{ old('reportFooter', $settings->reportFooter) }}</textarea>
                 </div>
 
-                <button type="submit" class="btn btn-success btn-lg">
+                <button type="button" class="btn btn-success btn-lg" onclick="confirmSettingsUpdate()">
                     ✓ Save Settings
                 </button>
             </form>
@@ -156,12 +156,24 @@
                                 </span>
                             </td>
                             <td>
-                                <form method="POST" action="{{ route('settings.warehouse.toggle', $wh->id) }}" onsubmit="return confirm('{{ $wh->is_active ? '🏬 Confirm Deactivating Location:\n\nThis will disable POS checkout and stock activities for ' . addslashes($wh->name) . '. Proceed?' : '🏬 Confirm Activating Location:\n\nThis will re-enable ' . addslashes($wh->name) . ' across the system. Proceed?' }}')">
-                                    @csrf
-                                    <button type="submit" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
-                                        {{ $wh->is_active ? 'Deactivate' : 'Activate' }}
+                                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="openEditBranchModal({
+                                        id: '{{ $wh->id }}',
+                                        name: '{{ addslashes($wh->name) }}',
+                                        code: '{{ addslashes($wh->code) }}',
+                                        manager_name: '{{ addslashes($wh->manager_name ?? '') }}',
+                                        address: '{{ addslashes($wh->address ?? '') }}',
+                                        phone: '{{ addslashes($wh->phone ?? '') }}'
+                                    })">
+                                        ✏️ Edit
                                     </button>
-                                </form>
+                                    <form id="toggleWhForm_{{ $wh->id }}" method="POST" action="{{ route('settings.warehouse.toggle', $wh->id) }}" style="margin: 0;">
+                                        @csrf
+                                        <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="confirmToggleWarehouse('{{ $wh->id }}', '{{ addslashes($wh->name) }}', {{ $wh->is_active ? 'true' : 'false' }})">
+                                            {{ $wh->is_active ? 'Deactivate' : 'Activate' }}
+                                        </button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                         @endforeach
@@ -218,9 +230,9 @@
                     </p>
                 </div>
 
-                <form method="POST" action="/api/backups" onsubmit="return confirm('💾 Confirm Database Snapshot:\n\nThis will generate an instant JSON backup file containing all products, stock levels, sales history, and audit ledgers. Proceed?')">
+                <form id="backupForm" method="POST" action="/api/backups">
                     @csrf
-                    <button type="submit" class="btn btn-success">
+                    <button type="button" class="btn btn-success" onclick="confirmCreateBackup()">
                         📦 Create Instant DB Backup
                     </button>
                 </form>
@@ -269,21 +281,21 @@
                 Set up a new shop, outlet, or depot to track physical stock independently.
             </p>
 
-            <form method="POST" action="{{ route('settings.warehouse.store') }}" onsubmit="return confirm('🏬 Confirm New Branch Location:\n\nThis will initialize an independent physical stock registry for this new shop location. Proceed?')">
+            <form id="addBranchForm" method="POST" action="{{ route('settings.warehouse.store') }}">
                 @csrf
                 <div class="form-group">
                     <label>Branch Name</label>
-                    <input type="text" name="name" placeholder="e.g. Lekki Outlet / Shop 3" required>
+                    <input type="text" name="name" id="newBranchName" placeholder="e.g. Lekki Outlet / Shop 3" required>
                 </div>
 
                 <div class="form-group">
                     <label>Location Code</label>
-                    <input type="text" name="code" placeholder="e.g. SHOP-03" required>
+                    <input type="text" name="code" id="newBranchCode" placeholder="e.g. SHOP-03" required>
                 </div>
 
                 <div class="form-group">
                     <label>Branch Manager Name</label>
-                    <input type="text" name="manager_name" placeholder="e.g. Samuel Ade">
+                    <input type="text" name="manager_name" id="newBranchManager" placeholder="e.g. Samuel Ade">
                 </div>
 
                 <div class="form-group">
@@ -298,7 +310,50 @@
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalAddBranch')">Cancel</button>
-                    <button type="submit" class="btn btn-primary" style="flex: 1;">✓ Save Branch Shop</button>
+                    <button type="button" class="btn btn-primary" style="flex: 1;" onclick="confirmAddBranch()">✓ Save Branch Shop</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Edit Branch Shop -->
+    <div id="modalEditBranch" class="modal-backdrop" style="display: none;">
+        <div class="modal">
+            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">🏬 Edit Branch Location</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+                Update branch name, code, address, contact number, and assigned manager.
+            </p>
+
+            <form id="editBranchForm" method="POST" action="">
+                @csrf
+                <div class="form-group">
+                    <label>Branch Name</label>
+                    <input type="text" name="name" id="editBranchName" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Location Code</label>
+                    <input type="text" name="code" id="editBranchCode" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Branch Manager Name</label>
+                    <input type="text" name="manager_name" id="editBranchManager" placeholder="e.g. Samuel Ade">
+                </div>
+
+                <div class="form-group">
+                    <label>Address / Street</label>
+                    <input type="text" name="address" id="editBranchAddress" placeholder="Physical shop address">
+                </div>
+
+                <div class="form-group">
+                    <label>Branch Phone</label>
+                    <input type="text" name="phone" id="editBranchPhone" placeholder="Contact number">
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalEditBranch')">Cancel</button>
+                    <button type="button" class="btn btn-primary" style="flex: 1;" onclick="confirmEditBranch()">✓ Save Changes</button>
                 </div>
             </form>
         </div>
@@ -318,5 +373,151 @@ function showTab(tabId, btn) {
 
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function confirmSettingsUpdate() {
+    const form = document.getElementById('settingsForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const bizName = document.getElementById('setBizName').value;
+    const currency = document.getElementById('setCurrency').value;
+
+    showConfirmPopup({
+        icon: '🏢',
+        title: 'Confirm Business Settings Update',
+        subtitle: 'Review updated company profile & receipt templates:',
+        borderColor: '#3b82f6',
+        items: [
+            { label: 'Business Name', value: bizName, color: '#f8fafc' },
+            { label: 'Currency Symbol', value: currency, color: '#4ade80', size: '1rem' }
+        ],
+        impact: {
+            text: '⚙️ PROFILE UPDATE: Header titles, currency, and receipt footers will update across all terminals.',
+            type: 'info'
+        },
+        confirmText: '✅ Yes, Save Settings',
+        confirmClass: 'btn-success',
+        form: form
+    });
+}
+
+function confirmToggleWarehouse(id, name, isActive) {
+    const isDeactivating = isActive;
+    showConfirmPopup({
+        icon: isDeactivating ? '🏬' : '🏪',
+        title: isDeactivating ? 'Confirm Deactivating Branch' : 'Confirm Activating Branch',
+        subtitle: 'Review branch availability change:',
+        borderColor: isDeactivating ? '#ef4444' : '#22c55e',
+        items: [
+            { label: 'Location Name', value: name, color: '#f8fafc' },
+            { label: 'Action', value: isDeactivating ? 'DEACTIVATE' : 'ACTIVATE', color: isDeactivating ? '#f87171' : '#4ade80' }
+        ],
+        impact: {
+            text: isDeactivating ? '⚠️ DEACTIVATION: Workers will not be able to select or checkout in this branch.' : '✓ ACTIVATION: Re-enables POS checkout and stock additions for this location.',
+            type: isDeactivating ? 'danger' : 'success'
+        },
+        confirmText: isDeactivating ? '🏬 Yes, Deactivate' : '🏪 Yes, Activate',
+        confirmClass: isDeactivating ? 'btn-danger' : 'btn-success',
+        form: document.getElementById('toggleWhForm_' + id)
+    });
+}
+
+function confirmCreateBackup() {
+    showConfirmPopup({
+        icon: '💾',
+        title: 'Confirm Database Snapshot Backup',
+        subtitle: 'Create a full instant snapshot of system data:',
+        borderColor: '#22c55e',
+        items: [
+            { label: 'Backup Type', value: 'Complete JSON Relational Snapshot', color: '#60a5fa' },
+            { label: 'Includes', value: 'Products, Stock, Sales, Debtors & Logs', color: '#4ade80' }
+        ],
+        impact: {
+            text: '💾 INSTANT SNAPSHOT: Generates a timestamped JSON file ready for download or one-click restoration.',
+            type: 'success'
+        },
+        confirmText: '💾 Yes, Generate Snapshot',
+        confirmClass: 'btn-success',
+        form: document.getElementById('backupForm')
+    });
+}
+
+function confirmAddBranch() {
+    const form = document.getElementById('addBranchForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const name = document.getElementById('newBranchName').value;
+    const code = document.getElementById('newBranchCode').value;
+    const manager = document.getElementById('newBranchManager').value || 'Store Manager';
+
+    closeModal('modalAddBranch');
+
+    showConfirmPopup({
+        icon: '🏬',
+        title: 'Confirm New Branch Creation',
+        subtitle: 'Review new shop location details:',
+        borderColor: '#22c55e',
+        items: [
+            { label: 'Branch Name', value: name, color: '#f8fafc' },
+            { label: 'Branch Code', value: code, color: '#93c5fd' },
+            { label: 'Manager Assigned', value: manager, color: '#fbbf24' }
+        ],
+        impact: {
+            text: '🏬 MULTI-LOCATION REGISTRY: Initialises dedicated physical stock and ledger records for this new branch.',
+            type: 'success'
+        },
+        confirmText: '🏬 Yes, Create Branch',
+        confirmClass: 'btn-success',
+        form: form
+    });
+}
+
+function openEditBranchModal(wh) {
+    document.getElementById('editBranchForm').action = '/settings/warehouse/update/' + wh.id;
+    document.getElementById('editBranchName').value = wh.name;
+    document.getElementById('editBranchCode').value = wh.code;
+    document.getElementById('editBranchManager').value = wh.manager_name || '';
+    document.getElementById('editBranchAddress').value = wh.address || '';
+    document.getElementById('editBranchPhone').value = wh.phone || '';
+    openModal('modalEditBranch');
+}
+
+function confirmEditBranch() {
+    const form = document.getElementById('editBranchForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const name = document.getElementById('editBranchName').value;
+    const code = document.getElementById('editBranchCode').value;
+    const manager = document.getElementById('editBranchManager').value || 'Store Manager';
+
+    closeModal('modalEditBranch');
+
+    showConfirmPopup({
+        icon: '🏬',
+        title: 'Confirm Branch Details Update',
+        subtitle: 'Review updated shop location details:',
+        borderColor: '#3b82f6',
+        items: [
+            { label: 'Branch Name', value: name, color: '#f8fafc' },
+            { label: 'Branch Code', value: code, color: '#93c5fd' },
+            { label: 'Manager Assigned', value: manager, color: '#fbbf24' }
+        ],
+        impact: {
+            text: '🏬 LOCATION UPDATE: Modifies branch profile across all POS terminals, inventory logs, and receipts.',
+            type: 'info'
+        },
+        confirmText: '🏬 Yes, Save Changes',
+        confirmClass: 'btn-primary',
+        form: form
+    });
+}
 </script>
 @endpush
