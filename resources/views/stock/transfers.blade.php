@@ -554,7 +554,7 @@ function closeModal(id) {
 
 function openAcceptModal(trf) {
     document.getElementById('acceptTitle').textContent = '✅ Accept Transfer #' + trf.transfer_no;
-    document.getElementById('acceptForm').action = '/stock/transfers/' + trf.id + '/receive';
+    document.getElementById('acceptForm').action = '/stock/transfer-in/' + trf.id;
 
     let html = '';
     (trf.items || []).forEach(item => {
