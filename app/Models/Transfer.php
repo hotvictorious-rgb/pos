@@ -37,6 +37,16 @@ class Transfer extends Model
         return $this->belongsTo(Warehouse::class, 'destination_warehouse_id');
     }
 
+    public function sourceWarehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'source_warehouse_id');
+    }
+
+    public function destinationWarehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'destination_warehouse_id');
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(TransferItem::class);

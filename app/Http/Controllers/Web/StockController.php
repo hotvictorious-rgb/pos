@@ -9,9 +9,11 @@ use App\Models\StockLevel;
 use App\Models\Transfer;
 use App\Models\Sale;
 use App\Models\Supplier;
+use App\Models\StockAdjustment;
 use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class StockController extends Controller
 {
@@ -23,7 +25,34 @@ class StockController extends Controller
     }
 
     /**
-     * Stock Management Hub with 3 big visual action cards.
+     * Helper to apply date filters to queries
+     */
+    protected function applyDateFilter($query, $dateColumn, $datePreset, $fromDate, $toDate)
+    {
+        if ($fromDate && $toDate) {
+            $query->whereBetween($dateColumn, [
+                Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
+                Carbon::parse($toDate)->endOfDay()->toIso8601String()
+            ]);
+        } elseif ($datePreset === 'TODAY') {
+            $query->whereDate($dateColumn, Carbon::today());
+        } elseif ($datePreset === 'YESTERDAY') {
+            $query->whereDate($dateColumn, Carbon::yesterday());
+        } elseif ($datePreset === 'THIS_WEEK') {
+            $query->whereBetween($dateColumn, [
+                Carbon::now()->startOfWeek()->toIso8601String(),
+                Carbon::now()->endOfWeek()->toIso8601String()
+            ]);
+        } elseif ($datePreset === 'THIS_MONTH') {
+            $query->whereBetween($dateColumn, [
+                Carbon::now()->startOfMonth()->toIso8601String(),
+                Carbon::now()->endOfMonth()->toIso8601String()
+            ]);
+        }
+    }
+
+    /**
+     * Stock Management Hub with Filter Bar and Live Search.
      */
     public function index(Request $request)
     {
@@ -35,13 +64,39 @@ class StockController extends Controller
 
         $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
         $activeWarehouse = Warehouse::find($activeWarehouseId) ?? $warehouses->first();
+        session(['active_warehouse_id' => $activeWarehouse->id]);
 
-        // Get stocks for this warehouse
-        $stockLevels = StockLevel::with('product')
-            ->where('warehouse_id', $activeWarehouse->id)
-            ->get();
+        $search = trim($request->get('search', ''));
+        $category = $request->get('category');
+        $stockStatus = $request->get('stock_status');
 
+        $query = StockLevel::with('product')->where('warehouse_id', $activeWarehouse->id);
+
+        if ($search) {
+            $query->whereHas('product', function ($pq) use ($search) {
+                $pq->where('name', 'like', "%{$search}%")
+                   ->orWhere('code', 'like', "%{$search}%")
+                   ->orWhere('category', 'like', "%{$search}%");
+            });
+        }
+
+        if ($category) {
+            $query->whereHas('product', function ($pq) use ($category) {
+                $pq->where('category', $category);
+            });
+        }
+
+        if ($stockStatus === 'OUT') {
+            $query->where('physical_stock', '<=', 0);
+        } elseif ($stockStatus === 'LOW') {
+            $query->where('physical_stock', '>', 0)->where('physical_stock', '<=', 10);
+        } elseif ($stockStatus === 'HEALTHY') {
+            $query->where('physical_stock', '>', 10);
+        }
+
+        $stockLevels = $query->get();
         $allProducts = Product::where('archived', false)->get();
+        $categories = Product::distinct()->whereNotNull('category')->pluck('category');
         $suppliers = Supplier::all();
 
         // Pending incoming transfers for this shop
@@ -53,14 +108,28 @@ class StockController extends Controller
         // Count of unsupplied sales waiting in this shop
         $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')->count();
 
+        // Stock Summary Metrics for this shop
+        $totalItemsCount = $stockLevels->count();
+        $totalPhysicalUnits = $stockLevels->sum('physical_stock');
+        $lowStockCount = $stockLevels->where('physical_stock', '>', 0)->where('physical_stock', '<=', 10)->count();
+        $outOfStockCount = $stockLevels->where('physical_stock', '<=', 0)->count();
+
         return view('stock.index', compact(
             'warehouses',
             'activeWarehouse',
             'stockLevels',
             'allProducts',
+            'categories',
             'suppliers',
             'incomingTransfers',
-            'unsuppliedCount'
+            'unsuppliedCount',
+            'totalItemsCount',
+            'totalPhysicalUnits',
+            'lowStockCount',
+            'outOfStockCount',
+            'category',
+            'stockStatus',
+            'search'
         ));
     }
 
@@ -147,25 +216,70 @@ class StockController extends Controller
     }
 
     /**
-     * Dedicated Transfers Management Hub (Accept & Dispatch).
+     * Dedicated Transfers Management Hub (Accept & Dispatch) with full filters.
      */
-    public function transfersList()
+    public function transfersList(Request $request)
     {
-        $pendingTransfers = Transfer::with(['source', 'destination', 'items'])
-            ->where('status', 'DISPATCHED')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $datePreset = $request->get('date_preset', 'ALL');
+        $fromDate = $request->get('from_date');
+        $toDate = $request->get('to_date');
+        $status = $request->get('status');
+        $sourceId = $request->get('source_warehouse_id');
+        $destId = $request->get('destination_warehouse_id');
+        $carrier = $request->get('carrier_name');
+        $search = trim($request->get('search', ''));
 
-        $completedTransfers = Transfer::with(['source', 'destination', 'items'])
-            ->whereIn('status', ['RECEIVED', 'DISCREPANCY'])
-            ->orderBy('received_at', 'desc')
-            ->take(20)
-            ->get();
+        $query = Transfer::with(['source', 'destination', 'items']);
+        $this->applyDateFilter($query, 'created_at', $datePreset, $fromDate, $toDate);
+
+        if ($status) {
+            $query->where('status', strtoupper($status));
+        }
+        if ($sourceId) {
+            $query->where('source_warehouse_id', $sourceId);
+        }
+        if ($destId) {
+            $query->where('destination_warehouse_id', $destId);
+        }
+        if ($carrier) {
+            $query->where('carrier_name', $carrier);
+        }
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('transfer_no', 'like', "%{$search}%")
+                  ->orWhere('carrier_name', 'like', "%{$search}%")
+                  ->orWhere('dispatched_by', 'like', "%{$search}%")
+                  ->orWhere('received_by', 'like', "%{$search}%");
+            });
+        }
+
+        $allTransfers = $query->orderBy('created_at', 'desc')->paginate(25)->withQueryString();
+
+        $pendingCount = Transfer::where('status', 'DISPATCHED')->count();
+        $receivedCount = Transfer::where('status', 'RECEIVED')->count();
+        $discrepancyCount = Transfer::where('status', 'DISCREPANCY')->count();
 
         $warehouses = Warehouse::where('is_active', true)->get();
+        $carriers = Transfer::distinct()->whereNotNull('carrier_name')->where('carrier_name', '!=', '')->pluck('carrier_name');
         $allProducts = Product::where('archived', false)->get();
 
-        return view('stock.transfers', compact('pendingTransfers', 'completedTransfers', 'warehouses', 'allProducts'));
+        return view('stock.transfers', compact(
+            'allTransfers',
+            'pendingCount',
+            'receivedCount',
+            'discrepancyCount',
+            'warehouses',
+            'carriers',
+            'allProducts',
+            'datePreset',
+            'fromDate',
+            'toDate',
+            'status',
+            'sourceId',
+            'destId',
+            'carrier',
+            'search'
+        ));
     }
 
     /**
@@ -177,21 +291,52 @@ class StockController extends Controller
         return view('stock.waybill', compact('transfer'));
     }
 
-
-
     /**
-     * View list of Unsupplied Goods awaiting customer pickup.
+     * View list of Unsupplied Goods awaiting customer pickup with filters.
      */
-    public function unsuppliedList()
+    public function unsuppliedList(Request $request)
     {
-        $unsuppliedSales = Sale::with('items')
-            ->where('deliveryStatus', 'UNSUPPLIED')
-            ->orderBy('createdAt', 'desc')
-            ->get();
+        $datePreset = $request->get('date_preset', 'ALL');
+        $fromDate = $request->get('from_date');
+        $toDate = $request->get('to_date');
+        $search = trim($request->get('search', ''));
+        $paymentStatus = $request->get('payment_status');
 
+        $query = Sale::with('items')->where('deliveryStatus', 'UNSUPPLIED');
+        $this->applyDateFilter($query, 'createdAt', $datePreset, $fromDate, $toDate);
+
+        if ($paymentStatus === 'PAID') {
+            $query->whereColumn('paidAmount', '>=', 'totalAmount');
+        } elseif ($paymentStatus === 'PARTIAL') {
+            $query->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0);
+        } elseif ($paymentStatus === 'UNPAID') {
+            $query->where('paidAmount', '<=', 0);
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('id', 'like', "%{$search}%")
+                  ->orWhere('customerName', 'like', "%{$search}%")
+                  ->orWhere('customerPhone', 'like', "%{$search}%");
+            });
+        }
+
+        $unsuppliedSales = $query->orderBy('createdAt', 'desc')->paginate(25)->withQueryString();
+        $totalUnsuppliedOrders = (clone $query)->count();
+        $totalUnsuppliedValue = (clone $query)->sum('totalAmount');
         $activeWarehouse = Warehouse::find(session('active_warehouse_id', 1)) ?? Warehouse::first();
 
-        return view('stock.unsupplied', compact('unsuppliedSales', 'activeWarehouse'));
+        return view('stock.unsupplied', compact(
+            'unsuppliedSales',
+            'activeWarehouse',
+            'totalUnsuppliedOrders',
+            'totalUnsuppliedValue',
+            'datePreset',
+            'fromDate',
+            'toDate',
+            'paymentStatus',
+            'search'
+        ));
     }
 
     /**
@@ -212,15 +357,54 @@ class StockController extends Controller
     }
 
     /**
-     * Stock Adjustments Hub (Damages, Expired, Lost write-offs).
+     * Stock Adjustments Hub (Damages, Expired, Lost write-offs) with filters.
      */
-    public function adjustments()
+    public function adjustments(Request $request)
     {
-        $adjustments = \App\Models\StockAdjustment::with('warehouse')->orderBy('created_at', 'desc')->take(30)->get();
+        $datePreset = $request->get('date_preset', 'ALL');
+        $fromDate = $request->get('from_date');
+        $toDate = $request->get('to_date');
+        $type = $request->get('type');
+        $warehouseId = $request->get('warehouse_id');
+        $search = trim($request->get('search', ''));
+
+        $query = StockAdjustment::with('warehouse');
+        $this->applyDateFilter($query, 'created_at', $datePreset, $fromDate, $toDate);
+
+        if ($type) {
+            $query->where('type', $type);
+        }
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('product_id', 'like', "%{$search}%")
+                  ->orWhere('reason', 'like', "%{$search}%")
+                  ->orWhere('performed_by', 'like', "%{$search}%");
+            });
+        }
+
+        $adjustments = $query->orderBy('created_at', 'desc')->paginate(25)->withQueryString();
+        $totalAdjustmentsCount = (clone $query)->count();
+        $totalUnitsLost = (clone $query)->sum('quantity');
+
         $warehouses = Warehouse::where('is_active', true)->get();
         $products = Product::where('archived', false)->orderBy('name')->get();
 
-        return view('stock.adjustments', compact('adjustments', 'warehouses', 'products'));
+        return view('stock.adjustments', compact(
+            'adjustments',
+            'warehouses',
+            'products',
+            'totalAdjustmentsCount',
+            'totalUnitsLost',
+            'datePreset',
+            'fromDate',
+            'toDate',
+            'type',
+            'warehouseId',
+            'search'
+        ));
     }
 
     /**
@@ -256,4 +440,3 @@ class StockController extends Controller
         }
     }
 }
-

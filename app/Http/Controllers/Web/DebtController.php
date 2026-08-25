@@ -19,23 +19,66 @@ class DebtController extends Controller
     }
 
     /**
-     * Debtors List & Part-Payment Recovery Manager.
+     * Debtors List & Part-Payment Recovery Manager with dedicated filters and search.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $debtors = Customer::where('total_debt', '>', 0)
-            ->orderBy('total_debt', 'desc')
-            ->get();
+        $search = trim($request->get('search', ''));
+        $debtBracket = $request->get('debt_bracket', 'ALL');
+        $sortBy = $request->get('sort_by', 'highest_debt');
 
+        $query = Customer::where('total_debt', '>', 0);
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('address', 'like', "%{$search}%");
+            });
+        }
+
+        if ($debtBracket === 'HIGH') {
+            $query->where('total_debt', '>=', 100000);
+        } elseif ($debtBracket === 'MEDIUM') {
+            $query->where('total_debt', '>=', 20000)->where('total_debt', '<', 100000);
+        } elseif ($debtBracket === 'LOW') {
+            $query->where('total_debt', '<', 20000);
+        }
+
+        if ($sortBy === 'lowest_debt') {
+            $query->orderBy('total_debt', 'asc');
+        } elseif ($sortBy === 'name_asc') {
+            $query->orderBy('name', 'asc');
+        } elseif ($sortBy === 'name_desc') {
+            $query->orderBy('name', 'desc');
+        } else {
+            $query->orderBy('total_debt', 'desc');
+        }
+
+        $debtors = $query->paginate(25)->withQueryString();
         $allCustomers = Customer::orderBy('name')->get();
-        $totalOutstandingDebt = $debtors->sum('total_debt');
+
+        $totalOutstandingDebt = Customer::sum('total_debt');
+        $totalDebtorsCount = Customer::where('total_debt', '>', 0)->count();
+        $highRiskDebtorsCount = Customer::where('total_debt', '>=', 100000)->count();
+
         $recentPayments = CustomerLedger::with('customer')
             ->where('type', 'PAYMENT')
             ->orderBy('created_at', 'desc')
             ->take(15)
             ->get();
 
-        return view('debts.index', compact('debtors', 'allCustomers', 'totalOutstandingDebt', 'recentPayments'));
+        return view('debts.index', compact(
+            'debtors',
+            'allCustomers',
+            'totalOutstandingDebt',
+            'totalDebtorsCount',
+            'highRiskDebtorsCount',
+            'recentPayments',
+            'search',
+            'debtBracket',
+            'sortBy'
+        ));
     }
 
     /**
@@ -62,7 +105,7 @@ class DebtController extends Controller
                 $request->notes
             );
 
-            return redirect()->route('debts.index')->with('success', "✓ Payment of ₦" . number_format($request->amount, 2) . " received successfully!");
+            return redirect()->route('debts.index')->with('success', "✓ Payment of ₦" . number_format($request->amount, 0) . " received successfully!");
         } catch (\Throwable $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
         }

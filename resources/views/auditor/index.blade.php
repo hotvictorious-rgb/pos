@@ -120,34 +120,28 @@
                     <tr>
                         <th>Branch / Shop Location</th>
                         <th style="color: #4ade80;">Physical Count (On Shelves)</th>
-                        <th style="color: #fbbf24;">Sold & Not Supplied (In Shop)</th>
-                        <th style="color: #60a5fa;">Available to Sell</th>
-                        <th>Estimated Stock Value</th>
+                        <th style="color: #fbbf24;">Reserved (Awaiting Customer Pickup)</th>
+                        <th>Estimated Physical Stock Value</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($stockOverview as $row)
                     <tr>
                         <td>
-                            <strong style="font-size: 1.05rem;">🏢 {{ $row['warehouse']->name }}</strong>
+                            <strong style="font-size: 1.05rem; color: #f8fafc;">🏢 {{ $row['warehouse']->name }}</strong>
                             <div style="font-size: 0.75rem; color: var(--text-muted);">Code: {{ $row['warehouse']->code }}</div>
                         </td>
                         <td>
                             <span style="font-size: 1.2rem; font-weight: 800; color: #4ade80;">
-                                {{ $row['total_physical'] }}
+                                {{ number_format($row['total_physical']) }}
                             </span> units
                         </td>
                         <td>
                             <span style="font-size: 1.2rem; font-weight: 800; color: #fbbf24;">
-                                {{ $row['total_allocated'] }}
+                                {{ number_format($row['total_allocated']) }}
                             </span> units
                         </td>
-                        <td>
-                            <span style="font-size: 1.2rem; font-weight: 800; color: #60a5fa;">
-                                {{ $row['total_available'] }}
-                            </span> units
-                        </td>
-                        <td style="font-weight: 800; font-size: 1.05rem;">
+                        <td style="font-weight: 800; font-size: 1.05rem; color: #f8fafc;">
                             ₦{{ number_format($row['stock_value'], 0) }}
                         </td>
                     </tr>
