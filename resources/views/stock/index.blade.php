@@ -162,6 +162,7 @@
     </div>
     @endif
 
+    @if(auth()->user()?->role !== 'viewer')
     <!-- 3 Big Action Cards (Touch Friendly) -->
     <div class="stock-action-cards">
         <!-- 1. Stock In -->
@@ -193,10 +194,24 @@
             </div>
             <div>
                 <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Not Supplied (Pickups)</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted);">{{ $unsuppliedCount }} sold orders in shop awaiting customer handover.</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Items sold, paid for, but awaiting customer pickup.</p>
             </div>
         </a>
     </div>
+    @else
+    <!-- View-Only Executive Stock Banner -->
+    <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <strong style="color: #facc15; font-size: 1.05rem;">👑 Executive Inventory Observer</strong>
+            <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.2rem; margin-bottom: 0;">
+                Monitoring real-time physical counts, supplier deliveries, and multi-branch inventory balances.
+            </p>
+        </div>
+        <a href="{{ route('reports.export.csv', 'inventory') }}" class="btn btn-secondary" style="font-size: 0.82rem; color: #facc15; border-color: rgba(234, 179, 8, 0.4);">
+            📥 Export Stock Valuation CSV
+        </a>
+    </div>
+    @endif
 
     <!-- Stock Summary KPI Grid -->
     <div class="summary-grid">

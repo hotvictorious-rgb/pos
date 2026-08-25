@@ -363,7 +363,7 @@
                 <span>🛍️</span> <span>Products Catalog</span>
             </a>
 
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'storekeeper']))
+            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'storekeeper', 'viewer']))
                 <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
                     <span>📦</span> <span>Stock In / Out</span>
                 </a>
@@ -405,10 +405,12 @@
                 <a href="{{ route('reports.index') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
                     <span>📊</span> <span>Reports & AI Exports</span>
                 </a>
-                @if($currentRole === 'admin')
+                @if(in_array($currentRole, ['admin', 'viewer']))
                     <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
                         <span>👥</span> <span>Workers & Roles</span>
                     </a>
+                @endif
+                @if($currentRole === 'admin')
                     <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
                         <span>⚙️</span> <span>System Settings</span>
                     </a>
@@ -439,6 +441,12 @@
                     <span style="color: #4b5563;">|</span>
                     <span>⏰</span> <span id="headerTime" style="color: #4ade80;">--:--:--</span>
                 </div>
+
+                @if($currentRole === 'viewer')
+                    <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 800; color: #facc15; display: inline-flex; align-items: center; gap: 0.4rem;">
+                        <span>👑</span> <span>Executive Observer (View-Only Mode)</span>
+                    </div>
+                @endif
             </div>
 
             <!-- Right: Quick Calculator, Operator & Logout -->

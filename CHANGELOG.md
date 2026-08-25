@@ -12,6 +12,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
 
 ### Added
+- **Executive Owner / Silent Auditor View-Only Refinements (`viewer` Role)**:
+  - **100% Business Visibility**: Granted read-only monitoring access across all 11 business hubs (Master Dashboard, Catalog, Stock Levels, Inter-Branch Transfers, Pickup Orders, Damaged Goods, Sales & Debt Ledgers, Reports, Auditor Radar, and Staff Roster).
+  - **Zero-Mutation Guard Middleware (`BlockReadOnlyMutations`)**: Intercepts and strictly rejects all mutating HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) with `403 Forbidden` to guarantee read-only accounts cannot modify, delete, or create records.
+  - **Clean Executive UI**: Automatically stripped operational cashier action buttons (`+ Add Product`, `+ Stock In`, `Dispatch Transfer`, `Mark as Supplied`, `Record Debt Payment`, `Lock Worker`) and added a prominent `👑 Executive Observer (View-Only Mode)` topbar badge.
 - **Worker Profile Editing & Branch Reassignment Hub**:
   - **Reassign Staff Across Branches**: Added the ability to transfer workers across different branch locations, update staff roles and permission hierarchies, or change login details under `Workers & Roles`.
   - **Preserved Historical Auditing**: Historical sales, signatures, and receipts remain tied to the worker's user ID while their terminal immediately switches to the new location's stock levels.

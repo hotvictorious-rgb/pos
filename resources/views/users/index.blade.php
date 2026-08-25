@@ -37,12 +37,18 @@
         <div>
             <h2 style="font-size: 1.5rem; font-weight: 800;">Staff & Role Permissions 👥</h2>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Create and manage workers, assign branch responsibilities, and set anti-theft permission barriers.
+                {{ auth()->user()?->role === 'viewer' ? 'Live roster of staff, assigned branch responsibilities, and permissions.' : 'Create and manage workers, assign branch responsibilities, and set anti-theft permission barriers.' }}
             </p>
         </div>
-        <button class="btn btn-success btn-lg" onclick="openModal('modalAddUser')">
-            ➕ Add New Worker
-        </button>
+        @if(auth()->user()?->role !== 'viewer')
+            <button class="btn btn-success btn-lg" onclick="openModal('modalAddUser')">
+                ➕ Add New Worker
+            </button>
+        @else
+            <span style="font-size: 0.82rem; font-weight: 800; color: #facc15; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); padding: 0.5rem 1rem; border-radius: 10px;">
+                👑 Executive Observer (View-Only Mode)
+            </span>
+        @endif
     </div>
 
     <!-- Role Explanation Banner -->
@@ -118,22 +124,24 @@
             </div>
 
             <!-- Action buttons -->
-            <div style="display: flex; gap: 0.5rem; border-top: 1px solid var(--border); padding-top: 1rem; flex-wrap: wrap;">
-                <button type="button" class="btn btn-secondary" style="padding: 0.5rem 0.85rem; font-size: 0.8rem; border-color: #3b82f6; color: #93c5fd; flex: 1;" onclick="openEditUserModal({{ json_encode($u) }})">
-                    ✏️ Edit / Reassign
-                </button>
-
-                <form id="toggleForm_{{ $u->id }}" method="POST" action="{{ route('users.toggle', $u->id) }}" style="flex: 1;">
-                    @csrf
-                    <button type="button" class="btn {{ $u->disabled ? 'btn-success' : 'btn-danger' }} btn-block" style="padding: 0.5rem; font-size: 0.8rem;" onclick="confirmToggleWorker('{{ $u->id }}', '{{ addslashes($u->name) }}', {{ $u->disabled ? 'true' : 'false' }}, '{{ addslashes($u->role) }}')">
-                        {{ $u->disabled ? '🔓 Unlock' : '🔒 Lock' }}
+            @if(auth()->user()?->role !== 'viewer')
+                <div style="display: flex; gap: 0.5rem; border-top: 1px solid var(--border); padding-top: 1rem; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-secondary" style="padding: 0.5rem 0.85rem; font-size: 0.8rem; border-color: #3b82f6; color: #93c5fd; flex: 1;" onclick="openEditUserModal({{ json_encode($u) }})">
+                        ✏️ Edit / Reassign
                     </button>
-                </form>
 
-                <button class="btn btn-secondary" style="padding: 0.5rem 0.85rem; font-size: 0.8rem;" onclick="openPasswordModal('{{ $u->id }}', '{{ addslashes($u->name) }}')">
-                    🔑 PIN
-                </button>
-            </div>
+                    <form id="toggleForm_{{ $u->id }}" method="POST" action="{{ route('users.toggle', $u->id) }}" style="flex: 1;">
+                        @csrf
+                        <button type="button" class="btn {{ $u->disabled ? 'btn-success' : 'btn-danger' }} btn-block" style="padding: 0.5rem; font-size: 0.8rem;" onclick="confirmToggleWorker('{{ $u->id }}', '{{ addslashes($u->name) }}', {{ $u->disabled ? 'true' : 'false' }}, '{{ addslashes($u->role) }}')">
+                            {{ $u->disabled ? '🔓 Unlock' : '🔒 Lock' }}
+                        </button>
+                    </form>
+
+                    <button class="btn btn-secondary" style="padding: 0.5rem 0.85rem; font-size: 0.8rem;" onclick="openPasswordModal('{{ $u->id }}', '{{ addslashes($u->name) }}')">
+                        🔑 PIN
+                    </button>
+                </div>
+            @endif
         </div>
         @empty
         <div style="grid-column: 1/-1; text-align: center; padding: 3rem; background: var(--card-bg); border-radius: 18px;">

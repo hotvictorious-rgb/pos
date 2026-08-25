@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\CheckInstalled::class,
             \App\Http\Middleware\CheckWebAuth::class,
+            \App\Http\Middleware\BlockReadOnlyMutations::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

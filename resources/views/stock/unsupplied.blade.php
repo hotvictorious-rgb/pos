@@ -198,12 +198,18 @@
                     ₦{{ number_format($sale->totalAmount, 0) }}
                 </div>
 
-                <form id="dispatchForm_{{ $sale->id }}" method="POST" action="{{ route('stock.dispatch', $sale->id) }}">
-                    @csrf
-                    <button type="button" class="btn btn-success btn-lg" onclick="confirmDispatchOrder('{{ $sale->id }}', '{{ addslashes($sale->customerName ?: 'Customer') }}', '{{ $sale->items->sum('quantity') }}', '₦{{ number_format($sale->totalAmount, 0) }}')">
-                        📦 Mark as Supplied (Handover Goods)
-                    </button>
-                </form>
+                @if(auth()->user()?->role !== 'viewer')
+                    <form id="dispatchForm_{{ $sale->id }}" method="POST" action="{{ route('stock.dispatch', $sale->id) }}">
+                        @csrf
+                        <button type="button" class="btn btn-success btn-lg" onclick="confirmDispatchOrder('{{ $sale->id }}', '{{ addslashes($sale->customerName ?: 'Customer') }}', '{{ $sale->items->sum('quantity') }}', '₦{{ number_format($sale->totalAmount, 0) }}')">
+                            📦 Mark as Supplied (Handover Goods)
+                        </button>
+                    </form>
+                @else
+                    <span style="font-size: 0.85rem; font-weight: 800; color: #facc15; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); padding: 0.6rem 1.2rem; border-radius: 10px;">
+                        👑 Awaiting Customer Pickup
+                    </span>
+                @endif
             </div>
         </div>
         @empty

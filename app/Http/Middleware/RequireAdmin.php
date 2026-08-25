@@ -17,14 +17,20 @@ class RequireAdmin
     {
         $user = Auth::user();
 
-        if (!$user || $user->role !== 'admin') {
-            if ($request->ajax() || $request->wantsJson()) {
-                return response()->json(['error' => 'Forbidden. Administrator privileges required.'], 403);
-            }
-
-            return redirect()->route('dashboard')->with('warning', '🔒 Access Restricted: Administrator privileges required.');
+        // 1. Admin has full unrestricted access
+        if ($user && $user->role === 'admin') {
+            return $next($request);
         }
 
-        return $next($request);
+        // 2. Executive Owner (viewer) has read-only GET access to monitor staff and audit pages
+        if ($user && $user->role === 'viewer' && $request->isMethod('GET') && !$request->is('settings*')) {
+            return $next($request);
+        }
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['error' => 'Forbidden. Administrator privileges required.'], 403);
+        }
+
+        return redirect()->route('dashboard')->with('warning', '🔒 Access Restricted: Administrator privileges required.');
     }
 }

@@ -81,10 +81,16 @@
                 Officially record broken, expired, or lost goods on ground to maintain 100% physical count accuracy.
             </p>
         </div>
-        <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-danger" onclick="openModal('modalStockAdjustment')">
-                📉 Record Damaged Goods
-            </button>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            @if(auth()->user()?->role !== 'viewer')
+                <button class="btn btn-danger" onclick="openModal('modalStockAdjustment')">
+                    📉 Record Damaged Goods
+                </button>
+            @else
+                <span style="font-size: 0.82rem; font-weight: 800; color: #facc15; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); padding: 0.5rem 1rem; border-radius: 10px;">
+                    👑 Executive Observer
+                </span>
+            @endif
             <a href="{{ route('stock.index') }}" class="btn btn-secondary">
                 📦 Stock Hub
             </a>

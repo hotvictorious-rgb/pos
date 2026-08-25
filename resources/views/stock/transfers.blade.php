@@ -101,10 +101,16 @@
                 Move goods between branches with 2-step theft-proof dispatch and count verification.
             </p>
         </div>
-        <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-primary" onclick="openModal('modalDispatchTransfer')">
-                🚚 Dispatch New Transfer
-            </button>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            @if(auth()->user()?->role !== 'viewer')
+                <button class="btn btn-primary" onclick="openModal('modalDispatchTransfer')">
+                    🚚 Dispatch New Transfer
+                </button>
+            @else
+                <span style="font-size: 0.82rem; font-weight: 800; color: #facc15; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); padding: 0.5rem 1rem; border-radius: 10px;">
+                    👑 Executive Observer
+                </span>
+            @endif
             <a href="{{ route('stock.index') }}" class="btn btn-secondary">
                 📦 Stock Hub
             </a>
@@ -244,9 +250,11 @@
                     <a href="{{ route('stock.waybill', $trf->id) }}" class="btn btn-secondary" style="flex: 1;" target="_blank">
                         📄 Waybill
                     </a>
-                    <button class="btn btn-success" style="flex: 2; font-size: 0.95rem;" onclick="openAcceptModal({{ json_encode($trf) }})">
-                        ✅ Accept & Count
-                    </button>
+                    @if(auth()->user()?->role !== 'viewer')
+                        <button class="btn btn-success" style="flex: 2; font-size: 0.95rem;" onclick="openAcceptModal({{ json_encode($trf) }})">
+                            ✅ Accept & Count
+                        </button>
+                    @endif
                 </div>
             </div>
             @endforeach

@@ -194,10 +194,14 @@
                             @endif
                         </td>
                         <td>
-                            <button class="btn btn-success" style="padding: 0.5rem 1rem; font-size: 0.85rem;"
-                                    onclick="openPaymentModal({{ $debtor->id }}, '{{ addslashes($debtor->name) }}', {{ $debtor->total_debt }})">
-                                💵 Record Payment
-                            </button>
+                            @if(auth()->user()?->role !== 'viewer')
+                                <button class="btn btn-success" style="padding: 0.5rem 1rem; font-size: 0.85rem;"
+                                        onclick="openPaymentModal({{ $debtor->id }}, '{{ addslashes($debtor->name) }}', {{ $debtor->total_debt }})">
+                                    💵 Record Payment
+                                </button>
+                            @else
+                                <span style="font-size: 0.78rem; color: #facc15; font-weight: 700; background: rgba(234,179,8,0.1); padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid rgba(234,179,8,0.3);">👑 Read-Only</span>
+                            @endif
                         </td>
                     </tr>
                     @empty
