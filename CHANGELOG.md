@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ### Added
 - **Multi-Branch Location Filtering & Sleek Executive Dashboard Redesign**:
+  - **Clean Dropdown Controls**: Unified both Branch Location and Time Period controls into matching side-by-side executive dropdown selectors with auto-submit and collapsible custom date range picker.
   - **Branch Location Selector**: Added a top branch dropdown allowing instantaneous switching between `All Branches (Consolidated)` and specific shop/warehouse branches.
   - **Location-Isolated Metrics**: When a specific branch is selected, physical stock valuations, stock inflow/outflow, low stock alerts, cashier cash/POS collections, in-transit transfers, and unsupplied backlog are isolated to that branch.
   - **Multi-Branch Comparison Cards**: Automatically displays side-by-side branch health cards (physical stock units, valuation, low stock alerts) when viewing the consolidated enterprise view.

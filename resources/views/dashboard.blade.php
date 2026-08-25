@@ -83,13 +83,22 @@
         gap: 1rem;
     }
 
-    .location-selector-wrap {
+    .filter-control-group {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.6rem;
     }
 
-    .location-select {
+    .filter-label {
+        font-size: 0.8rem;
+        font-weight: 800;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+    }
+
+    .filter-select {
         background: rgba(15, 23, 42, 0.85);
         border: 1px solid var(--border, #334155);
         color: #f8fafc;
@@ -99,42 +108,13 @@
         font-weight: 700;
         cursor: pointer;
         min-width: 220px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .location-select:focus {
+    .filter-select:focus {
         outline: none;
-        border-color: #a855f7;
-    }
-
-    .preset-pills-wrap {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.4rem;
-    }
-
-    .preset-pill {
-        padding: 0.4rem 0.85rem;
-        border-radius: 8px;
-        font-size: 0.8rem;
-        font-weight: 700;
-        text-decoration: none;
-        color: #94a3b8;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid var(--border, #334155);
-        transition: all 0.15s ease;
-    }
-
-    .preset-pill:hover {
-        color: #fff;
-        background: rgba(255,255,255,0.08);
-    }
-
-    .preset-pill.active {
-        color: #ffffff;
-        background: #2563eb;
         border-color: #3b82f6;
-        box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
     }
 
     .custom-range-row {
@@ -365,15 +345,15 @@
         </div>
     </div>
 
-    <!-- Filter Command Hub -->
+    <!-- Filter Command Hub (Clean Dropdown Selectors) -->
     <div class="filter-hub">
         <form method="GET" action="{{ route('dashboard') }}" id="dashFilterForm">
             <div class="filter-row-top">
-                <!-- Location / Branch Selector -->
-                <div class="location-selector-wrap">
-                    <label style="font-size: 0.8rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Location:</label>
-                    <select name="warehouse_id" class="location-select" onchange="document.getElementById('dashFilterForm').submit()">
-                        <option value="">🏢 All Branches (Consolidated)</option>
+                <!-- 1. Location / Branch Selector -->
+                <div class="filter-control-group">
+                    <label class="filter-label">🏢 Location:</label>
+                    <select name="warehouse_id" class="filter-select" onchange="document.getElementById('dashFilterForm').submit()">
+                        <option value="">All Branches (Consolidated)</option>
                         @foreach($warehouses as $wh)
                             <option value="{{ $wh->id }}" {{ $warehouseId == $wh->id ? 'selected' : '' }}>
                                 {{ $wh->name }} ({{ $wh->code }})
@@ -382,44 +362,39 @@
                     </select>
                 </div>
 
-                <!-- Date Presets -->
-                <div class="preset-pills-wrap">
-                    <a href="{{ route('dashboard', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'TODAY'])) }}" class="preset-pill {{ $datePreset === 'TODAY' ? 'active' : '' }}">
-                        Today
-                    </a>
-                    <a href="{{ route('dashboard', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'YESTERDAY'])) }}" class="preset-pill {{ $datePreset === 'YESTERDAY' ? 'active' : '' }}">
-                        Yesterday
-                    </a>
-                    <a href="{{ route('dashboard', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'THIS_WEEK'])) }}" class="preset-pill {{ $datePreset === 'THIS_WEEK' ? 'active' : '' }}">
-                        This Week
-                    </a>
-                    <a href="{{ route('dashboard', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'THIS_MONTH'])) }}" class="preset-pill {{ $datePreset === 'THIS_MONTH' ? 'active' : '' }}">
-                        This Month
-                    </a>
-                    <a href="{{ route('dashboard', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'THIS_YEAR'])) }}" class="preset-pill {{ $datePreset === 'THIS_YEAR' ? 'active' : '' }}">
-                        This Year
-                    </a>
-                    <a href="{{ route('dashboard', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'ALL'])) }}" class="preset-pill {{ $datePreset === 'ALL' ? 'active' : '' }}">
-                        All-Time
-                    </a>
+                <!-- 2. Date Period Dropdown Selector -->
+                <div class="filter-control-group">
+                    <label class="filter-label">📅 Period:</label>
+                    <select name="date_preset" id="datePresetSelect" class="filter-select" onchange="handleDatePresetChange(this.value)">
+                        <option value="TODAY" {{ $datePreset === 'TODAY' ? 'selected' : '' }}>Today ({{ \Carbon\Carbon::today()->format('d M') }})</option>
+                        <option value="YESTERDAY" {{ $datePreset === 'YESTERDAY' ? 'selected' : '' }}>Yesterday</option>
+                        <option value="THIS_WEEK" {{ $datePreset === 'THIS_WEEK' ? 'selected' : '' }}>This Week</option>
+                        <option value="THIS_MONTH" {{ $datePreset === 'THIS_MONTH' ? 'selected' : '' }}>This Month ({{ \Carbon\Carbon::now()->format('F') }})</option>
+                        <option value="THIS_YEAR" {{ $datePreset === 'THIS_YEAR' ? 'selected' : '' }}>This Year ({{ \Carbon\Carbon::now()->format('Y') }})</option>
+                        <option value="ALL" {{ $datePreset === 'ALL' ? 'selected' : '' }}>All-Time</option>
+                        <option value="CUSTOM" {{ $datePreset === 'CUSTOM' ? 'selected' : '' }}>🗓️ Custom Date Range...</option>
+                    </select>
                 </div>
+
+                <!-- Reset Button -->
+                @if($datePreset !== 'TODAY' || $warehouseId)
+                    <div style="margin-left: auto;">
+                        <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary btn-sm" style="font-size: 0.78rem; padding: 0.45rem 0.85rem; border-radius: 8px;">
+                            ↺ Reset Filters
+                        </a>
+                    </div>
+                @endif
             </div>
 
-            <!-- Custom Date Range -->
-            <div class="custom-range-row">
-                <input type="hidden" name="date_preset" value="CUSTOM">
-                <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 700;">Custom Date Range:</span>
-                <input type="date" name="from_date" value="{{ $fromDate ?? request('from_date') }}" class="custom-range-input" required>
+            <!-- Custom Date Range Form (Shown when Custom Range is selected) -->
+            <div id="customDateRangeRow" class="custom-range-row" style="{{ $datePreset === 'CUSTOM' ? 'display: flex;' : 'display: none;' }}">
+                <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 700;">Custom Range:</span>
+                <input type="date" name="from_date" id="fromDateInput" value="{{ $fromDate ?? request('from_date') }}" class="custom-range-input" {{ $datePreset === 'CUSTOM' ? 'required' : '' }}>
                 <span style="color: #64748b; font-size: 0.8rem;">to</span>
-                <input type="date" name="to_date" value="{{ $toDate ?? request('to_date') }}" class="custom-range-input" required>
+                <input type="date" name="to_date" id="toDateInput" value="{{ $toDate ?? request('to_date') }}" class="custom-range-input" {{ $datePreset === 'CUSTOM' ? 'required' : '' }}>
                 <button type="submit" class="btn btn-primary btn-sm" style="font-weight: 700; padding: 0.35rem 0.85rem; border-radius: 8px;">
                     Apply Range
                 </button>
-                @if($datePreset !== 'TODAY' || $warehouseId)
-                    <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary btn-sm" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; margin-left: auto;">
-                        ↺ Reset All Filters
-                    </a>
-                @endif
             </div>
         </form>
     </div>
@@ -704,3 +679,25 @@
     @endif
 
 @endsection
+
+@push('scripts')
+<script>
+function handleDatePresetChange(val) {
+    const customRow = document.getElementById('customDateRangeRow');
+    const fromInput = document.getElementById('fromDateInput');
+    const toInput = document.getElementById('toDateInput');
+    if (val === 'CUSTOM') {
+        customRow.style.display = 'flex';
+        fromInput.required = true;
+        toInput.required = true;
+    } else {
+        customRow.style.display = 'none';
+        fromInput.required = false;
+        toInput.required = false;
+        fromInput.value = '';
+        toInput.value = '';
+        document.getElementById('dashFilterForm').submit();
+    }
+}
+</script>
+@endpush
