@@ -38,6 +38,27 @@ Route::post('/login', [AuthController::class, 'webLogin'])->name('login.post');
 Route::match(['get', 'post'], '/logout', [AuthController::class, 'webLogout'])->name('logout');
 
 // ─────────────────────────────────────────────────────────
+// SAAS MULTI-TENANT & SUPER ADMIN ROUTES
+// ─────────────────────────────────────────────────────────
+Route::prefix('saas')->name('saas.')->group(function () {
+    Route::get('/register',      [\App\Http\Controllers\SaaS\SaaSController::class, 'registerForm'])->name('register');
+    Route::post('/register',     [\App\Http\Controllers\SaaS\SaaSController::class, 'processRegister'])->name('register.post');
+    Route::get('/suspended',     [\App\Http\Controllers\SaaS\SaaSController::class, 'suspended'])->name('suspended');
+
+    // Super Admin Master SaaS Control Panel
+    Route::prefix('admin')->name('admin.')->middleware([\App\Http\Middleware\RequireAdmin::class])->group(function () {
+        Route::get('/',                 [\App\Http\Controllers\SaaS\SaaSController::class, 'adminIndex'])->name('index');
+        Route::post('/settings',        [\App\Http\Controllers\SaaS\SaaSController::class, 'updateSettings'])->name('settings');
+        Route::post('/tenant',          [\App\Http\Controllers\SaaS\SaaSController::class, 'storeTenant'])->name('tenant.store');
+        Route::post('/toggle/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'toggleStatus'])->name('toggle');
+        Route::post('/limits/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'updateTenantLimits'])->name('limits');
+        Route::get('/impersonate/{id}', [\App\Http\Controllers\SaaS\SaaSController::class, 'impersonateTenant'])->name('impersonate');
+        Route::get('/stop-impersonate', [\App\Http\Controllers\SaaS\SaaSController::class, 'stopImpersonation'])->name('stop_impersonate');
+        Route::post('/delete/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'deleteTenant'])->name('delete');
+    });
+});
+
+// ─────────────────────────────────────────────────────────
 // API ROUTES (session-aware, CSRF exempt)
 // ─────────────────────────────────────────────────────────
 Route::prefix('api')->group(function () {

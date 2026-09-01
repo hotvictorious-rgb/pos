@@ -58,7 +58,7 @@ class AuthController extends Controller
                 $user->save();
             }
 
-            session(['user_id' => $user->id]);
+            session(['user_id' => $user->id, 'tenant_id' => $user->tenant_id ?? 'default-tenant']);
             return response()->json($user);
         }
 
@@ -75,7 +75,7 @@ class AuthController extends Controller
             return response()->json(['error' => 'Invalid email address or password.'], 401);
         }
 
-        session(['user_id' => $user->id]);
+        session(['user_id' => $user->id, 'tenant_id' => $user->tenant_id ?? 'default-tenant']);
         return response()->json($user);
     }
 
@@ -107,6 +107,7 @@ class AuthController extends Controller
             if (!$user) {
                 $user = User::create([
                     'id' => 'admin-user-1',
+                    'tenant_id' => 'default-tenant',
                     'name' => 'Admin User',
                     'email' => $adminEmail,
                     'password' => Hash::make($adminPassword),
@@ -135,7 +136,7 @@ class AuthController extends Controller
                 $user->save();
             }
 
-            session(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $user->role]);
+            session(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $user->role, 'tenant_id' => $user->tenant_id ?? 'default-tenant']);
             \Illuminate\Support\Facades\Auth::login($user);
 
             $intended = session()->pull('url.intended', '/');
@@ -155,7 +156,7 @@ class AuthController extends Controller
             return back()->withInput()->with('error', 'Invalid email address or password.');
         }
 
-        session(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $user->role]);
+        session(['user_id' => $user->id, 'user_name' => $user->name, 'user_role' => $user->role, 'tenant_id' => $user->tenant_id ?? 'default-tenant']);
         \Illuminate\Support\Facades\Auth::login($user);
 
         $intended = session()->pull('url.intended', '/');
