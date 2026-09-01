@@ -19,13 +19,17 @@ class SettingController extends Controller
      */
     public function index()
     {
+        $tenantId = session('tenant_id') ?? 'default-tenant';
+        $tenantObj = \App\Models\Tenant::find($tenantId);
+        $defaultName = $tenantObj ? $tenantObj->name : 'VMARKET POS Store';
+
         $settings = Setting::firstOrCreate(
-            ['id' => 1],
+            ['tenant_id' => $tenantId],
             [
-                'businessName' => 'Hysam Ventures',
-                'businessAddress' => '12 Commercial Avenue, Lagos, Nigeria',
+                'businessName' => $defaultName,
+                'businessAddress' => 'Headquarters Address',
                 'businessPhone' => '+234 800 000 0000',
-                'businessEmail' => 'admin@hysam.com',
+                'businessEmail' => 'admin@vmarketpos.com',
                 'currency' => '₦',
                 'categories' => ['Groceries', 'Beverages', 'Electronics', 'Hardware', 'Household'],
                 'reportFooter' => 'Thank you for your patronage! Goods sold in good condition cannot be returned after 3 days.',
@@ -55,7 +59,25 @@ class SettingController extends Controller
             'reportFooter' => 'nullable|string',
         ]);
 
-        $settings = Setting::firstOrCreate(['id' => 1]);
+        $tenantId = session('tenant_id') ?? 'default-tenant';
+        $tenantObj = \App\Models\Tenant::find($tenantId);
+        $defaultName = $tenantObj ? $tenantObj->name : 'VMARKET POS Store';
+
+        $settings = Setting::firstOrCreate(
+            ['tenant_id' => $tenantId],
+            [
+                'businessName' => $defaultName,
+                'businessAddress' => 'Headquarters Address',
+                'businessPhone' => '+234 800 000 0000',
+                'businessEmail' => 'admin@vmarketpos.com',
+                'currency' => '₦',
+                'categories' => ['Groceries', 'Beverages', 'Electronics', 'Hardware', 'Household'],
+                'reportFooter' => 'Thank you for your patronage! Goods sold in good condition cannot be returned after 3 days.',
+                'lowStockThreshold' => 5,
+                'transactionEditLimitDays' => 0,
+                'fontFamily' => 'Plus Jakarta Sans',
+            ]
+        );
 
         $categories = $request->categories ? array_filter(array_map('trim', explode(',', $request->categories))) : $settings->categories;
 
@@ -89,15 +111,17 @@ class SettingController extends Controller
      */
     public function storeWarehouse(Request $request)
     {
+        $tenantId = session('tenant_id') ?? 'default-tenant';
         $request->validate([
             'name' => 'required|string|max:100',
-            'code' => 'required|string|unique:warehouses,code',
+            'code' => ['required', 'string', \Illuminate\Validation\Rule::unique('warehouses', 'code')->where('tenant_id', $tenantId)],
             'address' => 'nullable|string',
             'phone' => 'nullable|string',
             'manager_name' => 'nullable|string',
         ]);
 
         Warehouse::create([
+            'tenant_id' => $tenantId,
             'name' => $request->name,
             'code' => strtoupper($request->code),
             'address' => $request->address,
@@ -115,10 +139,11 @@ class SettingController extends Controller
     public function updateWarehouse(Request $request, $id)
     {
         $wh = Warehouse::findOrFail($id);
+        $tenantId = session('tenant_id') ?? 'default-tenant';
 
         $request->validate([
             'name' => 'required|string|max:100',
-            'code' => 'required|string|unique:warehouses,code,' . $wh->id,
+            'code' => ['required', 'string', \Illuminate\Validation\Rule::unique('warehouses', 'code')->where('tenant_id', $tenantId)->ignore($wh->id)],
             'address' => 'nullable|string',
             'phone' => 'nullable|string',
             'manager_name' => 'nullable|string',
