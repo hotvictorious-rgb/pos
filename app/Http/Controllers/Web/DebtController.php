@@ -26,8 +26,16 @@ class DebtController extends Controller
         $search = trim($request->get('search', ''));
         $debtBracket = $request->get('debt_bracket', 'ALL');
         $sortBy = $request->get('sort_by', 'highest_debt');
+        $authUser = Auth::user();
+        $assignedWarehouseId = ($authUser && !empty($authUser->warehouse_id)) ? $authUser->warehouse_id : null;
 
         $query = Customer::where('total_debt', '>', 0);
+
+        if ($assignedWarehouseId) {
+            $branchStaffIds = \App\Models\User::where('warehouse_id', $assignedWarehouseId)->pluck('id');
+            $customerNamesFromSales = \App\Models\Sale::whereIn('userId', $branchStaffIds)->pluck('customerName');
+            $query->whereIn('name', $customerNamesFromSales);
+        }
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -55,18 +63,21 @@ class DebtController extends Controller
             $query->orderBy('total_debt', 'desc');
         }
 
-        $debtors = $query->paginate(25)->withQueryString();
+        $debtors = (clone $query)->paginate(25)->withQueryString();
         $allCustomers = Customer::orderBy('name')->get();
 
-        $totalOutstandingDebt = Customer::sum('total_debt');
-        $totalDebtorsCount = Customer::where('total_debt', '>', 0)->count();
-        $highRiskDebtorsCount = Customer::where('total_debt', '>=', 100000)->count();
+        $totalOutstandingDebt = (clone $query)->sum('total_debt');
+        $totalDebtorsCount = (clone $query)->count();
+        $highRiskDebtorsCount = (clone $query)->where('total_debt', '>=', 100000)->count();
 
-        $recentPayments = CustomerLedger::with('customer')
-            ->where('type', 'PAYMENT')
-            ->orderBy('created_at', 'desc')
-            ->take(15)
-            ->get();
+        $recentPaymentsQuery = CustomerLedger::with('customer')->where('type', 'PAYMENT');
+        if ($assignedWarehouseId) {
+            $branchStaffNames = \App\Models\User::where('warehouse_id', $assignedWarehouseId)->pluck('name');
+            if ($branchStaffNames->isNotEmpty()) {
+                $recentPaymentsQuery->whereIn('recorded_by', $branchStaffNames);
+            }
+        }
+        $recentPayments = $recentPaymentsQuery->orderBy('created_at', 'desc')->take(15)->get();
 
         return view('debts.index', compact(
             'debtors',

@@ -397,10 +397,15 @@ class TransactionController extends Controller
         $query = CustomerLedger::with('customer');
         $this->applyDateFilter($query, 'created_at', $request);
 
-        // 🔒 Role Privacy Scoping: Cashiers only see debts/payments they recorded
+        // 🔒 Role & Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->role === 'cashier') {
             $query->where('recorded_by', $user->name);
+        } elseif ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
+            $branchStaffNames = User::where('warehouse_id', $user->warehouse_id)->pluck('name');
+            if ($branchStaffNames->isNotEmpty()) {
+                $query->whereIn('recorded_by', $branchStaffNames);
+            }
         }
 
         if ($request->filled('ledger_type')) {
