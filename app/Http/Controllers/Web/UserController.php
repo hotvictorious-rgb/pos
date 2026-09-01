@@ -41,13 +41,8 @@ class UserController extends Controller
 
         $role = $request->role;
         $permissions = match($role) {
-            'admin' => ['all' => true],
-            'viewer' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
-            'manager' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true],
-            'sales_stock' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'debts' => true, 'returns' => true, 'adjustments' => true],
-            'storekeeper' => ['stockIn' => true, 'transfer' => true, 'count' => true, 'products' => true, 'adjustments' => true],
-            'cashier' => ['pos' => true, 'debts' => true, 'products' => true],
-            default => ['pos' => true],
+            'viewer', 'executive_readonly' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
+            default => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true, 'adjustments' => true, 'users' => true],
         };
 
         $user = User::create([
@@ -117,13 +112,8 @@ class UserController extends Controller
         $newWarehouseId = $request->warehouse_id ? (int) $request->warehouse_id : null;
 
         $permissions = match($newRole) {
-            'admin' => ['all' => true],
-            'viewer' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
-            'manager' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true],
-            'sales_stock' => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'debts' => true, 'returns' => true, 'adjustments' => true],
-            'storekeeper' => ['stockIn' => true, 'transfer' => true, 'count' => true, 'products' => true, 'adjustments' => true],
-            'cashier' => ['pos' => true, 'debts' => true, 'products' => true],
-            default => ['pos' => true],
+            'viewer', 'executive_readonly' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
+            default => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true, 'adjustments' => true, 'users' => true],
         };
 
         $user->name = $request->name;

@@ -53,16 +53,18 @@
 
     <!-- Role Explanation Banner -->
     <div style="background: rgba(37,99,235,0.1); border: 1px solid rgba(37,99,235,0.3); border-radius: 16px; padding: 1.25rem; margin-bottom: 2rem;">
-        <h4 style="font-size: 0.85rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; margin-bottom: 0.5rem;">
-            🛡️ Role Permission Hierarchy:
+        <h4 style="font-size: 0.85rem; font-weight: 800; color: #93c5fd; text-text-transform: uppercase; margin-bottom: 0.5rem;">
+            🛡️ 2-Role Branch Authority Model:
         </h4>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.85rem; color: #cbd5e1;">
-            <div>• <strong style="color: #f87171;">Auditor:</strong> Full access to profits, audits, stock resets, theft alerts.</div>
-            <div>• <strong style="color: #fbbf24;">👑 Owner (View-Only):</strong> Silent executive view of all sales, stock, and reports without write access.</div>
-            <div>• <strong style="color: #60a5fa;">Manager:</strong> Branch sales, dispatching transfers, daily shop reports.</div>
-            <div>• <strong style="color: #c084fc;">Sales & Stock:</strong> Combined role for solo shop attendants (POS + Stock In/Out).</div>
-            <div>• <strong style="color: #38bdf8;">Storekeeper:</strong> Supplier goods receipt, inter-shop transfer counts only.</div>
-            <div>• <strong style="color: #4ade80;">Cashier:</strong> POS sales, collecting cash/POS, customer debts only.</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; font-size: 0.88rem; color: #cbd5e1;">
+            <div style="background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); padding: 0.85rem; border-radius: 12px;">
+                <strong style="color: #60a5fa;">🏢 1. Branch Manager (Full Operational Access):</strong><br>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Sells goods (POS), manages products, stock-in/out, transfers, pickup orders, debt ledgers, returns, worker accounts, and views all reports.</span>
+            </div>
+            <div style="background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.3); padding: 0.85rem; border-radius: 12px;">
+                <strong style="color: #facc15;">👑 2. Executive Readonly (View-Only Observer):</strong><br>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Monitors dashboard, views stock levels, reviews sales reports, inspects debt ledgers, views auditor logs, and exports analytics (Read-Only).</span>
+            </div>
         </div>
     </div>
 
@@ -77,32 +79,13 @@
                         <div style="font-size: 0.8rem; color: var(--text-muted);">{{ $u->email }}</div>
                     </div>
                     @php
-                        $roleClass = match($u->role) {
-                            'admin' => 'role-badge-admin',
-                            'viewer' => 'role-badge-admin',
-                            'manager' => 'role-badge-manager',
-                            'sales_stock' => 'role-badge-manager',
-                            'storekeeper' => 'role-badge-storekeeper',
-                            default => 'role-badge-cashier',
-                        };
-                        $roleIcon = match($u->role) {
-                            'admin' => '🛡️',
-                            'viewer' => '👑',
-                            'manager' => '🏢',
-                            'sales_stock' => '💼',
-                            'storekeeper' => '📦',
-                            default => '💰',
-                        };
-                        $roleTitle = match($u->role) {
-                            'viewer' => 'OWNER (VIEW-ONLY)',
-                            'sales_stock' => 'SALES & STOCK',
-                            default => strtoupper($u->role),
-                        };
-                        $roleStyle = match($u->role) {
-                            'viewer' => 'background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308;',
-                            'sales_stock' => 'background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7;',
-                            default => '',
-                        };
+                        $isExecutive = in_array($u->role, ['viewer', 'executive_readonly']);
+                        $roleClass = $isExecutive ? 'role-badge-admin' : 'role-badge-manager';
+                        $roleIcon = $isExecutive ? '👑' : '🏢';
+                        $roleTitle = $isExecutive ? 'EXECUTIVE READONLY' : 'BRANCH MANAGER';
+                        $roleStyle = $isExecutive 
+                            ? 'background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308;'
+                            : 'background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6;';
                     @endphp
                     <span class="badge {{ $roleClass }}" style="{{ $roleStyle }}">
                         {{ $roleIcon }} {{ $roleTitle }}
@@ -172,14 +155,10 @@
 
                 <div class="grid-2">
                     <div class="form-group">
-                        <label>Assign Role & Authority</label>
+                        <label>Assign Role Authority</label>
                         <select name="role" id="editUserRole" required>
-                            <option value="cashier">💰 Cashier / Sales Officer</option>
-                            <option value="sales_stock">💼 Sales & Stock Officer (Combined)</option>
-                            <option value="storekeeper">📦 Storekeeper (Inventory Only)</option>
-                            <option value="manager">🏢 Branch Manager</option>
-                            <option value="admin">🛡️ Auditor / Super Admin</option>
-                            <option value="viewer">👑 Executive Owner (View-Only / Silent Auditor)</option>
+                            <option value="manager">🏢 Branch Manager (Full Operational Access)</option>
+                            <option value="viewer">👑 Executive Readonly (View-Only Observer)</option>
                         </select>
                     </div>
 
@@ -214,7 +193,7 @@
         <div class="modal">
             <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">➕ Add New Worker Account</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-                Set up a login for cashiers, storekeepers, or branch managers.
+                Set up a login for branch managers or executive observers.
             </p>
 
             <form id="addUserForm" method="POST" action="{{ route('users.store') }}">
@@ -226,7 +205,7 @@
 
                 <div class="form-group">
                     <label>Email Address / Username</label>
-                    <input type="email" name="email" id="newUserEmail" placeholder="e.g. john@hysam.com" required>
+                    <input type="email" name="email" id="newUserEmail" placeholder="e.g. manager@vmarketpos.com" required>
                 </div>
 
                 <div class="form-group">
@@ -236,14 +215,10 @@
 
                 <div class="grid-2">
                     <div class="form-group">
-                        <label>Assign Role & Authority</label>
+                        <label>Assign Role Authority</label>
                         <select name="role" id="newUserRole" required>
-                            <option value="cashier">💰 Cashier / Sales Officer</option>
-                            <option value="sales_stock">💼 Sales & Stock Officer (Combined)</option>
-                            <option value="storekeeper">📦 Storekeeper (Inventory Only)</option>
-                            <option value="manager">🏢 Branch Manager</option>
-                            <option value="admin">🛡️ Auditor / Super Admin</option>
-                            <option value="viewer">👑 Executive Owner (View-Only / Silent Auditor)</option>
+                            <option value="manager" selected>🏢 Branch Manager (Full Operational Access)</option>
+                            <option value="viewer">👑 Executive Readonly (View-Only Observer)</option>
                         </select>
                     </div>
 
