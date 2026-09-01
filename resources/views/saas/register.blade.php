@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Your Business Account — Hysam SaaS POS</title>
+    <title>Create Your Business Account — {{ config('saas.platform_name', 'VMARKET POS') }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
@@ -23,7 +23,7 @@
 </head>
 <body>
     <div class="card">
-        <div class="logo">Hysam SaaS POS</div>
+        <div class="logo">{{ config('saas.platform_name', 'VMARKET POS') }}</div>
         <h1>Register Your Business Account</h1>
 
         @if($errors->any())
@@ -67,13 +67,13 @@
             <div class="form-group">
                 <label>Choose Subscription Plan</label>
                 <select name="plan" required>
-                    <option value="basic">Starter Plan (1 Branch, 3 Users) — ₦15,000/mo</option>
-                    <option value="pro" selected>Professional Growth (5 Branches, 15 Users) — ₦35,000/mo</option>
-                    <option value="enterprise">Enterprise Multi-Branch (Unlimited) — ₦75,000/mo</option>
+                    <option value="basic">Starter Plan (1 Branch, 3 Users)</option>
+                    <option value="pro" selected>Professional Growth (5 Branches, 15 Users)</option>
+                    <option value="enterprise">Enterprise Multi-Branch (Unlimited)</option>
                 </select>
             </div>
 
-            <button type="submit" class="btn-submit">Start 14-Day Free Trial 🚀</button>
+            <button type="submit" class="btn-submit">Start Free Trial 🚀</button>
         </form>
     </div>
 </body>
