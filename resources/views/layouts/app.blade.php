@@ -759,9 +759,13 @@
             if (typeof onConfirm === 'function') {
                 onConfirm();
             } else if (form) {
-                if (typeof form.submit === 'function') {
-                    form.submit();
-                } else {
+                try {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        HTMLFormElement.prototype.submit.call(form);
+                    }
+                } catch (e) {
                     HTMLFormElement.prototype.submit.call(form);
                 }
             }
