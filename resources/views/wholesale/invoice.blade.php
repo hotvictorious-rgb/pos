@@ -82,7 +82,7 @@
 <div class="invoice-wrap" id="printableInvoice">
     <div class="invoice-header">
         <div>
-            <div style="font-size: 1.6rem; font-weight: 900; color: #0f172a; letter-spacing: -0.02em;">HYSAM VENTURES</div>
+            <div style="font-size: 1.6rem; font-weight: 900; color: #0f172a; letter-spacing: -0.02em;">{{ $tenant->name ?? 'VMARKET POS' }}</div>
             <div style="font-size: 0.82rem; color: #64748b; margin-top: 0.2rem;">Commercial Wholesale Distribution & Trading</div>
             <div style="font-size: 0.82rem; color: #64748b;">
                 Branch / Warehouse: <strong>{{ $warehouse->name ?? 'Main Branch' }}</strong>
@@ -198,6 +198,9 @@
                 <strong>Wholesaler / Client Representative</strong>
                 <div style="font-size: 0.72rem; color: #64748b;">Received & Acknowledged</div>
             </div>
+        </div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-top: 1.5rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1; text-align: center;">
+            Powered by Victorious Market — Your trusted online market
         </div>
     </div>
 </div>

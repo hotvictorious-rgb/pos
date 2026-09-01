@@ -14,6 +14,7 @@ return [
     */
 
     'enabled' => env('SAAS_ENABLED', false),
+    'platform_name' => env('SAAS_PLATFORM_NAME', 'VMARKET POS'),
 
     /*
     |--------------------------------------------------------------------------

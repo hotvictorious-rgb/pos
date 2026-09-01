@@ -89,7 +89,7 @@
 <div class="receipt-wrap" id="printableReceipt">
     <div class="receipt-header">
         <div style="font-size: 2rem; margin-bottom: 0.25rem;">{{ $isWholesale ? '📦' : '🧾' }}</div>
-        <div class="receipt-title">HYSAM VENTURES</div>
+        <div class="receipt-title">{{ $tenant->name ?? 'VMARKET POS' }}</div>
         <div style="font-size: 0.8rem; font-weight: 800; color: {{ $isWholesale ? '#7c3aed' : '#2563eb' }}; text-transform: uppercase; margin-top: 0.2rem;">
             {{ $isWholesale ? 'Wholesale Goods Delivery Note & Waybill' : 'Inventory & Retail Distribution' }}
         </div>
@@ -253,6 +253,9 @@
     <div style="text-align: center; font-size: 0.75rem; color: #94a3b8; margin-top: 1.5rem;">
         {{ $isWholesale ? 'Goods once dispatched are subject to company returns policy.' : 'Thank you for your patronage!' }}<br>
         Attendant / Cashier: {{ $sale->userName }}
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1;">
+            Powered by Victorious Market — Your trusted online market
+        </div>
     </div>
 </div>
 

@@ -337,8 +337,8 @@
         <div class="sidebar-header">
             <div class="brand-icon">📦</div>
             <div class="brand-text">
-                <h1>Hysam Ventures</h1>
-                <p>POS & Stock</p>
+                <h1>VMARKET POS</h1>
+                <p>Multi-Branch Platform</p>
             </div>
         </div>
 
