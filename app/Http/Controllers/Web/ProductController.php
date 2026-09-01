@@ -83,9 +83,10 @@ class ProductController extends Controller
             return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can create catalog products. Branch managers and staff can add stock quantities via Stock In.');
         }
 
+        $tenantId = session('tenant_id') ?? 'default-tenant';
         $request->validate([
             'name' => 'required|string|max:150',
-            'code' => 'required|string|unique:products,code',
+            'code' => ['required', 'string', \Illuminate\Validation\Rule::unique('products', 'code')->where('tenant_id', $tenantId)],
             'category' => 'required|string',
             'unitPrice' => 'required|numeric|min:0',
             'initial_stock' => 'nullable|numeric|min:0',
