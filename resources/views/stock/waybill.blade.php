@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transfer Waybill #{{ $transfer->transfer_no }} – Hysam Ventures</title>
+    <title>Transfer Waybill #{{ $transfer->transfer_no }} – {{ $tenant->name ?? 'VMARKET POS' }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -142,7 +142,7 @@
             <!-- Header -->
             <div class="header">
                 <div>
-                    <h1 class="brand-title">Hysam Ventures Ltd</h1>
+                    <h1 class="brand-title">{{ $tenant->name ?? 'VMARKET POS' }}</h1>
                     <p style="font-size: 0.85rem; color: #64748b;">Official Inter-Branch Stock Transfer Waybill</p>
                 </div>
                 <div style="text-align: right;">
@@ -229,7 +229,10 @@
             </div>
 
             <div style="text-align: center; margin-top: 2rem; font-size: 0.75rem; color: #94a3b8;">
-                Hysam Ventures Anti-Theft Inventory Control System • Generated {{ date('d M Y, h:i A') }}
+                {{ $tenant->name ?? 'VMARKET POS' }} Inter-Branch Logistics Control • Generated {{ date('d M Y, h:i A') }}
+                <div style="font-size: 0.72rem; font-weight: 700; color: #64748b; margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px dashed #cbd5e1;">
+                    Powered by Victorious Market — Your trusted online market
+                </div>
             </div>
         </div>
     </div>

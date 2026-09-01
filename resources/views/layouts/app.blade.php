@@ -334,11 +334,18 @@
 
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
+        @php
+            $activeTenantId = session('tenant_id', 'default-tenant');
+            $tenantModel = \App\Models\Tenant::find($activeTenantId);
+            $displayBrandName = ($activeTenantId !== 'default-tenant' && $tenantModel) 
+                ? $tenantModel->name 
+                : config('saas.platform_name', 'VMARKET POS');
+        @endphp
         <div class="sidebar-header">
             <div class="brand-icon">📦</div>
             <div class="brand-text">
-                <h1>VMARKET POS</h1>
-                <p>Multi-Branch Platform</p>
+                <h1>{{ $displayBrandName }}</h1>
+                <p>{{ $activeTenantId === 'default-tenant' ? 'Platform Master Suite' : 'Multi-Branch POS' }}</p>
             </div>
         </div>
 

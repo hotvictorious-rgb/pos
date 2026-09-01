@@ -52,10 +52,10 @@ class DatabaseSeeder extends Seeder
         Setting::updateOrCreate(
             ['id' => 1],
             [
-                'businessName' => 'Hysam Ventures',
+                'businessName' => 'VMARKET POS',
                 'businessAddress' => '12 Commercial Avenue, Lagos, Nigeria',
                 'businessPhone' => '+234 800 000 0000',
-                'businessEmail' => 'info@hysamventures.com',
+                'businessEmail' => 'info@vmarketpos.com',
                 'currency' => '₦',
                 'categories' => json_encode(['Electronics', 'Groceries', 'Beverages', 'Hardware', 'Household']),
                 'lowStockThreshold' => 5,

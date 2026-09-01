@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign In — Hysam Ventures POS & Stock</title>
+    <title>Sign In — {{ config('saas.platform_name', 'VMARKET POS') }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -200,8 +200,8 @@
     <div class="login-card">
         <div class="brand-header">
             <div class="brand-icon">📦</div>
-            <h1>Hysam Ventures</h1>
-            <p>POS & Multi-Branch Inventory Control</p>
+            <h1>{{ config('saas.platform_name', 'VMARKET POS') }}</h1>
+            <p>Multi-Tenant & Multi-Branch POS Platform</p>
         </div>
 
         @if(session('success'))
@@ -233,12 +233,12 @@
 
             <div class="form-group">
                 <label for="email">Work Email</label>
-                <input type="email" id="email" name="email" value="{{ old('email', 'admin@hysam.com') }}" placeholder="e.g. cashier@hysam.com" required autofocus>
+                <input type="email" id="email" name="email" value="{{ old('email', env('ADMIN_EMAIL', 'admin@hysamventures.com')) }}" placeholder="e.g. admin@vmarketpos.com" required autofocus>
             </div>
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" value="admin123" placeholder="••••••••" required>
+                <input type="password" id="password" name="password" value="{{ env('ADMIN_PASSWORD', 'changeme123') }}" placeholder="••••••••" required>
             </div>
 
             <button type="submit" class="btn-submit">
@@ -247,9 +247,9 @@
         </form>
 
         <div class="demo-box">
-            <div><strong>Default Super Admin Credentials:</strong></div>
+            <div><strong>SaaS Super Admin Credentials:</strong></div>
             <div style="display: flex; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap;">
-                <span class="demo-badge" onclick="fillCreds('admin@hysam.com', 'admin123')">admin@hysam.com / admin123</span>
+                <span class="demo-badge" onclick="fillCreds('{{ env('ADMIN_EMAIL', 'admin@hysamventures.com') }}', '{{ env('ADMIN_PASSWORD', 'changeme123') }}')">{{ env('ADMIN_EMAIL', 'admin@hysamventures.com') }} / {{ env('ADMIN_PASSWORD', 'changeme123') }}</span>
             </div>
         </div>
     </div>
