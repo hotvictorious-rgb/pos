@@ -253,7 +253,9 @@ class PosController extends Controller
     public function receipt($id)
     {
         $sale = Sale::with('items')->findOrFail($id);
-        $warehouse = Warehouse::find(session('active_warehouse_id', 1)) ?? Warehouse::first();
+        $saleUser = \App\Models\User::find($sale->userId);
+        $saleWarehouseId = ($saleUser && !empty($saleUser->warehouse_id)) ? $saleUser->warehouse_id : session('active_warehouse_id');
+        $warehouse = Warehouse::find($saleWarehouseId) ?? Warehouse::first();
 
         return view('pos.receipt', compact('sale', 'warehouse'));
     }
