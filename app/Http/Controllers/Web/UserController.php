@@ -18,8 +18,14 @@ class UserController extends Controller
      */
     public function index()
     {
-        $users = User::orderBy('name')->get();
-        $warehouses = Warehouse::where('is_active', true)->get();
+        $authUser = Auth::user();
+        if ($authUser && !empty($authUser->warehouse_id)) {
+            $users = User::where('warehouse_id', $authUser->warehouse_id)->orderBy('name')->get();
+            $warehouses = Warehouse::where('id', $authUser->warehouse_id)->where('is_active', true)->get();
+        } else {
+            $users = User::orderBy('name')->get();
+            $warehouses = Warehouse::where('is_active', true)->get();
+        }
 
         return view('users.index', compact('users', 'warehouses'));
     }
