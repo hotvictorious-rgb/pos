@@ -32,7 +32,7 @@ class ReportController extends Controller
         // 1. Build Filter Query for Sales
         $salesQuery = Sale::with('items');
 
-        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+        if ($authUser && !empty($authUser->warehouse_id)) {
             $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
             $staffList = User::where('warehouse_id', $authUser->warehouse_id)->get();
             $shopStaffIds = $staffList->pluck('id');

@@ -46,7 +46,7 @@ class DashboardDateFilterTest extends TestCase
                 'email' => 'dashtest@hysam.com',
                 'password' => Hash::make('secret123'),
                 'role' => 'admin',
-                'warehouse_id' => $this->warehouse->id,
+                'warehouse_id' => null,
                 'disabled' => false,
             ]
         );

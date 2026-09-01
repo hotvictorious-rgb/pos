@@ -20,16 +20,25 @@ class AuditorController extends Controller
      */
     public function index()
     {
-        $warehouses = Warehouse::all();
+        $authUser = Auth::user();
+        $assignedWarehouseId = ($authUser && !empty($authUser->warehouse_id)) ? $authUser->warehouse_id : null;
+
+        $warehouses = $assignedWarehouseId 
+            ? Warehouse::where('id', $assignedWarehouseId)->get() 
+            : Warehouse::all();
         
         // 1. Theft / Variance Alerts (Transfers with missing units)
-        $discrepancyTransfers = Transfer::with(['source', 'destination', 'items'])
-            ->where('status', 'DISCREPANCY')
-            ->orderBy('updated_at', 'desc')
-            ->get();
+        $discrepancyQuery = Transfer::with(['source', 'destination', 'items'])->where('status', 'DISCREPANCY');
+        if ($assignedWarehouseId) {
+            $discrepancyQuery->where(function($q) use ($assignedWarehouseId) {
+                $q->where('source_warehouse_id', $assignedWarehouseId)
+                  ->orWhere('destination_warehouse_id', $assignedWarehouseId);
+            });
+        }
+        $discrepancyTransfers = $discrepancyQuery->orderBy('updated_at', 'desc')->get();
 
         // 2. Physical Stock vs. Allocated Unsupplied Goods per Shop
-        $stockOverview = Warehouse::with(['stockLevels.product'])->get()->map(function ($warehouse) {
+        $stockOverview = $warehouses->map(function ($warehouse) {
             $totalPhysical = $warehouse->stockLevels->sum('physical_stock');
             $totalAllocated = $warehouse->stockLevels->sum('allocated_stock');
             $totalAvailable = max(0, $totalPhysical - $totalAllocated);
@@ -51,7 +60,11 @@ class AuditorController extends Controller
         $debtors = Customer::where('total_debt', '>', 0)->orderBy('total_debt', 'desc')->get();
 
         // 4. Undelivered / Unsupplied Sales Liability
-        $unsuppliedSales = Sale::with('items')->where('deliveryStatus', 'UNSUPPLIED')->get();
+        $unsuppliedQuery = Sale::with('items')->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+        if ($assignedWarehouseId) {
+            $unsuppliedQuery->where('warehouse_id', $assignedWarehouseId);
+        }
+        $unsuppliedSales = $unsuppliedQuery->get();
         $unsuppliedValue = $unsuppliedSales->sum('totalAmount');
 
         // 5. Immutable Activity Audit Log

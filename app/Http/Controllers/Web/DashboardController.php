@@ -89,8 +89,8 @@ class DashboardController extends Controller
         $authUser = \Illuminate\Support\Facades\Auth::user();
         $userRole = $authUser->role ?? 'admin';
 
-        // 🔒 Strict Shop Isolation: non-admin/viewer users assigned to a branch are strictly locked to their branch
-        if ($userRole !== 'admin' && $userRole !== 'viewer' && !empty($authUser->warehouse_id)) {
+        // 🔒 Strict Shop Isolation: any user assigned to a specific branch is strictly locked to their assigned branch
+        if ($authUser && !empty($authUser->warehouse_id)) {
             $warehouseId = $authUser->warehouse_id;
             $warehouses = Warehouse::where('id', $warehouseId)->get();
             $selectedWarehouse = Warehouse::find($warehouseId);
