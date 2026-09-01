@@ -428,7 +428,7 @@
                         <span>⚙️</span> <span>System Settings</span>
                     </a>
                 @endif
-                @if($currentRole === 'admin')
+                @if($currentRole === 'admin' && ($activeTenantId === 'default-tenant' || session('is_impersonating')))
                     <div class="menu-category" style="color: #38bdf8; margin-top: 0.5rem;">SaaS Control</div>
                     <a href="{{ route('saas.admin.index') }}" class="nav-item {{ request()->routeIs('saas.admin.*') ? 'active' : '' }}" style="border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.12);">
                         <span>🌐</span> <span style="color: #38bdf8; font-weight: 800;">SaaS Master Portal</span>

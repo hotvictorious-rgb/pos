@@ -105,6 +105,10 @@ class SaaSController extends Controller
     /** Super Admin Master SaaS Dashboard & Control Panel */
     public function adminIndex()
     {
+        if (config('saas.enabled') && session('tenant_id') !== 'default-tenant' && !session('is_impersonating')) {
+            return redirect()->route('dashboard')->with('error', '🔒 Access Restricted: Only the SaaS Super Admin can access the Master Control Panel.');
+        }
+
         $tenants = Tenant::withCount(['users', 'warehouses', 'sales'])->orderBy('created_at', 'desc')->get();
         $totalTenants = $tenants->count();
         $activeTenants = $tenants->where('status', 'active')->count();
