@@ -218,17 +218,21 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Dispatch Officer';
 
-        $transfer = $this->stockService->initiateTransfer(
-            $sourceWarehouseId,
-            $destWarehouseId,
-            $request->items,
-            $request->carrier_name,
-            $userId,
-            $userName,
-            $request->notes
-        );
+        try {
+            $transfer = $this->stockService->initiateTransfer(
+                $sourceWarehouseId,
+                $destWarehouseId,
+                $request->items,
+                $request->carrier_name,
+                $userId,
+                $userName,
+                $request->notes
+            );
 
-        return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
+            return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        }
     }
 
     /**

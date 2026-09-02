@@ -14,20 +14,37 @@ use App\Models\TransferItem;
 use App\Models\InventoryLog;
 use App\Models\Activity;
 use App\Models\Warehouse;
+use App\Exceptions\InsufficientStockException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class StockService
 {
     /**
-     * Get or create stock level record for a product at a warehouse.
+     * Get or create stock level record for a product at a warehouse with optional row-level locking.
      */
-    public function getStockLevel(string $productId, int $warehouseId): StockLevel
+    public function getStockLevel(string $productId, int $warehouseId, bool $lockForUpdate = false): StockLevel
     {
-        return StockLevel::firstOrCreate(
-            ['product_id' => $productId, 'warehouse_id' => $warehouseId],
-            ['physical_stock' => 0, 'allocated_stock' => 0, 'min_stock_alert' => 5]
-        );
+        $query = StockLevel::where('product_id', $productId)->where('warehouse_id', $warehouseId);
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+        $stock = $query->first();
+
+        if (!$stock) {
+            $stock = StockLevel::create([
+                'product_id' => $productId,
+                'warehouse_id' => $warehouseId,
+                'physical_stock' => 0,
+                'allocated_stock' => 0,
+                'min_stock_alert' => 5,
+            ]);
+            if ($lockForUpdate) {
+                $stock = StockLevel::where('id', $stock->id)->lockForUpdate()->first();
+            }
+        }
+
+        return $stock;
     }
 
     /**
@@ -134,11 +151,21 @@ class StockService
                     'productCode' => $product->code,
                 ]);
 
-                $stock = $this->getStockLevel($product->id, $warehouseId);
+                $stock = $this->getStockLevel($product->id, $warehouseId, true);
 
                 if ($isSuppliedNow) {
+                    if ($stock->physical_stock < $qty) {
+                        throw new InsufficientStockException(
+                            "Cannot complete sale: Insufficient physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Available: {$stock->physical_stock}, Requested: {$qty}",
+                            $product->code,
+                            $product->name,
+                            $warehouseId,
+                            $stock->physical_stock,
+                            $qty
+                        );
+                    }
                     // Item leaves the physical shop immediately
-                    $stock->physical_stock = max(0, $stock->physical_stock - $qty);
+                    $stock->physical_stock = $stock->physical_stock - $qty;
                     $stock->save();
 
                     $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
@@ -236,11 +263,25 @@ class StockService
             }
 
             foreach ($sale->items as $item) {
-                $stock = $this->getStockLevel($item->productId, $warehouseId);
+                $stock = $this->getStockLevel($item->productId, $warehouseId, true);
                 $qty = (int) $item->quantity;
 
+                if ($stock->physical_stock < $qty) {
+                    $product = Product::find($item->productId);
+                    $pName = $product ? $product->name : $item->productName;
+                    $pCode = $product ? $product->code : $item->code;
+                    throw new InsufficientStockException(
+                        "Cannot fulfill dispatch for Sale #{$saleId}: Insufficient physical stock for '{$pName}' ({$pCode}) at branch #{$warehouseId}. Available: {$stock->physical_stock}, Requested: {$qty}",
+                        $pCode,
+                        $pName,
+                        $warehouseId,
+                        $stock->physical_stock,
+                        $qty
+                    );
+                }
+
                 // Deduct from physical stock and release allocated stock
-                $stock->physical_stock = max(0, $stock->physical_stock - $qty);
+                $stock->physical_stock = $stock->physical_stock - $qty;
                 $stock->allocated_stock = max(0, $stock->allocated_stock - $qty);
                 $stock->save();
 
@@ -316,9 +357,19 @@ class StockService
                     'discrepancy_qty' => 0,
                 ]);
 
-                // Deduct from source physical stock
-                $stock = $this->getStockLevel($product->id, $sourceWarehouseId);
-                $stock->physical_stock = max(0, $stock->physical_stock - $qty);
+                // Deduct from source physical stock with row-level lock
+                $stock = $this->getStockLevel($product->id, $sourceWarehouseId, true);
+                if ($stock->physical_stock < $qty) {
+                    throw new InsufficientStockException(
+                        "Cannot dispatch transfer: Insufficient physical stock for '{$product->name}' ({$product->code}) at origin branch #{$sourceWarehouseId}. Available: {$stock->physical_stock}, Requested: {$qty}",
+                        $product->code,
+                        $product->name,
+                        $sourceWarehouseId,
+                        $stock->physical_stock,
+                        $qty
+                    );
+                }
+                $stock->physical_stock = $stock->physical_stock - $qty;
                 $stock->save();
 
                 $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
@@ -530,10 +581,21 @@ class StockService
     {
         return DB::transaction(function () use ($productId, $warehouseId, $type, $quantity, $reason, $userId, $userName) {
             $product = Product::findOrFail($productId);
-            $stock = $this->getStockLevel($productId, $warehouseId);
+            $stock = $this->getStockLevel($productId, $warehouseId, true);
+
+            if ($stock->physical_stock < $quantity) {
+                throw new InsufficientStockException(
+                    "Cannot record stock write-off: Insufficient physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Available: {$stock->physical_stock}, Requested write-off: {$quantity}",
+                    $product->code,
+                    $product->name,
+                    $warehouseId,
+                    $stock->physical_stock,
+                    $quantity
+                );
+            }
 
             // Deduct physical closing stock
-            $stock->physical_stock = max(0, $stock->physical_stock - $quantity);
+            $stock->physical_stock = $stock->physical_stock - $quantity;
             $stock->save();
 
             $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
