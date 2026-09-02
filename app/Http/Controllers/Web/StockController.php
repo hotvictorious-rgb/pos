@@ -55,6 +55,9 @@ class StockController extends Controller
     /**
      * Stock Management Hub with Filter Bar and Live Search.
      */
+    /**
+     * Stock Management Hub with Filter Bar and Live Search.
+     */
     public function index(Request $request)
     {
         $warehouses = Warehouse::where('is_active', true)->get();
@@ -64,11 +67,16 @@ class StockController extends Controller
         }
 
         $authUser = Auth::user();
-        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+        if ($authUser && $authUser->isBranchScoped()) {
             $activeWarehouseId = $authUser->warehouse_id;
             $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
         } else {
-            $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
+            $requestedId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
+            if ($authUser && !$authUser->canAccessWarehouse($requestedId)) {
+                $activeWarehouseId = $warehouses->first()->id;
+            } else {
+                $activeWarehouseId = $requestedId;
+            }
         }
         $activeWarehouse = Warehouse::find($activeWarehouseId) ?? $warehouses->first();
         session(['active_warehouse_id' => $activeWarehouse->id]);
@@ -113,14 +121,9 @@ class StockController extends Controller
             ->get();
 
         // Count of unsupplied sales waiting in this shop
-        $branchUserIds = User::where('warehouse_id', $activeWarehouse->id)->pluck('id');
         $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')
-            ->where(function($q) use ($activeWarehouse, $branchUserIds) {
-                $q->where('warehouse_id', $activeWarehouse->id);
-                if ($branchUserIds->isNotEmpty()) {
-                    $q->orWhereIn('userId', $branchUserIds);
-                }
-            })->count();
+            ->where('warehouse_id', $activeWarehouse->id)
+            ->count();
 
         // Stock Summary Metrics for this shop
         $totalItemsCount = $stockLevels->count();
@@ -191,10 +194,13 @@ class StockController extends Controller
     public function transferOut(Request $request)
     {
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+        if ($user && $user->isBranchScoped()) {
             $sourceWarehouseId = (int) $user->warehouse_id;
         } else {
             $sourceWarehouseId = (int) $request->source_warehouse_id;
+            if ($user && !$user->canDispatchTransfer($sourceWarehouseId)) {
+                return back()->withErrors(['error' => '🔒 Unauthorized: You cannot dispatch transfers out of an unassigned branch!']);
+            }
         }
 
         $destWarehouseId = (int) $request->destination_warehouse_id;
@@ -305,7 +311,7 @@ class StockController extends Controller
         $search = trim($request->get('search', ''));
 
         $authUser = Auth::user();
-        $isBranchStaff = ($authUser && !empty($authUser->warehouse_id));
+        $isBranchStaff = ($authUser && $authUser->isBranchScoped());
         $userWarehouse = $isBranchStaff ? Warehouse::find($authUser->warehouse_id) : null;
 
         $query = Transfer::with(['source', 'destination', 'items']);
@@ -355,8 +361,8 @@ class StockController extends Controller
         $receivedCount = (clone $kpiQuery)->where('status', 'RECEIVED')->count();
         $discrepancyCount = (clone $kpiQuery)->where('status', 'DISCREPANCY')->count();
 
-        $warehouses = Warehouse::where('is_active', true)->get();
-        $allWarehouses = Warehouse::where('is_active', true)->get();
+        $warehouses = $isBranchStaff ? Warehouse::where('id', $authUser->warehouse_id)->get() : Warehouse::where('is_active', true)->get();
+        $allWarehouses = $warehouses;
         $carriers = Transfer::distinct()->whereNotNull('carrier_name')->where('carrier_name', '!=', '')->pluck('carrier_name');
         $allProducts = Product::where('archived', false)->get();
 
@@ -426,17 +432,12 @@ class StockController extends Controller
         }
 
         $authUser = Auth::user();
-        if ($authUser && !empty($authUser->warehouse_id)) {
+        if ($authUser && $authUser->isBranchScoped()) {
             $activeWarehouse = Warehouse::find($authUser->warehouse_id) ?? Warehouse::first();
-            $branchUserIds = User::where('warehouse_id', $authUser->warehouse_id)->pluck('id');
-            $query->where(function($q) use ($authUser, $branchUserIds) {
-                $q->where('warehouse_id', $authUser->warehouse_id);
-                if ($branchUserIds->isNotEmpty()) {
-                    $q->orWhereIn('userId', $branchUserIds);
-                }
-            });
+            $query->where('warehouse_id', $authUser->warehouse_id);
         } else {
-            $activeWarehouse = Warehouse::find(session('active_warehouse_id', 1)) ?? Warehouse::first();
+            $activeWarehouseId = session('active_warehouse_id', Warehouse::first()->id ?? 1);
+            $activeWarehouse = Warehouse::find($activeWarehouseId) ?? Warehouse::first();
         }
 
         $unsuppliedSales = $query->orderBy('createdAt', 'desc')->paginate(25)->withQueryString();
@@ -461,11 +462,12 @@ class StockController extends Controller
      */
     public function dispatchConfirm(Request $request, $saleId)
     {
+        $sale = Sale::findOrFail($saleId);
         $user = Auth::user();
-        if ($user && !empty($user->warehouse_id)) {
-            $warehouseId = (int) $user->warehouse_id;
-        } else {
-            $warehouseId = (int) session('active_warehouse_id', 1);
+        $warehouseId = $sale->warehouse_id ?? ($user && $user->isBranchScoped() ? $user->warehouse_id : session('active_warehouse_id'));
+
+        if ($user && !$user->canAccessWarehouse($warehouseId)) {
+            return back()->withErrors(['error' => '🔒 Unauthorized: You cannot fulfill pickup orders belonging to another branch!']);
         }
 
         $userId = Auth::id() ?? 'USER-1';
@@ -492,11 +494,14 @@ class StockController extends Controller
         $search = trim($request->get('search', ''));
 
         $user = Auth::user();
-        if ($user && !empty($user->warehouse_id)) {
+        if ($user && $user->isBranchScoped()) {
             $warehouseId = $user->warehouse_id;
             $warehouses = Warehouse::where('id', $user->warehouse_id)->get();
         } else {
             $warehouses = Warehouse::where('is_active', true)->get();
+            if ($warehouseId && $user && !$user->canAccessWarehouse($warehouseId)) {
+                $warehouseId = null;
+            }
         }
 
         $query = StockAdjustment::with('warehouse');
