@@ -422,10 +422,23 @@ class StockController extends Controller
             });
         }
 
+        $authUser = Auth::user();
+        if ($authUser && !empty($authUser->warehouse_id)) {
+            $activeWarehouse = Warehouse::find($authUser->warehouse_id) ?? Warehouse::first();
+            $branchUserIds = User::where('warehouse_id', $authUser->warehouse_id)->pluck('id');
+            $query->where(function($q) use ($authUser, $branchUserIds) {
+                $q->where('warehouse_id', $authUser->warehouse_id);
+                if ($branchUserIds->isNotEmpty()) {
+                    $q->orWhereIn('userId', $branchUserIds);
+                }
+            });
+        } else {
+            $activeWarehouse = Warehouse::find(session('active_warehouse_id', 1)) ?? Warehouse::first();
+        }
+
         $unsuppliedSales = $query->orderBy('createdAt', 'desc')->paginate(25)->withQueryString();
         $totalUnsuppliedOrders = (clone $query)->count();
         $totalUnsuppliedValue = (clone $query)->sum('totalAmount');
-        $activeWarehouse = Warehouse::find(session('active_warehouse_id', 1)) ?? Warehouse::first();
 
         return view('stock.unsupplied', compact(
             'unsuppliedSales',
@@ -446,7 +459,7 @@ class StockController extends Controller
     public function dispatchConfirm(Request $request, $saleId)
     {
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+        if ($user && !empty($user->warehouse_id)) {
             $warehouseId = (int) $user->warehouse_id;
         } else {
             $warehouseId = (int) session('active_warehouse_id', 1);
