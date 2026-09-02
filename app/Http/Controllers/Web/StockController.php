@@ -159,10 +159,13 @@ class StockController extends Controller
         ]);
 
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+        if ($user && $user->isBranchScoped()) {
             $warehouseId = (int) $user->warehouse_id;
         } else {
             $warehouseId = (int) $request->warehouse_id;
+            if ($user && !$user->canAccessWarehouse($warehouseId)) {
+                return back()->withErrors(['error' => '🔒 Unauthorized: You cannot record stock in for an unassigned branch!']);
+            }
         }
 
         $userId = Auth::id() ?? 'USER-1';
@@ -389,6 +392,10 @@ class StockController extends Controller
     public function waybill($id)
     {
         $transfer = Transfer::with(['source', 'destination', 'items'])->findOrFail($id);
+        $user = Auth::user();
+        if ($user && !$user->canAccessTransfer($transfer)) {
+            abort(403, '🔒 Access Denied: Delivery waybill is restricted to origin or destination branch staff.');
+        }
         return view('stock.waybill', compact('transfer'));
     }
 
@@ -540,10 +547,13 @@ class StockController extends Controller
     public function recordAdjustment(Request $request)
     {
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+        if ($user && $user->isBranchScoped()) {
             $warehouseId = (int) $user->warehouse_id;
         } else {
             $warehouseId = (int) $request->warehouse_id;
+            if ($user && !$user->canAccessWarehouse($warehouseId)) {
+                return back()->withErrors(['error' => '🔒 Unauthorized: You cannot record stock adjustments for an unassigned branch!']);
+            }
         }
 
         $request->validate([

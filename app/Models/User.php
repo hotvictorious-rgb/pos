@@ -44,4 +44,35 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Warehouse::class);
     }
+
+    /**
+     * Check if user is restricted to a specific branch location.
+     */
+    public function isBranchScoped(): bool
+    {
+        return !empty($this->warehouse_id);
+    }
+
+    /**
+     * Determine if user has permission to access or operate on a warehouse branch.
+     */
+    public function canAccessWarehouse($warehouseId): bool
+    {
+        if (empty($this->warehouse_id)) {
+            return true; // HQ Executive / Super Admin
+        }
+        return (int) $this->warehouse_id === (int) $warehouseId;
+    }
+
+    /**
+     * Determine if user has permission to view or manipulate a stock transfer.
+     */
+    public function canAccessTransfer(Transfer $transfer): bool
+    {
+        if (empty($this->warehouse_id)) {
+            return true; // HQ Executive / Super Admin
+        }
+        return (int) $this->warehouse_id === (int) $transfer->source_warehouse_id
+            || (int) $this->warehouse_id === (int) $transfer->destination_warehouse_id;
+    }
 }
