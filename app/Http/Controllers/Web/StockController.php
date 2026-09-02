@@ -238,10 +238,8 @@ class StockController extends Controller
         $user = Auth::user();
         $transferRecord = Transfer::findOrFail($id);
 
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
-            if ($transferRecord->destination_warehouse_id != $user->warehouse_id) {
-                return back()->withErrors(['error' => '🔒 Unauthorized: You can only receive and count transfers sent to your assigned branch!']);
-            }
+        if ($user && !$user->canReceiveTransfer($transferRecord)) {
+            return back()->withErrors(['error' => '🔒 Unauthorized: You can only receive and count transfers sent to your assigned branch!']);
         }
 
         $userId = Auth::id() ?? 'USER-1';
@@ -271,10 +269,8 @@ class StockController extends Controller
         $user = Auth::user();
         $transferRecord = Transfer::findOrFail($id);
 
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
-            if ($transferRecord->source_warehouse_id != $user->warehouse_id) {
-                return back()->withErrors(['error' => '🔒 Unauthorized: You can only recall transfers dispatched out of your assigned branch!']);
-            }
+        if ($user && !$user->canRecallTransfer($transferRecord)) {
+            return back()->withErrors(['error' => '🔒 Unauthorized: You can only recall transfers dispatched out of your assigned branch!']);
         }
 
         $userId = Auth::id() ?? 'USER-1';

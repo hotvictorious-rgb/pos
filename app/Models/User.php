@@ -66,16 +66,18 @@ class User extends Authenticatable
      */
     public function canAccessWarehouse($warehouseId): bool
     {
-        // 1. Verify tenant alignment if warehouse model or object is passed
-        if ($warehouseId instanceof Warehouse) {
-            if ($warehouseId->tenant_id && $this->tenant_id && $warehouseId->tenant_id !== $this->tenant_id) {
-                return false; // Cross-tenant access strictly blocked!
+        // 1. Mandatory Tenant Boundary Verification
+        if (config('saas.enabled')) {
+            $userTenantId = $this->tenant_id ?? session('tenant_id');
+            if ($warehouseId instanceof Warehouse) {
+                $whTenantId = $warehouseId->tenant_id;
+            } else {
+                $wh = Warehouse::withoutGlobalScopes()->find($warehouseId);
+                $whTenantId = $wh ? $wh->tenant_id : null;
             }
-            $warehouseId = $warehouseId->id;
-        } else {
-            $wh = Warehouse::withoutGlobalScopes()->find($warehouseId);
-            if ($wh && $wh->tenant_id && $this->tenant_id && $wh->tenant_id !== $this->tenant_id) {
-                return false; // Cross-tenant access strictly blocked!
+
+            if (!$whTenantId || !$userTenantId || $whTenantId !== $userTenantId) {
+                return false; // Cross-tenant or missing tenant ID strictly blocked!
             }
         }
 
@@ -90,17 +92,21 @@ class User extends Authenticatable
         }
 
         // 4. Branch staff can ONLY access their assigned branch
-        return (int) $this->warehouse_id === (int) $warehouseId;
+        $targetId = ($warehouseId instanceof Warehouse) ? $warehouseId->id : $warehouseId;
+        return (int) $this->warehouse_id === (int) $targetId;
     }
 
     /**
-     * Determine if user has permission to view or manipulate a stock transfer.
+     * Determine if user has permission to view a stock transfer.
      */
     public function canAccessTransfer(Transfer $transfer): bool
     {
-        // 1. Cross-tenant check: Must belong to same tenant!
-        if ($transfer->tenant_id && $this->tenant_id && $transfer->tenant_id !== $this->tenant_id) {
-            return false;
+        // 1. Mandatory Tenant Boundary Verification
+        if (config('saas.enabled')) {
+            $userTenantId = $this->tenant_id ?? session('tenant_id');
+            if (!$transfer->tenant_id || !$userTenantId || $transfer->tenant_id !== $userTenantId) {
+                return false; // Cross-tenant access strictly blocked!
+            }
         }
 
         // 2. Executive HQ owners have business-wide transfer access
@@ -116,5 +122,45 @@ class User extends Authenticatable
         // 4. Branch staff can ONLY access transfers where their branch is Source or Destination
         return (int) $this->warehouse_id === (int) $transfer->source_warehouse_id
             || (int) $this->warehouse_id === (int) $transfer->destination_warehouse_id;
+    }
+
+    /**
+     * Determine if user has permission to dispatch a transfer out of a source warehouse.
+     */
+    public function canDispatchTransfer($sourceWarehouseId): bool
+    {
+        return $this->canAccessWarehouse($sourceWarehouseId);
+    }
+
+    /**
+     * Determine if user has permission to receive and count an incoming transfer.
+     */
+    public function canReceiveTransfer(Transfer $transfer): bool
+    {
+        if (!$this->canAccessTransfer($transfer)) {
+            return false;
+        }
+
+        if ($this->isExecutive() && empty($this->warehouse_id)) {
+            return true;
+        }
+
+        return (int) $this->warehouse_id === (int) $transfer->destination_warehouse_id;
+    }
+
+    /**
+     * Determine if user has permission to recall or cancel an in-transit transfer.
+     */
+    public function canRecallTransfer(Transfer $transfer): bool
+    {
+        if (!$this->canAccessTransfer($transfer)) {
+            return false;
+        }
+
+        if ($this->isExecutive() && empty($this->warehouse_id)) {
+            return true;
+        }
+
+        return (int) $this->warehouse_id === (int) $transfer->source_warehouse_id;
     }
 }
