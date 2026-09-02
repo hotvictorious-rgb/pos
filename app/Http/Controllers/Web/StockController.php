@@ -306,7 +306,7 @@ class StockController extends Controller
         $search = trim($request->get('search', ''));
 
         $authUser = Auth::user();
-        $isBranchStaff = ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id));
+        $isBranchStaff = ($authUser && !empty($authUser->warehouse_id));
         $userWarehouse = $isBranchStaff ? Warehouse::find($authUser->warehouse_id) : null;
 
         $query = Transfer::with(['source', 'destination', 'items']);
