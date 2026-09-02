@@ -476,7 +476,7 @@ class StockController extends Controller
         $search = trim($request->get('search', ''));
 
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+        if ($user && !empty($user->warehouse_id)) {
             $warehouseId = $user->warehouse_id;
             $warehouses = Warehouse::where('id', $user->warehouse_id)->get();
         } else {
