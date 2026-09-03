@@ -20,8 +20,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $adminEmail = strtolower(trim(env('ADMIN_EMAIL', 'admin@hysam.com')));
-        $adminPassword = env('ADMIN_PASSWORD', 'admin123');
+        $adminEmail = strtolower(trim(config('saas.super_admin_email', env('ADMIN_EMAIL', 'admin@hysamventures.com'))));
+        $adminPassword = env('SUPER_ADMIN_PASSWORD', env('ADMIN_PASSWORD', 'changeme123'));
 
         // 1. Seed Admin & Staff
         User::updateOrCreate(

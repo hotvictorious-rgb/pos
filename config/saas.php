@@ -15,6 +15,7 @@ return [
 
     'enabled' => env('SAAS_ENABLED', false),
     'platform_name' => env('SAAS_PLATFORM_NAME', 'VMARKET POS'),
+    'super_admin_email' => env('SUPER_ADMIN_EMAIL', env('ADMIN_EMAIL', 'admin@hysamventures.com')),
 
     /*
     |--------------------------------------------------------------------------
