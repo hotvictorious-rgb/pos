@@ -18,6 +18,14 @@ class CheckWebAuth
         $publicPaths = [
             'login',
             'logout',
+            'tenant/login',
+            'tenant/logout',
+            'tenant-employee/login',
+            'tenant-employee/logout',
+            'super-admin/login',
+            'super-admin/logout',
+            'super-admin-employee/login',
+            'super-admin-employee/logout',
             'install',
             'install/*',
             'api/login',
@@ -41,7 +49,8 @@ class CheckWebAuth
             return redirect()->route('login')->with('warning', 'Please log in to access the system.');
         }
 
-        $user = Auth::user() ?: User::findForAuthenticationById($userId);
+        $effectiveId = Auth::id() ?: $userId;
+        $user = $effectiveId ? User::findForAuthenticationById($effectiveId) : null;
 
         if (!$user || $user->disabled) {
             session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);

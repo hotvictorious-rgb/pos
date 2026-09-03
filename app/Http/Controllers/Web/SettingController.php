@@ -44,12 +44,7 @@ class SettingController extends Controller
         if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
             $backups = Backup::orderBy('created_at', 'desc')->get();
         } else {
-            $backups = Backup::orderBy('created_at', 'desc')->get()->filter(function ($b) use ($tenantId) {
-                if (preg_match('/\[([^\]]+)\]$/', $b->created_by, $m)) {
-                    return $m[1] === $tenantId;
-                }
-                return false;
-            })->values();
+            $backups = collect();
         }
 
         return view('settings.index', compact('settings', 'warehouses', 'backups'));
@@ -122,6 +117,22 @@ class SettingController extends Controller
     public function storeWarehouse(Request $request)
     {
         $tenantId = session('tenant_id') ?? 'default-tenant';
+
+        // Enforce SaaS Subscription Branch Limit
+        if (config('saas.enabled')) {
+            $tenant = \App\Models\Tenant::find($tenantId);
+            if ($tenant && $tenant->max_branches !== null) {
+                $currentBranches = Warehouse::count();
+                if ($currentBranches >= $tenant->max_branches) {
+                    $errorMsg = "🔒 Subscription Limit Reached: Your current plan allows a maximum of {$tenant->max_branches} branch location(s). Please upgrade your subscription to add more branches.";
+                    if ($request->wantsJson()) {
+                        return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    }
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+            }
+        }
+
         $request->validate([
             'name' => 'required|string|max:100',
             'code' => ['required', 'string', \Illuminate\Validation\Rule::unique('warehouses', 'code')->where('tenant_id', $tenantId)],

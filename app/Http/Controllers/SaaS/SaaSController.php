@@ -152,6 +152,8 @@ class SaaSController extends Controller
             'paystack_secret_key'   => SaaSSetting::get('paystack_secret_key', ''),
         ];
 
+        $backups = \App\Models\Backup::orderBy('created_at', 'desc')->get();
+
         return view('saas.admin.index', compact(
             'tenants',
             'totalTenants',
@@ -162,7 +164,8 @@ class SaaSController extends Controller
             'totalBranchesPlatform',
             'totalProductsPlatform',
             'totalSalesPlatform',
-            'settings'
+            'settings',
+            'backups'
         ));
     }
 

@@ -19,13 +19,22 @@ use Illuminate\Support\Str;
 
 class BackupController extends Controller
 {
-    private function checkAdmin()
+    private function checkSuperAdmin()
     {
         $user = \Illuminate\Support\Facades\Auth::user();
         if (!$user && session('user_id')) {
             $user = User::find(session('user_id'));
         }
-        return ($user && !$user->disabled && in_array($user->role, ['admin', 'super_admin'])) ? $user : null;
+        if (!$user || $user->disabled) {
+            return null;
+        }
+
+        // When multi-tenant SaaS is enabled, ONLY Platform Super-Administrators are authorized
+        if (config('saas.enabled')) {
+            return (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ? $user : null;
+        }
+
+        return in_array($user->role, ['admin', 'super_admin']) ? $user : null;
     }
 
     private function findAuthorizedBackup($id, $admin)
@@ -39,49 +48,17 @@ class BackupController extends Controller
             return $backup;
         }
 
-        $tenantId = session('tenant_id') ?? 'default-tenant';
-
-        // 1. Exact match on created_by tag [tenant_id]
-        $matchesTag = false;
-        if (preg_match('/\[([^\]]+)\]$/', $backup->created_by, $m)) {
-            $matchesTag = ($m[1] === $tenantId);
-        }
-
-        if (!$matchesTag) {
-            return null;
-        }
-
-        // 2. Exact match on disk payload tenant_id if physical file exists
-        $filePath = 'backups/' . basename($backup->filename);
-        if (Storage::disk('local')->exists($filePath)) {
-            $meta = json_decode(Storage::disk('local')->get($filePath), true);
-            if (isset($meta['tenant_id']) && $meta['tenant_id'] !== $tenantId) {
-                return null;
-            }
-        }
-
-        return $backup;
+        return null;
     }
 
     public function index()
     {
-        $admin = $this->checkAdmin();
+        $admin = $this->checkSuperAdmin();
         if (!$admin) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
         }
 
-        if ($admin->isSuperAdmin()) {
-            $backups = Backup::orderBy('created_at', 'desc')->get();
-        } else {
-            $tenantId = session('tenant_id') ?? 'default-tenant';
-            $backups = Backup::orderBy('created_at', 'desc')->get()->filter(function ($b) use ($tenantId) {
-                if (preg_match('/\[([^\]]+)\]$/', $b->created_by, $m)) {
-                    return $m[1] === $tenantId;
-                }
-                return false;
-            })->values();
-        }
-
+        $backups = Backup::orderBy('created_at', 'desc')->get();
         return response()->json($backups);
     }
 
@@ -94,10 +71,13 @@ class BackupController extends Controller
             'users' => User::all()->toArray(),
             'products' => Product::all()->toArray(),
             'sales' => Sale::all()->toArray(),
-            'sale_items' => SaleItem::all()->toArray(),
+            'sale_items' => SaleItem::whereIn('saleId', Sale::pluck('id'))->get()->toArray(),
             'payments' => Payment::all()->toArray(),
             'sales_returns' => SalesReturn::all()->toArray(),
             'inventory_logs' => InventoryLog::all()->toArray(),
+            'customers' => \App\Models\Customer::all()->toArray(),
+            'warehouses' => \App\Models\Warehouse::all()->toArray(),
+            'stock_levels' => \App\Models\StockLevel::all()->toArray(),
             'activities' => Activity::all()->toArray(),
             'settings' => Setting::all()->toArray(),
             'custom_roles' => \App\Models\CustomRole::all()->toArray(),
@@ -156,9 +136,9 @@ class BackupController extends Controller
 
     public function create()
     {
-        $admin = $this->checkAdmin();
+        $admin = $this->checkSuperAdmin();
         if (!$admin) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
         }
 
         $backup = self::generateBackup($admin->name, $admin);
@@ -167,9 +147,9 @@ class BackupController extends Controller
 
     public function download($id)
     {
-        $admin = $this->checkAdmin();
+        $admin = $this->checkSuperAdmin();
         if (!$admin) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
         }
 
         $backup = $this->findAuthorizedBackup($id, $admin);
@@ -187,9 +167,9 @@ class BackupController extends Controller
 
     public function destroy($id)
     {
-        $admin = $this->checkAdmin();
+        $admin = $this->checkSuperAdmin();
         if (!$admin) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
         }
 
         $backup = $this->findAuthorizedBackup($id, $admin);
@@ -219,9 +199,9 @@ class BackupController extends Controller
 
     public function restore($id)
     {
-        $admin = $this->checkAdmin();
+        $admin = $this->checkSuperAdmin();
         if (!$admin) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
         }
 
         $backup = $this->findAuthorizedBackup($id, $admin);
@@ -246,13 +226,21 @@ class BackupController extends Controller
 
     public function upload(Request $request)
     {
-        $admin = $this->checkAdmin();
+        $admin = $this->checkSuperAdmin();
         if (!$admin) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
         }
 
         if (!$request->hasFile('backup_file')) {
             return response()->json(['error' => 'No backup file selected.'], 400);
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'backup_file' => 'required|file|mimes:json,txt|max:10240',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 400);
         }
 
         $file = $request->file('backup_file');
@@ -318,6 +306,8 @@ class BackupController extends Controller
                 Payment::where('tenant_id', $targetTenantId)->delete();
                 SalesReturn::where('tenant_id', $targetTenantId)->delete();
                 InventoryLog::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\Customer::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\StockLevel::where('tenant_id', $targetTenantId)->delete();
                 Activity::where('tenant_id', $targetTenantId)->delete();
                 Setting::where('tenant_id', $targetTenantId)->delete();
 
@@ -402,6 +392,24 @@ class BackupController extends Controller
                         $set['tenant_id'] = $targetTenantId;
                         unset($set['id']);
                         Setting::create($set);
+                    }
+                }
+
+                // Restore Customers (sanitized to targetTenantId)
+                if (isset($data['customers']) && is_array($data['customers'])) {
+                    foreach ($data['customers'] as $c) {
+                        $c['tenant_id'] = $targetTenantId;
+                        unset($c['id']);
+                        \App\Models\Customer::create($c);
+                    }
+                }
+
+                // Restore Stock Levels (sanitized to targetTenantId)
+                if (isset($data['stock_levels']) && is_array($data['stock_levels'])) {
+                    foreach ($data['stock_levels'] as $sl) {
+                        $sl['tenant_id'] = $targetTenantId;
+                        unset($sl['id']);
+                        \App\Models\StockLevel::create($sl);
                     }
                 }
 

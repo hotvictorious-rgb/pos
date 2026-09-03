@@ -52,7 +52,9 @@
         <button class="set-tab active" onclick="showTab('tabBusiness', this)">🏢 Business & Receipts</button>
         <button class="set-tab" onclick="showTab('tabLocations', this)">🏬 Branch Locations ({{ $warehouses->count() }})</button>
         <button class="set-tab" onclick="showTab('tabInventory', this)">📦 Inventory Rules</button>
+        @if(auth()->check() && auth()->user()->isSuperAdmin())
         <button class="set-tab" onclick="showTab('tabBackups', this)">💾 Data Safety & Backups</button>
+        @endif
     </div>
 
     <!-- Tab 1: Business & Receipt Information -->
@@ -219,6 +221,7 @@
         </div>
     </div>
 
+    @if(auth()->check() && auth()->user()->isSuperAdmin())
     <!-- Tab 4: Data Safety & Database Backups -->
     <div id="tabBackups" class="tab-content">
         <div class="card">
@@ -272,6 +275,7 @@
             </div>
         </div>
     </div>
+    @endif
 
     <!-- Modal: Add Branch Shop -->
     <div id="modalAddBranch" class="modal-backdrop" style="display: none;">

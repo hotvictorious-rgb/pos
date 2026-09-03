@@ -35,6 +35,23 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
+        $tenantId = session('tenant_id') ?? 'default-tenant';
+
+        // Enforce SaaS Subscription Worker Account Limit
+        if (config('saas.enabled')) {
+            $tenant = \App\Models\Tenant::find($tenantId);
+            if ($tenant && $tenant->max_users !== null) {
+                $currentUsers = User::count();
+                if ($currentUsers >= $tenant->max_users) {
+                    $errorMsg = "🔒 Subscription Limit Reached: Your current plan allows a maximum of {$tenant->max_users} worker account(s). Please upgrade your subscription to add more staff.";
+                    if ($request->wantsJson()) {
+                        return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    }
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+            }
+        }
+
         $request->validate([
             'name' => 'required|string|max:100',
             'email' => 'required|email|unique:users,email',

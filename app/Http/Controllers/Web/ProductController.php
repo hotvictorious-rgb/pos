@@ -216,7 +216,16 @@ class ProductController extends Controller
             'warehouse_id' => 'nullable|numeric',
         ]);
 
-        $warehouseId = (int) ($request->warehouse_id ?? (Warehouse::first()->id ?? 1));
+        if ($request->filled('warehouse_id')) {
+            $wh = Warehouse::find($request->warehouse_id);
+            if (!$wh) {
+                return redirect()->route('products.index')->with('error', 'Selected branch location does not exist.');
+            }
+            $warehouseId = $wh->id;
+        } else {
+            $wh = Warehouse::first();
+            $warehouseId = $wh ? $wh->id : 1;
+        }
         $file = $request->file('csv_file');
         $handle = fopen($file->getRealPath(), 'r');
 

@@ -53,8 +53,12 @@ class StockService
     public function recordStockIn(string $productId, int $warehouseId, int $quantity, ?string $supplierName, string $userId, string $userName, ?string $notes = null): StockLevel
     {
         return DB::transaction(function () use ($productId, $warehouseId, $quantity, $supplierName, $userId, $userName, $notes) {
+            if ($quantity <= 0) {
+                throw new \InvalidArgumentException("Stock in quantity must be at least 1 unit.");
+            }
+
             $product = Product::findOrFail($productId);
-            $stock = $this->getStockLevel($productId, $warehouseId);
+            $stock = $this->getStockLevel($productId, $warehouseId, true);
             $stock->physical_stock += $quantity;
             $stock->save();
 
@@ -101,8 +105,62 @@ class StockService
     {
         return DB::transaction(function () use ($saleData, $items, $warehouseId, $isSuppliedNow, $userId, $userName) {
             $saleId = $saleData['id'] ?? (string) Str::uuid();
-            $totalAmount = (float) $saleData['totalAmount'];
-            $paidAmount = (float) ($saleData['paidAmount'] ?? $totalAmount);
+
+            // Safe Idempotency Check: if a sale with this ID already exists, return it cleanly
+            if (isset($saleData['id'])) {
+                $existingSale = Sale::with('items')->find($saleId);
+                if ($existingSale) {
+                    return $existingSale;
+                }
+            }
+
+            if (empty($items)) {
+                throw new \InvalidArgumentException("Checkout requires at least one sale line item.");
+            }
+
+            // Server-authoritative line items and pricing calculation
+            $serverTotal = 0;
+            $validatedItems = [];
+            foreach ($items as $item) {
+                $productId = $item['productId'] ?? $item['product_id'] ?? null;
+                if (!$productId) {
+                    throw new \InvalidArgumentException("Invalid line item: Product ID missing.");
+                }
+                $product = Product::findOrFail($productId);
+                $qty = (int) ($item['quantity'] ?? 0);
+                if ($qty <= 0) {
+                    throw new \InvalidArgumentException("Quantity for product '{$product->name}' must be at least 1 unit.");
+                }
+
+                // Server is strictly authoritative for retail catalog pricing; client prices are ignored
+                $saleType = $saleData['sale_type'] ?? 'RETAIL';
+                if ($saleType === 'RETAIL' || !isset($item['unitPrice'])) {
+                    $unitPrice = (float) $product->unitPrice;
+                } else {
+                    $unitPrice = (float) $item['unitPrice'];
+                }
+                if ($unitPrice < 0) {
+                    throw new \InvalidArgumentException("Unit price for product '{$product->name}' cannot be negative.");
+                }
+
+                $lineTotal = $qty * $unitPrice;
+                $serverTotal += $lineTotal;
+
+                $validatedItems[] = [
+                    'product' => $product,
+                    'quantity' => $qty,
+                    'unitPrice' => $unitPrice,
+                    'totalPrice' => $lineTotal,
+                ];
+            }
+
+            // Server is strictly authoritative for totalAmount
+            $totalAmount = $serverTotal;
+            $paidAmount = isset($saleData['paidAmount']) ? (float) $saleData['paidAmount'] : $totalAmount;
+            if ($paidAmount < 0) {
+                throw new \InvalidArgumentException("Paid amount cannot be negative.");
+            }
+
             $cashAmount = (float) ($saleData['cashAmount'] ?? 0);
             $posAmount = (float) ($saleData['posAmount'] ?? 0);
             $transferAmount = (float) ($saleData['transferAmount'] ?? 0);
@@ -111,7 +169,6 @@ class StockService
 
             $deliveryStatus = $isSuppliedNow ? 'DELIVERED' : 'UNSUPPLIED';
             $saleStatus = ($paidAmount >= $totalAmount) ? 'COMPLETED' : 'PARTIAL';
-
             $saleType = $saleData['sale_type'] ?? 'RETAIL';
 
             $sale = Sale::create([
@@ -134,11 +191,11 @@ class StockService
             ]);
 
             // Process line items & stock impact
-            foreach ($items as $item) {
-                $productId = $item['productId'] ?? $item['product_id'] ?? null;
-                $product = Product::findOrFail($productId);
-                $qty = (int) $item['quantity'];
-                $unitPrice = (float) $item['unitPrice'];
+            foreach ($validatedItems as $vItem) {
+                $product = $vItem['product'];
+                $qty = $vItem['quantity'];
+                $unitPrice = $vItem['unitPrice'];
+                $lineTotal = $vItem['totalPrice'];
 
                 SaleItem::create([
                     'saleId' => $saleId,
@@ -146,7 +203,7 @@ class StockService
                     'productName' => $product->name,
                     'quantity' => $qty,
                     'unitPrice' => $unitPrice,
-                    'totalPrice' => $qty * $unitPrice,
+                    'totalPrice' => $lineTotal,
                     'code' => $product->code,
                     'productCode' => $product->code,
                 ]);
@@ -256,7 +313,7 @@ class StockService
     public function dispatchUnsuppliedSale(string $saleId, int $warehouseId, string $userId, string $userName): Sale
     {
         return DB::transaction(function () use ($saleId, $warehouseId, $userId, $userName) {
-            $sale = Sale::with('items')->findOrFail($saleId);
+            $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
 
             if ($sale->deliveryStatus === 'DELIVERED') {
                 throw new \Exception('Sale has already been fully delivered/dispatched.');
@@ -408,10 +465,10 @@ class StockService
     public function receiveTransfer(int $transferId, array $countedItems, string $userId, string $userName, ?string $discrepancyNotes = null): Transfer
     {
         return DB::transaction(function () use ($transferId, $countedItems, $userId, $userName, $discrepancyNotes) {
-            $transfer = Transfer::with('items')->findOrFail($transferId);
+            $transfer = Transfer::with('items')->where('id', $transferId)->lockForUpdate()->firstOrFail();
 
-            if ($transfer->status === 'RECEIVED') {
-                throw new \Exception('Transfer has already been received.');
+            if ($transfer->status !== 'DISPATCHED') {
+                throw new \Exception("Transfer #{$transfer->transfer_no} cannot be received: Current status is '{$transfer->status}' (only in-transit 'DISPATCHED' transfers can be received).");
             }
 
             $hasDiscrepancy = false;
@@ -419,7 +476,16 @@ class StockService
 
             foreach ($transfer->items as $transferItem) {
                 // Find counted quantity sent from form
-                $countedQty = (int) ($countedItems[$transferItem->product_id] ?? $transferItem->dispatched_qty);
+                $rawCounted = $countedItems[$transferItem->product_id] ?? $transferItem->dispatched_qty;
+                $countedQty = (int) $rawCounted;
+
+                if ($countedQty < 0) {
+                    throw new \InvalidArgumentException("Counted quantity for '{$transferItem->product_name}' cannot be negative.");
+                }
+                if ($countedQty > $transferItem->dispatched_qty) {
+                    throw new \InvalidArgumentException("Counted quantity ({$countedQty}) cannot exceed dispatched quantity ({$transferItem->dispatched_qty}) for '{$transferItem->product_name}'.");
+                }
+
                 $discrepancy = $transferItem->dispatched_qty - $countedQty;
 
                 $transferItem->received_qty = $countedQty;
@@ -431,8 +497,8 @@ class StockService
                     $totalDiscrepancy += abs($discrepancy);
                 }
 
-                // Add counted physical stock to destination warehouse
-                $destStock = $this->getStockLevel($transferItem->product_id, $transfer->destination_warehouse_id);
+                // Add counted physical stock to destination warehouse with row locking
+                $destStock = $this->getStockLevel($transferItem->product_id, $transfer->destination_warehouse_id, true);
                 $destStock->physical_stock += $countedQty;
                 $destStock->save();
 
@@ -489,17 +555,17 @@ class StockService
     public function recallTransfer(int $transferId, string $userId, string $userName, ?string $reason = null): Transfer
     {
         return DB::transaction(function () use ($transferId, $userId, $userName, $reason) {
-            $transfer = Transfer::with(['items', 'source', 'destination'])->findOrFail($transferId);
+            $transfer = Transfer::with(['items', 'source', 'destination'])->where('id', $transferId)->lockForUpdate()->firstOrFail();
 
             if ($transfer->status !== 'DISPATCHED') {
-                throw new \Exception('Only in-transit (DISPATCHED) transfers can be recalled or cancelled.');
+                throw new \Exception("Transfer #{$transfer->transfer_no} cannot be recalled: Current status is '{$transfer->status}' (only in-transit 'DISPATCHED' transfers can be recalled).");
             }
 
             foreach ($transfer->items as $item) {
                 $qty = (int) $item->dispatched_qty;
 
-                // Restore stock back to source warehouse
-                $stock = $this->getStockLevel($item->product_id, $transfer->source_warehouse_id);
+                // Restore stock back to source warehouse with row locking
+                $stock = $this->getStockLevel($item->product_id, $transfer->source_warehouse_id, true);
                 $stock->physical_stock += $qty;
                 $stock->save();
 
@@ -546,9 +612,40 @@ class StockService
     public function recordCustomerPayment(int $customerId, float $amount, string $paymentMethod, ?string $refNo, string $userId, string $userName, ?string $notes = null): CustomerLedger
     {
         return DB::transaction(function () use ($customerId, $amount, $paymentMethod, $refNo, $userId, $userName, $notes) {
-            $customer = Customer::findOrFail($customerId);
+            if ($amount <= 0) {
+                throw new \InvalidArgumentException("Payment amount must be greater than zero.");
+            }
+
+            $customer = Customer::where('id', $customerId)->lockForUpdate()->firstOrFail();
+
+            if ($amount > (float) $customer->total_debt) {
+                throw new \InvalidArgumentException(
+                    "Payment amount (₦" . number_format($amount, 2) . ") exceeds customer's total outstanding debt (₦" . number_format($customer->total_debt, 2) . ")."
+                );
+            }
+
             $customer->total_debt = max(0, $customer->total_debt - $amount);
             $customer->save();
+
+            // Reconcile customer's oldest partial sales
+            $remainingPayment = $amount;
+            $partialSales = Sale::where('customerId', $customerId)
+                ->where('status', 'PARTIAL')
+                ->orderBy('createdAt', 'asc')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($partialSales as $pSale) {
+                if ($remainingPayment <= 0) break;
+                $unpaid = max(0, (float) $pSale->totalAmount - (float) $pSale->paidAmount);
+                $alloc = min($remainingPayment, $unpaid);
+                $pSale->paidAmount += $alloc;
+                if ($pSale->paidAmount >= $pSale->totalAmount) {
+                    $pSale->status = 'COMPLETED';
+                }
+                $pSale->save();
+                $remainingPayment -= $alloc;
+            }
 
             $ledger = CustomerLedger::create([
                 'customer_id' => $customer->id,
@@ -580,6 +677,10 @@ class StockService
     public function recordStockAdjustment(string $productId, int $warehouseId, string $type, int $quantity, string $reason, string $userId, string $userName): \App\Models\StockAdjustment
     {
         return DB::transaction(function () use ($productId, $warehouseId, $type, $quantity, $reason, $userId, $userName) {
+            if ($quantity <= 0) {
+                throw new \InvalidArgumentException("Write-off quantity must be at least 1 unit.");
+            }
+
             $product = Product::findOrFail($productId);
             $stock = $this->getStockLevel($productId, $warehouseId, true);
 
@@ -645,24 +746,59 @@ class StockService
     public function recordSaleReturn(string $saleId, array $returnItems, int $warehouseId, string $refundMethod, string $reason, string $userId, string $userName): \App\Models\SalesReturn
     {
         return DB::transaction(function () use ($saleId, $returnItems, $warehouseId, $refundMethod, $reason, $userId, $userName) {
-            $sale = Sale::with('items')->findOrFail($saleId);
+            if (empty($returnItems)) {
+                throw new \InvalidArgumentException("No items specified for return.");
+            }
+
+            $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
+
+            // Fetch prior returns for this sale to enforce refund & item quantity ceilings
+            $priorReturns = \App\Models\SalesReturn::where('saleId', $saleId)->get();
+            $priorRefundedTotal = (float) $priorReturns->sum('refundAmount');
+
+            // Map sold items by product ID
+            $soldItemsByProduct = $sale->items->keyBy('productId');
 
             $totalRefundAmount = 0;
             $firstProduct = null;
 
             foreach ($returnItems as $item) {
                 $productId = $item['productId'] ?? $item['product_id'] ?? null;
+                if (!$productId || !isset($soldItemsByProduct[$productId])) {
+                    throw new \InvalidArgumentException("Cannot return item: Product was not part of original Sale #{$saleId}.");
+                }
+
+                $saleItem = $soldItemsByProduct[$productId];
                 $product = Product::findOrFail($productId);
-                $qty = (int) $item['quantity'];
-                $unitPrice = (float) ($item['unitPrice'] ?? $product->unitPrice);
+                $qty = (int) ($item['quantity'] ?? 0);
+
+                if ($qty <= 0) {
+                    throw new \InvalidArgumentException("Return quantity for '{$product->name}' must be at least 1 unit.");
+                }
+
+                // Check already returned quantity for this specific product in this sale
+                $previouslyReturnedQty = (int) \App\Models\InventoryLog::where('type', 'SALES_RETURN')
+                    ->where('productId', $productId)
+                    ->where('description', 'like', "%Sale #{$saleId}%")
+                    ->sum('quantity');
+
+                if (($previouslyReturnedQty + $qty) > $saleItem->quantity) {
+                    $remainingAllowed = max(0, $saleItem->quantity - $previouslyReturnedQty);
+                    throw new \InvalidArgumentException(
+                        "Cannot return {$qty} units of '{$product->name}'. Sold: {$saleItem->quantity}, Already returned: {$previouslyReturnedQty}, Remaining eligible: {$remainingAllowed}."
+                    );
+                }
+
+                // Authoritative historical unit price from the actual sale record
+                $unitPrice = (float) $saleItem->unitPrice;
                 $totalRefundAmount += ($qty * $unitPrice);
 
                 if (!$firstProduct) {
                     $firstProduct = $product;
                 }
 
-                // Restore physical closing stock
-                $stock = $this->getStockLevel($product->id, $warehouseId);
+                // Restore physical closing stock with row locking
+                $stock = $this->getStockLevel($product->id, $warehouseId, true);
                 $stock->physical_stock += $qty;
                 $stock->save();
 
@@ -683,6 +819,16 @@ class StockService
                 ]);
             }
 
+            // Financial integrity: Cash refund cannot exceed actual money customer paid!
+            if ($refundMethod === 'CASH_REFUND') {
+                $maxCashRefundable = max(0, (float) $sale->paidAmount - $priorRefundedTotal);
+                if ($totalRefundAmount > $maxCashRefundable) {
+                    throw new \InvalidArgumentException(
+                        "Cannot issue cash refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable cash for Sale #{$saleId} based on actual payments made is ₦" . number_format($maxCashRefundable, 2) . ". Use DEBT_REDUCTION for unpaid/credit balance."
+                    );
+                }
+            }
+
             $salesReturn = \App\Models\SalesReturn::create([
                 'id' => (string) Str::uuid(),
                 'saleId' => $saleId,
@@ -699,9 +845,9 @@ class StockService
                 'wasDelivered' => true,
             ]);
 
-            // Adjust Customer Debt Ledger if refund method is CREDIT_NOTE/DEBT_REDUCTION
+            // Adjust Customer Debt Ledger if refund method is DEBT_REDUCTION
             if ($refundMethod === 'DEBT_REDUCTION' && $sale->customerName) {
-                $customer = Customer::where('name', $sale->customerName)->first();
+                $customer = Customer::where('name', $sale->customerName)->lockForUpdate()->first();
                 if ($customer) {
                     $customer->total_debt = max(0, $customer->total_debt - $totalRefundAmount);
                     $customer->save();

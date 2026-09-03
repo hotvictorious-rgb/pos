@@ -356,6 +356,49 @@
             </form>
         </div>
 
+        <!-- Section: Super-Admin Exclusive Platform Database Backups -->
+        <div class="card-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <div class="section-title" style="margin-bottom: 4px;">💾 Platform Database Backups & Snapshots</div>
+                    <p style="color: #94a3b8; font-size: 13px;">Manage and download full platform and tenant safety backup snapshots. Restricted exclusively to Platform Super-Administrators.</p>
+                </div>
+                <form method="POST" action="/api/backups" onsubmit="return confirm('Generate an instant database safety backup now?');">
+                    @csrf
+                    <button type="submit" class="btn btn-primary">📦 Create Instant Backup</button>
+                </form>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Created Date</th>
+                        <th>File Size</th>
+                        <th>Origin / Creator</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($backups as $b)
+                    <tr>
+                        <td><strong>{{ $b->filename }}</strong></td>
+                        <td>{{ date('d M Y, h:i A', strtotime($b->created_at)) }}</td>
+                        <td>{{ number_format(($b->size ?? 1024) / 1024, 1) }} KB</td>
+                        <td><span style="color: #38bdf8;">{{ $b->created_by }}</span></td>
+                        <td>
+                            <a href="/api/backups/{{ $b->id }}/download" class="btn btn-secondary btn-sm">⬇️ Download</a>
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: #94a3b8; padding: 24px;">No database snapshots found. Click "Create Instant Backup" above to generate one.</td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
     </div>
 
 </body>

@@ -126,10 +126,22 @@ class PosController extends Controller
         $request->validate([
             'warehouse_id' => 'required',
             'items' => 'required|array|min:1',
-            'totalAmount' => 'required|numeric|min:0',
+            'items.*.productId' => 'required',
+            'items.*.quantity' => 'required|integer|min:1',
             'paidAmount' => 'required|numeric|min:0',
             'is_supplied' => 'required', // 'yes' or 'no'
         ]);
+
+        $cashAmount = (float) ($request->cashAmount ?? 0);
+        $posAmount = (float) ($request->posAmount ?? 0);
+        $transferAmount = (float) ($request->transferAmount ?? 0);
+        $paidAmount = (float) $request->paidAmount;
+
+        if ($paidAmount > 0 && ($cashAmount + $posAmount + $transferAmount) < $paidAmount) {
+            $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount} + Transfer ₦{$transferAmount}) must be equal to or greater than the recorded paid amount (₦{$paidAmount}).";
+            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+            return back()->withErrors(['error' => $errorMsg])->withInput();
+        }
 
         $authUser = Auth::user();
         if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
@@ -141,8 +153,7 @@ class PosController extends Controller
         $userId = Auth::id() ?? 'POS-USER-1';
         $userName = Auth::user()->name ?? 'Sales Officer';
 
-        $totalAmount = (float) $request->totalAmount;
-        $paidAmount = (float) $request->paidAmount;
+        $totalAmount = (float) ($request->totalAmount ?? 0);
         $hasDebt = ($paidAmount < $totalAmount);
         $isNotSupplied = !$isSuppliedNow;
 
@@ -226,8 +237,34 @@ class PosController extends Controller
             'note' => $request->note,
         ];
 
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('sale_id');
+        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
+
         try {
-            $sale = $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
+            if ($idempotencyKey) {
+                $idempotencyService = app(\App\Services\IdempotencyService::class);
+                $sale = $idempotencyService->execute(
+                    'pos_checkout',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    [
+                        'warehouse_id' => $warehouseId,
+                        'items' => $request->items,
+                        'paidAmount' => $paidAmount,
+                        'cashAmount' => (float) ($request->cashAmount ?? 0),
+                        'posAmount' => (float) ($request->posAmount ?? 0),
+                        'transferAmount' => (float) ($request->transferAmount ?? 0),
+                        'customerId' => $customerId,
+                        'is_supplied' => $isSuppliedNow,
+                    ],
+                    function () use ($saleData, $request, $warehouseId, $isSuppliedNow, $userId, $userName) {
+                        return $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
+                    }
+                );
+            } else {
+                $sale = $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
+            }
 
             if ($request->wantsJson()) {
                 return response()->json([
@@ -357,16 +394,46 @@ class PosController extends Controller
             }
         }
 
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
+        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
+
         try {
-            $salesReturn = $this->stockService->recordSaleReturn(
-                $request->sale_id,
-                $request->items,
-                $warehouseId,
-                $request->refund_method,
-                $request->reason,
-                $userId,
-                $userName
-            );
+            if ($idempotencyKey) {
+                $idempotencyService = app(\App\Services\IdempotencyService::class);
+                $salesReturn = $idempotencyService->execute(
+                    'pos_return',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    [
+                        'sale_id' => $request->sale_id,
+                        'warehouse_id' => $warehouseId,
+                        'items' => $request->items,
+                        'refund_method' => $request->refund_method,
+                    ],
+                    function () use ($request, $warehouseId, $userId, $userName) {
+                        return $this->stockService->recordSaleReturn(
+                            $request->sale_id,
+                            $request->items,
+                            $warehouseId,
+                            $request->refund_method,
+                            $request->reason,
+                            $userId,
+                            $userName
+                        );
+                    }
+                );
+            } else {
+                $salesReturn = $this->stockService->recordSaleReturn(
+                    $request->sale_id,
+                    $request->items,
+                    $warehouseId,
+                    $request->refund_method,
+                    $request->reason,
+                    $userId,
+                    $userName
+                );
+            }
 
             return redirect()->route('pos.returns')->with('success', "✓ Return #{$salesReturn->code} processed! Items restored to physical closing stock.");
         } catch (\Throwable $e) {

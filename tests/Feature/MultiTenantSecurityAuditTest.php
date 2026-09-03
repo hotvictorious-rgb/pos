@@ -346,18 +346,24 @@ class MultiTenantSecurityAuditTest extends TestCase
             'created_by' => 'Admin Beta [tenant-beta]',
         ]);
 
+        // Tenant admin is forbidden from accessing backups entirely
         $response = $this->actingAs($this->adminA)->withSession([
             'user_id' => $this->adminA->id,
             'user_role' => 'admin',
             'tenant_id' => $this->tenantA->id,
         ])->get('/api/backups');
 
-        $response->assertStatus(200);
-        $data = $response->json();
-        $this->assertIsArray($data);
-        foreach ($data as $bk) {
-            $this->assertStringNotContainsString('tenant-beta', $bk['created_by']);
-        }
+        $response->assertStatus(403);
+        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
+
+        // Super Admin CAN access backups
+        $superResponse = $this->actingAs($this->superAdmin)->withSession([
+            'user_id' => $this->superAdmin->id,
+            'user_role' => 'admin',
+            'tenant_id' => 'default-tenant',
+        ])->get('/api/backups');
+
+        $superResponse->assertStatus(200);
     }
 
     public function test_tenant_a_cannot_download_tenant_b_backup()
@@ -375,8 +381,8 @@ class MultiTenantSecurityAuditTest extends TestCase
             'tenant_id' => $this->tenantA->id,
         ])->get("/api/backups/{$backupB->id}/download");
 
-        $response->assertStatus(404);
-        $response->assertJson(['error' => 'Backup not found or unauthorized.']);
+        $response->assertStatus(403);
+        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
     }
 
     public function test_tenant_a_cannot_restore_tenant_b_backup()
@@ -394,8 +400,8 @@ class MultiTenantSecurityAuditTest extends TestCase
             'tenant_id' => $this->tenantA->id,
         ])->post("/api/backups/{$backupB->id}/restore");
 
-        $response->assertStatus(404);
-        $response->assertJson(['error' => 'Backup not found or unauthorized.']);
+        $response->assertStatus(403);
+        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
     }
 
     public function test_tenant_a_cannot_delete_tenant_b_backup()
@@ -413,8 +419,8 @@ class MultiTenantSecurityAuditTest extends TestCase
             'tenant_id' => $this->tenantA->id,
         ])->delete("/api/backups/{$backupB->id}");
 
-        $response->assertStatus(404);
-        $response->assertJson(['error' => 'Backup not found or unauthorized.']);
+        $response->assertStatus(403);
+        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
         $this->assertNotNull(Backup::find('BK-BETA-DEL-1'));
     }
 
@@ -717,6 +723,17 @@ class MultiTenantSecurityAuditTest extends TestCase
             'createdAt' => now()->toIso8601String(),
         ]);
 
+        \App\Models\SaleItem::create([
+            'saleId' => $saleA->id,
+            'productId' => $prodA->id,
+            'productName' => $prodA->name,
+            'quantity' => 2,
+            'unitPrice' => 1000,
+            'totalPrice' => 2000,
+            'code' => $prodA->code,
+            'productCode' => $prodA->code,
+        ]);
+
         // 4. Cashier attempts to process a return and supply warehouseA2 instead of assigned warehouseA
         $response = $this->actingAs($cashierA)->withSession([
             'user_id' => $cashierA->id,
@@ -745,5 +762,318 @@ class MultiTenantSecurityAuditTest extends TestCase
         $this->assertNotNull($stockLevelA);
         $this->assertEquals(1, $stockLevelA->physical_stock);
         $this->assertTrue($stockLevelA2 === null || $stockLevelA2->physical_stock == 0);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // FOUR-PORTAL AUTHENTICATION ADVERSARIAL TESTS
+    // ─────────────────────────────────────────────────────────
+
+    public function test_tenant_employee_cannot_login_through_tenant_admin_portal()
+    {
+        $cashier = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Store Cashier',
+            'email' => 'cashier.test@test.com',
+            'password' => Hash::make('password123'),
+            'role' => 'cashier',
+            'warehouse_id' => $this->warehouseA->id,
+            'disabled' => false,
+        ]);
+
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant.login.post'), [
+            'email' => 'cashier.test@test.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_tenant_admin_cannot_login_through_tenant_employee_portal()
+    {
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant_employee.login.post'), [
+            'email' => 'alpha@test.com', // Tenant Admin
+            'password' => 'password123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_tenant_admin_cannot_login_through_super_admin_portal()
+    {
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.super_admin.login.post'), [
+            'email' => 'alpha@test.com', // Tenant Admin
+            'password' => 'password123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_tenant_employee_cannot_login_through_super_admin_portal()
+    {
+        $cashier = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Store Cashier 2',
+            'email' => 'cashier2@test.com',
+            'password' => Hash::make('password123'),
+            'role' => 'cashier',
+            'warehouse_id' => $this->warehouseA->id,
+            'disabled' => false,
+        ]);
+
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.super_admin.login.post'), [
+            'email' => 'cashier2@test.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_super_admin_cannot_login_through_tenant_portal()
+    {
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant.login.post'), [
+            'email' => 'superadmin@hysam.com',
+            'password' => 'supersecret',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_super_admin_cannot_login_through_tenant_employee_portal()
+    {
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant_employee.login.post'), [
+            'email' => 'superadmin@hysam.com',
+            'password' => 'supersecret',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_platform_employee_cannot_login_through_tenant_portal()
+    {
+        $platformStaff = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'name' => 'Platform Tech Support',
+            'email' => 'tech@hysam.com',
+            'password' => Hash::make('support123'),
+            'role' => 'staff',
+            'disabled' => false,
+        ]);
+
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant.login.post'), [
+            'email' => 'tech@hysam.com',
+            'password' => 'support123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_platform_employee_cannot_login_through_super_admin_portal()
+    {
+        $platformStaff = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'name' => 'Platform Tech Support 2',
+            'email' => 'tech2@hysam.com',
+            'password' => Hash::make('support123'),
+            'role' => 'staff',
+            'disabled' => false,
+        ]);
+
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.super_admin.login.post'), [
+            'email' => 'tech2@hysam.com',
+            'password' => 'support123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_super_admin_cannot_login_through_platform_employee_portal()
+    {
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.super_admin_employee.login.post'), [
+            'email' => 'superadmin@hysam.com',
+            'password' => 'supersecret',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_platform_employee_can_login_through_platform_employee_portal()
+    {
+        $platformStaff = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'name' => 'Platform Tech Support 3',
+            'email' => 'tech3@hysam.com',
+            'password' => Hash::make('support123'),
+            'role' => 'staff',
+            'disabled' => false,
+        ]);
+
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.super_admin_employee.login.post'), [
+            'email' => 'tech3@hysam.com',
+            'password' => 'support123',
+        ]);
+
+        $response->assertRedirect(route('saas.admin.index'));
+        $this->assertEquals('default-tenant', session('tenant_id'));
+        $this->assertEquals('super-admin-employee', session('portal'));
+        $this->assertAuthenticatedAs($platformStaff);
+    }
+
+    public function test_tenant_admin_can_login_through_tenant_portal()
+    {
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant.login.post'), [
+            'email' => 'alpha@test.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertRedirect('/');
+        $this->assertEquals($this->tenantA->id, session('tenant_id'));
+        $this->assertEquals('tenant', session('portal'));
+        $this->assertAuthenticatedAs($this->adminA);
+    }
+
+    public function test_tenant_employee_can_login_through_tenant_employee_portal()
+    {
+        $cashier = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Store Cashier 4',
+            'email' => 'cashier4@test.com',
+            'password' => Hash::make('password123'),
+            'role' => 'cashier',
+            'warehouse_id' => $this->warehouseA->id,
+            'disabled' => false,
+        ]);
+
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant_employee.login.post'), [
+            'email' => 'cashier4@test.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertRedirect('/');
+        $this->assertEquals($this->tenantA->id, session('tenant_id'));
+        $this->assertEquals('tenant-employee', session('portal'));
+        $this->assertAuthenticatedAs($cashier);
+    }
+
+    public function test_super_admin_can_login_through_super_admin_portal()
+    {
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.super_admin.login.post'), [
+            'email' => 'superadmin@hysam.com',
+            'password' => 'supersecret',
+        ]);
+
+        $response->assertRedirect(route('saas.admin.index'));
+        $this->assertEquals('default-tenant', session('tenant_id'));
+        $this->assertEquals('super-admin', session('portal'));
+        $this->assertAuthenticatedAs($this->superAdmin);
+    }
+
+    public function test_portal_login_regenerates_session_id()
+    {
+        $this->get(route('portal.tenant.login'));
+        $initialSessionId = session()->getId();
+
+        $response = $this->post(route('portal.tenant.login.post'), [
+            'email' => 'alpha@test.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertRedirect('/');
+        $newSessionId = session()->getId();
+        $this->assertNotEquals($initialSessionId, $newSessionId);
+    }
+
+    public function test_portal_logout_clears_session_and_redirects_to_portal_login()
+    {
+        $response = $this->actingAs($this->adminA)->withSession([
+            'user_id' => $this->adminA->id,
+            'user_role' => 'admin',
+            'tenant_id' => $this->tenantA->id,
+            'portal' => 'tenant',
+        ])->post(route('portal.tenant.logout'));
+
+        $response->assertRedirect(route('portal.tenant.login'));
+        $this->assertNull(session('tenant_id'));
+        $this->assertNull(session('user_id'));
+        $this->assertGuest();
+    }
+
+    public function test_disabled_user_rejected_at_portal_login()
+    {
+        $this->adminA->update(['disabled' => true]);
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant.login.post'), [
+            'email' => 'alpha@test.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
+    }
+
+    public function test_suspended_tenant_rejected_at_portal_login()
+    {
+        $this->tenantA->update(['status' => 'suspended']);
+        session()->forget('tenant_id');
+
+        $response = $this->post(route('portal.tenant.login.post'), [
+            'email' => 'alpha@test.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertNull(session('tenant_id'));
+        $this->assertGuest();
     }
 }

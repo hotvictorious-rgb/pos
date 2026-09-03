@@ -22,4 +22,9 @@ class SaleItem extends Model
         'unitPrice' => 'double',
         'totalPrice' => 'double',
     ];
+
+    public function sale()
+    {
+        return $this->belongsTo(Sale::class, 'saleId', 'id');
+    }
 }

@@ -46,6 +46,37 @@ class User extends Authenticatable
         return $isMasterTenant && $isAdminRole;
     }
 
+    /**
+     * Determine if user is a platform-level employee/auditor/support under default-tenant.
+     */
+    public function isSuperAdminEmployee(): bool
+    {
+        $isMasterTenant = ($this->tenant_id === 'default-tenant');
+        return $isMasterTenant && !$this->isSuperAdmin();
+    }
+
+    /**
+     * Determine if user is a business owner / tenant administrator.
+     */
+    public function isTenantAdmin(): bool
+    {
+        if (config('saas.enabled')) {
+            return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant' && $this->role === 'admin';
+        }
+        return $this->role === 'admin';
+    }
+
+    /**
+     * Determine if user is a business employee/cashier/storekeeper under a tenant.
+     */
+    public function isTenantEmployee(): bool
+    {
+        if (config('saas.enabled')) {
+            return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant' && $this->role !== 'admin';
+        }
+        return $this->role !== 'admin';
+    }
+
     public $incrementing = false;
     protected $keyType = 'string';
 

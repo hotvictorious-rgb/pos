@@ -15,8 +15,8 @@ class EnsureTenantActive
             return $next($request);
         }
 
-        // Allow access to SaaS registration, suspended page, assets, and auth logout
-        if ($request->is('saas/*') || $request->is('login') || $request->is('logout')) {
+        // Allow access to SaaS registration, suspended page, assets, and auth/portal login & logout
+        if ($request->is('saas/*') || $request->is('login') || $request->is('logout') || $request->is('*/login') || $request->is('*/logout')) {
             return $next($request);
         }
 

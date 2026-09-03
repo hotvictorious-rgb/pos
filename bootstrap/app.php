@@ -15,8 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'api/*',
         ]);
-        // Check if the application has been installed & ensure web authentication
+        // Check if the application has been installed, ensure web authentication & attach security headers
         $middleware->web(append: [
+            \App\Http\Middleware\SecurityHeaders::class,
             \App\Http\Middleware\CheckInstalled::class,
             \App\Http\Middleware\CheckWebAuth::class,
             \App\Http\Middleware\EnsureTenantActive::class,
@@ -25,6 +26,6 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
     })->create();

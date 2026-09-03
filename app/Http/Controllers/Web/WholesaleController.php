@@ -128,7 +128,15 @@ class WholesaleController extends Controller
 
         try {
             DB::transaction(function () use ($request, $id, $userId, $userName) {
-                $sale = Sale::with('items')->findOrFail($id);
+                $sale = Sale::with('items')->where('id', $id)->lockForUpdate()->firstOrFail();
+
+                if ($sale->sale_type !== 'WHOLESALE_DISPATCH') {
+                    throw new \InvalidArgumentException("Security Violation: Only wholesale dispatch orders can be priced through this portal.");
+                }
+
+                if ($sale->status === 'COMPLETED') {
+                    throw new \InvalidArgumentException("Terminal State: This wholesale dispatch has already been settled and marked COMPLETED. It cannot be re-priced.");
+                }
 
                 $calculatedTotal = 0;
 
@@ -194,10 +202,10 @@ class WholesaleController extends Controller
                 // 5. Update Customer Ledger & Outstanding Debt
                 $customer = null;
                 if ($sale->customerId) {
-                    $customer = Customer::find($sale->customerId);
+                    $customer = Customer::where('id', $sale->customerId)->lockForUpdate()->first();
                 }
                 if (!$customer && $sale->customerName && strtolower($sale->customerName) !== 'walk-in customer') {
-                    $customer = Customer::where('name', $sale->customerName)->first();
+                    $customer = Customer::where('name', $sale->customerName)->lockForUpdate()->first();
                 }
 
                 if ($customer) {

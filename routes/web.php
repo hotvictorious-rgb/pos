@@ -38,6 +38,29 @@ Route::post('/login', [AuthController::class, 'webLogin'])->name('login.post');
 Route::match(['get', 'post'], '/logout', [AuthController::class, 'webLogout'])->name('logout');
 
 // ─────────────────────────────────────────────────────────
+// FOUR PORTAL AUTHENTICATION
+// ─────────────────────────────────────────────────────────
+// 1. Tenant Portal (Business Owners & Administrators)
+Route::get('/tenant/login',                      [AuthController::class, 'showPortalLogin'])->defaults('portal', 'tenant')->name('portal.tenant.login');
+Route::post('/tenant/login',                     [AuthController::class, 'portalLogin'])->defaults('portal', 'tenant')->name('portal.tenant.login.post');
+Route::match(['get', 'post'], '/tenant/logout', [AuthController::class, 'portalLogout'])->defaults('portal', 'tenant')->name('portal.tenant.logout');
+
+// 2. Tenant Employee Portal (Cashiers, Managers, Storekeepers)
+Route::get('/tenant-employee/login',                      [AuthController::class, 'showPortalLogin'])->defaults('portal', 'tenant-employee')->name('portal.tenant_employee.login');
+Route::post('/tenant-employee/login',                     [AuthController::class, 'portalLogin'])->defaults('portal', 'tenant-employee')->name('portal.tenant_employee.login.post');
+Route::match(['get', 'post'], '/tenant-employee/logout', [AuthController::class, 'portalLogout'])->defaults('portal', 'tenant-employee')->name('portal.tenant_employee.logout');
+
+// 3. Super Admin Portal (Platform Super-Administrators)
+Route::get('/super-admin/login',                      [AuthController::class, 'showPortalLogin'])->defaults('portal', 'super-admin')->name('portal.super_admin.login');
+Route::post('/super-admin/login',                     [AuthController::class, 'portalLogin'])->defaults('portal', 'super-admin')->name('portal.super_admin.login.post');
+Route::match(['get', 'post'], '/super-admin/logout', [AuthController::class, 'portalLogout'])->defaults('portal', 'super-admin')->name('portal.super_admin.logout');
+
+// 4. Super-Admin Employee Portal (Platform Staff & Auditors)
+Route::get('/super-admin-employee/login',                      [AuthController::class, 'showPortalLogin'])->defaults('portal', 'super-admin-employee')->name('portal.super_admin_employee.login');
+Route::post('/super-admin-employee/login',                     [AuthController::class, 'portalLogin'])->defaults('portal', 'super-admin-employee')->name('portal.super_admin_employee.login.post');
+Route::match(['get', 'post'], '/super-admin-employee/logout', [AuthController::class, 'portalLogout'])->defaults('portal', 'super-admin-employee')->name('portal.super_admin_employee.logout');
+
+// ─────────────────────────────────────────────────────────
 // SAAS MULTI-TENANT & SUPER ADMIN ROUTES
 // ─────────────────────────────────────────────────────────
 Route::prefix('saas')->name('saas.')->group(function () {
