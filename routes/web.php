@@ -33,6 +33,7 @@ Route::prefix('install')->name('installer.')->group(function () {
 // ─────────────────────────────────────────────────────────
 // PUBLIC MARKETING & LANDING PAGE (Nigerian Retail, Supermarkets & Wholesalers)
 // ─────────────────────────────────────────────────────────
+Route::get('/',        [\App\Http\Controllers\Web\LandingController::class, 'index'])->name('home');
 Route::get('/landing', [\App\Http\Controllers\Web\LandingController::class, 'index'])->name('landing');
 Route::get('/welcome', [\App\Http\Controllers\Web\LandingController::class, 'index'])->name('welcome');
 
@@ -113,7 +114,7 @@ Route::prefix('api')->group(function () {
 // ─────────────────────────────────────────────────────────
 
 // 1. Executive Dashboard (Date Filterable)
-Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
 // 2. Visual Point of Sale (POS)
 Route::prefix('pos')->name('pos.')->group(function () {

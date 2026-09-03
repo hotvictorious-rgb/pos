@@ -16,6 +16,7 @@ class CheckWebAuth
     public function handle(Request $request, Closure $next): Response
     {
         $publicPaths = [
+            '/',
             'login',
             'logout',
             'tenant/login',
@@ -34,13 +35,22 @@ class CheckWebAuth
             'up',
         ];
 
-        foreach ($publicPaths as $pattern) {
-            if ($request->is($pattern)) {
-                return $next($request);
-            }
+        // Always allow logout routes
+        if ($request->is('logout') || $request->is('*/logout')) {
+            return $next($request);
         }
 
         $userId = session('user_id');
+        $hasSession = ($userId || Auth::check());
+
+        // If unauthenticated guest, immediately allow public paths (e.g. root landing page, portal logins)
+        if (!$hasSession) {
+            foreach ($publicPaths as $pattern) {
+                if ($request->is($pattern)) {
+                    return $next($request);
+                }
+            }
+        }
         $isApi = ($request->ajax() || $request->wantsJson() || $request->is('api/*'));
 
         if (!$userId && !Auth::check()) {

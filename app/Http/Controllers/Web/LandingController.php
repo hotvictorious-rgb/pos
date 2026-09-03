@@ -12,6 +12,14 @@ class LandingController extends Controller
      */
     public function index(Request $request)
     {
+        if (\Illuminate\Support\Facades\Auth::check() || session('user_id')) {
+            $user = \Illuminate\Support\Facades\Auth::user();
+            if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+                return redirect()->route('saas.admin.index');
+            }
+            return redirect()->route('dashboard');
+        }
+
         $plans = config('saas.plans', [
             'basic' => [
                 'name' => 'Starter Plan',

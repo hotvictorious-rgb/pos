@@ -1207,22 +1207,15 @@
                         <a href="{{ route('portal.tenant.login') }}" class="portal-menu-item">
                             <span class="icon">🏢</span>
                             <div>
-                                <div>Tenant Owner</div>
-                                <small style="color: var(--text-dim); font-size: 0.72rem;">Business admin & analytics</small>
+                                <div>Store Owner Portal</div>
+                                <small style="color: var(--text-dim); font-size: 0.72rem;">Business admin & consolidated analytics</small>
                             </div>
                         </a>
                         <a href="{{ route('portal.tenant_employee.login') }}" class="portal-menu-item">
                             <span class="icon">💼</span>
                             <div>
-                                <div>Staff & Cashier</div>
-                                <small style="color: var(--text-dim); font-size: 0.72rem;">POS cashier & stockroom</small>
-                            </div>
-                        </a>
-                        <a href="{{ route('portal.super_admin.login') }}" class="portal-menu-item">
-                            <span class="icon">🛡️</span>
-                            <div>
-                                <div>Platform Super-Admin</div>
-                                <small style="color: var(--text-dim); font-size: 0.72rem;">Platform control center</small>
+                                <div>Staff & Cashier Portal</div>
+                                <small style="color: var(--text-dim); font-size: 0.72rem;">Fast POS checkout & sales drawer</small>
                             </div>
                         </a>
                     </div>
@@ -1385,6 +1378,56 @@
             </div>
         </div>
     </section>
+
+    <!-- Merchant & Staff Access Hub -->
+    <div id="portals" style="padding: 3rem 0; background: rgba(11, 17, 32, 0.8); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+        <div class="container">
+            <div style="text-align: center; margin-bottom: 2rem;">
+                <div style="font-size: 0.8rem; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem;">DIRECT STORE ACCESS</div>
+                <h2 style="font-size: 1.8rem; font-weight: 900; color: #ffffff;">Sign In or Launch Your Store</h2>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 16px; padding: 1.75rem; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem;">🏢 TENANT OWNER PORTAL</div>
+                        <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; color: #ffffff;">Store Owners & Directors</h3>
+                        <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 1.25rem;">
+                            Access multi-branch sales analytics, cash collections, inter-warehouse waybills, and staff permissions from your phone or PC.
+                        </p>
+                    </div>
+                    <a href="{{ route('portal.tenant.login') }}" class="btn" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; font-weight: 700; width: 100%;">
+                        Sign In as Store Owner →
+                    </a>
+                </div>
+
+                <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 16px; padding: 1.75rem; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #60a5fa; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem;">💼 STAFF & CASHIER PORTAL</div>
+                        <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; color: #ffffff;">Store Cashiers & Managers</h3>
+                        <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 1.25rem;">
+                            Visual touchscreen POS, fast barcode scanning, split tender matching (Cash, Transfer, Card), and thermal receipt printing.
+                        </p>
+                    </div>
+                    <a href="{{ route('portal.tenant_employee.login') }}" class="btn" style="background: rgba(37, 99, 235, 0.15); border: 1px solid #3b82f6; color: #93c5fd; font-weight: 700; width: 100%;">
+                        Open Cashier Terminal →
+                    </a>
+                </div>
+
+                <div style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(16, 185, 129, 0.15)); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 16px; padding: 1.75rem; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #34d399; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem;">⚡ NEW VENDOR? 14-DAY TRIAL</div>
+                        <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; color: #ffffff;">Register Your Business</h3>
+                        <p style="font-size: 0.88rem; color: #cbd5e1; line-height: 1.6; margin-bottom: 1.25rem;">
+                            Set up your store, branches, and cashiers in under 60 seconds. Full access to all features. Zero credit card required.
+                        </p>
+                    </div>
+                    <a href="{{ route('saas.register') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; width: 100%; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);">
+                        Create Store in 60s 🚀
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Nigerian Realities Section -->
     <section id="solutions" class="section">
@@ -1847,12 +1890,11 @@
                 </div>
 
                 <div>
-                    <h4 class="footer-heading">Access Portals</h4>
+                    <h4 class="footer-heading">Merchant Sign In</h4>
                     <ul class="footer-links">
-                        <li><a href="{{ route('portal.tenant.login') }}" class="footer-link">🏢 Tenant Owner Login</a></li>
-                        <li><a href="{{ route('portal.tenant_employee.login') }}" class="footer-link">💼 Staff & Cashier Login</a></li>
-                        <li><a href="{{ route('portal.super_admin.login') }}" class="footer-link">🛡️ Super-Admin Portal</a></li>
-                        <li><a href="{{ route('portal.super_admin_employee.login') }}" class="footer-link">👥 Platform Staff Portal</a></li>
+                        <li><a href="{{ route('portal.tenant.login') }}" class="footer-link">🏢 Business Owner Sign In</a></li>
+                        <li><a href="{{ route('portal.tenant_employee.login') }}" class="footer-link">💼 Staff & Cashier Sign In</a></li>
+                        <li><a href="{{ route('saas.register') }}" class="footer-link" style="color: var(--accent); font-weight: 700;">🚀 Register New Store</a></li>
                     </ul>
                 </div>
 

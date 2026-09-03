@@ -67,9 +67,9 @@ class AuthController extends Controller
     public function showLogin(Request $request)
     {
         if (session('user_id') || \Illuminate\Support\Facades\Auth::check()) {
-            return redirect('/');
+            return redirect()->route('dashboard');
         }
-        return view('auth.login');
+        return redirect()->route('portal.tenant.login');
     }
 
     public function webLogin(Request $request)

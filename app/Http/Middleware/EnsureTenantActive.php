@@ -15,9 +15,11 @@ class EnsureTenantActive
             return $next($request);
         }
 
-        // Allow access to SaaS registration, suspended page, assets, public landing and auth/portal login & logout
-        if ($request->is('saas/*') || $request->is('landing') || $request->is('welcome') || $request->is('login') || $request->is('logout') || $request->is('*/login') || $request->is('*/logout')) {
-            return $next($request);
+        // Allow access to public landing, SaaS registration, suspended page, assets, and auth/portal login & logout
+        if ($request->is('/') || $request->is('saas/*') || $request->is('landing') || $request->is('welcome') || $request->is('login') || $request->is('logout') || $request->is('*/login') || $request->is('*/logout')) {
+            if (empty(session('tenant_id'))) {
+                return $next($request);
+            }
         }
 
         $tenantId = session('tenant_id');
