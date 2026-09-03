@@ -209,15 +209,16 @@ class StockService
                 ]);
 
                 $stock = $this->getStockLevel($product->id, $warehouseId, true);
+                $availableStock = (int) ($stock->physical_stock - $stock->allocated_stock);
 
                 if ($isSuppliedNow) {
-                    if ($stock->physical_stock < $qty) {
+                    if ($availableStock < $qty) {
                         throw new InsufficientStockException(
-                            "Cannot complete sale: Insufficient physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Available: {$stock->physical_stock}, Requested: {$qty}",
+                            "Cannot complete sale: Insufficient available physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Allocated: {$stock->allocated_stock}, Available: {$availableStock}, Requested: {$qty}",
                             $product->code,
                             $product->name,
                             $warehouseId,
-                            $stock->physical_stock,
+                            $availableStock,
                             $qty
                         );
                     }
@@ -242,7 +243,19 @@ class StockService
                         'timestamp' => now()->toIso8601String(),
                     ]);
                 } else {
-                    // Physical stock stays on ground; allocated stock is reserved
+                    // Unsupplied sale: Physical stock stays on ground; allocated stock is reserved
+                    // Invariant: allocated_stock <= physical_stock (cannot reserve more than available unallocated stock)
+                    if ($availableStock < $qty) {
+                        throw new InsufficientStockException(
+                            "Cannot reserve unsupplied sale: Insufficient available physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Already Allocated: {$stock->allocated_stock}, Available to reserve: {$availableStock}, Requested: {$qty}",
+                            $product->code,
+                            $product->name,
+                            $warehouseId,
+                            $availableStock,
+                            $qty
+                        );
+                    }
+
                     $stock->allocated_stock += $qty;
                     $stock->save();
 
@@ -797,10 +810,17 @@ class StockService
                     $firstProduct = $product;
                 }
 
-                // Restore physical closing stock with row locking
+                // Restore physical closing stock or release allocation with row locking
                 $stock = $this->getStockLevel($product->id, $warehouseId, true);
-                $stock->physical_stock += $qty;
-                $stock->save();
+                if ($sale->deliveryStatus === 'UNSUPPLIED') {
+                    // Goods were reserved on ground but never physically taken; release allocation
+                    $stock->allocated_stock = max(0, $stock->allocated_stock - $qty);
+                    $stock->save();
+                } else {
+                    // Goods were physically delivered; restore physical stock to shelves
+                    $stock->physical_stock += $qty;
+                    $stock->save();
+                }
 
                 $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
                 $product->save();

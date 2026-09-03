@@ -26,10 +26,10 @@ class StockLevel extends Model
         'min_stock_alert' => 'integer',
     ];
 
-    /** All physical stock on ground is directly sellable */
+    /** Unallocated physical stock available to sell or reserve */
     public function getAvailableStockAttribute(): int
     {
-        return $this->physical_stock;
+        return max(0, $this->physical_stock - $this->allocated_stock);
     }
 
     public function warehouse(): BelongsTo

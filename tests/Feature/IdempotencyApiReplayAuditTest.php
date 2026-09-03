@@ -572,4 +572,139 @@ class IdempotencyApiReplayAuditTest extends TestCase
         $this->assertEquals($this->userA1->id, $act->userId);
         $this->assertStringContainsString('15,000.00', $act->description);
     }
+
+    /**
+     * TEST 8: Cache loss / eviction does NOT cause duplicate financial transactions.
+     * Persistent IdempotencyRecord protects against replaying previously processed checkouts.
+     */
+    public function test_idempotency_survives_cache_loss_and_prevents_duplicate_financial_transactions()
+    {
+        $idempotencyKey = 'IDEM-KEY-DURABLE-01';
+
+        $payload = [
+            'warehouse_id' => $this->warehouseA->id,
+            'is_supplied' => 'yes',
+            'paidAmount' => 50000.00,
+            'cashAmount' => 50000.00,
+            'items' => [
+                ['productId' => $this->productA1->id, 'quantity' => 1],
+            ],
+        ];
+
+        // Request 1: Initial successful checkout
+        $res1 = $this->actingAs($this->userA1)->withSession([
+            'user_id' => $this->userA1->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            'portal' => 'tenant-employee',
+        ])->withHeader('X-Idempotency-Key', $idempotencyKey)
+          ->postJson('/pos/checkout', $payload);
+
+        $res1->assertStatus(200);
+        $saleId1 = $res1->json('saleId');
+        $this->assertNotNull($saleId1);
+        $this->assertEquals(1, Sale::where('id', $saleId1)->count());
+
+        // Stock was deducted by 1: 100 -> 99
+        $stock1 = StockLevel::where('product_id', $this->productA1->id)->where('warehouse_id', $this->warehouseA->id)->first();
+        $this->assertEquals(99, $stock1->physical_stock);
+
+        // Verify that a persistent IdempotencyRecord was written to the database
+        $dbRecord = \App\Models\IdempotencyRecord::withoutGlobalScopes()
+            ->where('tenant_id', $this->tenantA->id)
+            ->where('operation', 'pos_checkout')
+            ->where('idempotency_key', $idempotencyKey)
+            ->first();
+        $this->assertNotNull($dbRecord, "Persistent idempotency record must exist in database.");
+        $this->assertEquals('COMPLETED', $dbRecord->status);
+        $this->assertEquals($this->userA1->id, $dbRecord->user_id);
+
+        // ── SIMULATE COMPLETE CACHE LOSS / FLUSH / REDIS CRASH / EVICTION ──
+        \Illuminate\Support\Facades\Cache::flush();
+
+        // Verify cache is genuinely empty
+        $cacheKey = "idempotency:{$this->tenantA->id}:pos_checkout:{$idempotencyKey}";
+        $this->assertNull(\Illuminate\Support\Facades\Cache::get($cacheKey));
+
+        // Request 2: Retry with exact same key after cache loss
+        $res2 = $this->actingAs($this->userA1)->withSession([
+            'user_id' => $this->userA1->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            'portal' => 'tenant-employee',
+        ])->withHeader('X-Idempotency-Key', $idempotencyKey)
+          ->postJson('/pos/checkout', $payload);
+
+        $res2->assertStatus(200);
+        $saleId2 = $res2->json('saleId');
+
+        // MUST return the EXACT same sale ID
+        $this->assertEquals($saleId1, $saleId2);
+
+        // Stock MUST NOT be deducted a second time (MUST remain 99, not 98)
+        $stock2 = StockLevel::where('product_id', $this->productA1->id)->where('warehouse_id', $this->warehouseA->id)->first();
+        $this->assertEquals(99, $stock2->physical_stock, "Physical stock must remain 99; no second deduction permitted.");
+
+        // Sales table MUST NOT contain a second duplicate sale record
+        $this->assertEquals(1, Sale::where('tenant_id', $this->tenantA->id)->count(), "No duplicate sale may be created.");
+    }
+
+    /**
+     * TEST 9: Persistent idempotency rejects payload tampering and user hijacking even after cache loss
+     */
+    public function test_persistent_idempotency_enforces_fingerprint_and_user_authorization_after_cache_loss()
+    {
+        $idempotencyKey = 'IDEM-KEY-TAMPER-DURABLE-02';
+
+        $payloadOriginal = [
+            'warehouse_id' => $this->warehouseA->id,
+            'is_supplied' => 'yes',
+            'paidAmount' => 50000.00,
+            'cashAmount' => 50000.00,
+            'items' => [
+                ['productId' => $this->productA1->id, 'quantity' => 1],
+            ],
+        ];
+
+        // 1. Initial checkout by Cashier 1
+        $res1 = $this->actingAs($this->userA1)->withSession([
+            'user_id' => $this->userA1->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            'portal' => 'tenant-employee',
+        ])->withHeader('X-Idempotency-Key', $idempotencyKey)
+          ->postJson('/pos/checkout', $payloadOriginal);
+
+        $res1->assertStatus(200);
+
+        // Wipe cache
+        \Illuminate\Support\Facades\Cache::flush();
+
+        // 2. Tampered Payload: Attempt to use same key with different amount
+        $payloadTampered = $payloadOriginal;
+        $payloadTampered['paidAmount'] = 10000.00;
+
+        $resTampered = $this->actingAs($this->userA1)->withSession([
+            'user_id' => $this->userA1->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            'portal' => 'tenant-employee',
+        ])->withHeader('X-Idempotency-Key', $idempotencyKey)
+          ->postJson('/pos/checkout', $payloadTampered);
+
+        $resTampered->assertStatus(422); // Rejection
+        $this->assertStringContainsString('different request payload', $resTampered->json('error'));
+
+        // 3. User Hijacking: Attempt by Cashier 2 to reuse Cashier 1's key
+        $resHijack = $this->actingAs($this->userA2)->withSession([
+            'user_id' => $this->userA2->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            'portal' => 'tenant-employee',
+        ])->withHeader('X-Idempotency-Key', $idempotencyKey)
+          ->postJson('/pos/checkout', $payloadOriginal);
+
+        $resHijack->assertStatus(422);
+        $this->assertStringContainsString('across different user accounts', $resHijack->json('error'));
+    }
 }

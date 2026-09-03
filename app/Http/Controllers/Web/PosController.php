@@ -57,7 +57,7 @@ class PosController extends Controller
 
             $product->physical_stock = $stock ? $stock->physical_stock : 0;
             $product->allocated_stock = $stock ? $stock->allocated_stock : 0;
-            $product->available_stock = $product->physical_stock; // All physical items on ground are sellable
+            $product->available_stock = max(0, $product->physical_stock - $product->allocated_stock);
             return $product;
         });
 

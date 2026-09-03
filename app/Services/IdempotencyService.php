@@ -3,11 +3,14 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
+use App\Models\IdempotencyRecord;
+use Illuminate\Support\Str;
 
 class IdempotencyService
 {
     /**
-     * Executes an operation with robust request fingerprinting and atomic replay protection.
+     * Executes an operation with robust request fingerprinting, L1 cache acceleration,
+     * and durable database-backed replay protection.
      *
      * @param string $operation Unique identifier of the operation (e.g., 'checkout', 'debt_payment')
      * @param string $idempotencyKey Client-supplied key
@@ -43,7 +46,8 @@ class IdempotencyService
         // Atomic lock to serialize concurrent identical requests
         $lock = Cache::lock($lockKey, 15);
 
-        return $lock->block(10, function () use ($cacheKey, $cleanKey, $fingerprint, $userId, $callback) {
+        return $lock->block(10, function () use ($cacheKey, $cleanKey, $fingerprint, $tenantId, $operation, $userId, $callback) {
+            // ── L1: In-Memory / Distributed Cache Fast-Path ──
             $cached = Cache::get($cacheKey);
 
             if ($cached) {
@@ -64,10 +68,63 @@ class IdempotencyService
                 return $cached['result'];
             }
 
-            // Execute the business operation
+            // ── L2: Durable Database Persistence (Survives Cache Flush / Restart / Eviction) ──
+            $persistentRecord = IdempotencyRecord::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->where('operation', $operation)
+                ->where('idempotency_key', $cleanKey)
+                ->first();
+
+            if ($persistentRecord) {
+                // Check 1: Request Fingerprint Invariance
+                if ($persistentRecord->payload_fingerprint !== $fingerprint) {
+                    throw new \InvalidArgumentException(
+                        "Idempotency Conflict: Key '{$cleanKey}' has already been used for a different request payload."
+                    );
+                }
+
+                // Check 2: User Authorization Scoping
+                if ($persistentRecord->user_id !== $userId) {
+                    throw new \InvalidArgumentException(
+                        "Idempotency Authorization Violation: Key '{$cleanKey}' cannot be reused across different user accounts."
+                    );
+                }
+
+                if ($persistentRecord->status === 'COMPLETED') {
+                    $result = $this->deserializeResult($persistentRecord->response_data);
+
+                    // Repopulate L1 cache
+                    Cache::put($cacheKey, [
+                        'fingerprint' => $fingerprint,
+                        'user_id' => $userId,
+                        'result' => $result,
+                        'created_at' => $persistentRecord->created_at?->toIso8601String() ?? now()->toIso8601String(),
+                    ], now()->addHours(24));
+
+                    return $result;
+                }
+            }
+
+            // ── Execution: Run the transactional business operation ──
             $result = $callback();
 
-            // Store result with 24-hour TTL after successful execution
+            // Store in L2 Persistent Database
+            IdempotencyRecord::withoutGlobalScopes()->updateOrCreate(
+                [
+                    'tenant_id' => $tenantId,
+                    'operation' => $operation,
+                    'idempotency_key' => $cleanKey,
+                ],
+                [
+                    'id' => (string) Str::uuid(),
+                    'user_id' => $userId,
+                    'payload_fingerprint' => $fingerprint,
+                    'status' => 'COMPLETED',
+                    'response_data' => $this->serializeResult($result),
+                ]
+            );
+
+            // Store in L1 Cache with 24-hour TTL
             Cache::put($cacheKey, [
                 'fingerprint' => $fingerprint,
                 'user_id' => $userId,
@@ -77,5 +134,45 @@ class IdempotencyService
 
             return $result;
         });
+    }
+
+    /**
+     * Serializes result for durable storage.
+     */
+    protected function serializeResult(mixed $result): mixed
+    {
+        if ($result instanceof \Illuminate\Database\Eloquent\Model) {
+            return [
+                '__type' => 'eloquent_model',
+                '__class' => get_class($result),
+                'id' => (string) $result->getKey(),
+                'attributes' => $result->getAttributes(),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Deserializes result back to original model or data structure.
+     */
+    protected function deserializeResult(mixed $data): mixed
+    {
+        if (is_array($data) && ($data['__type'] ?? null) === 'eloquent_model') {
+            $class = $data['__class'] ?? null;
+            $id = $data['id'] ?? null;
+            if ($class && class_exists($class) && $id) {
+                $model = $class::withoutGlobalScopes()->find($id);
+                if ($model) {
+                    return $model;
+                }
+                $instance = new $class();
+                $instance->setRawAttributes($data['attributes'] ?? [], true);
+                $instance->exists = true;
+                return $instance;
+            }
+        }
+
+        return $data;
     }
 }
