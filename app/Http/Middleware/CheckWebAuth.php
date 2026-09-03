@@ -29,6 +29,8 @@ class CheckWebAuth
             'install',
             'install/*',
             'api/login',
+            'landing',
+            'welcome',
             'up',
         ];
 

@@ -31,6 +31,12 @@ Route::prefix('install')->name('installer.')->group(function () {
 });
 
 // ─────────────────────────────────────────────────────────
+// PUBLIC MARKETING & LANDING PAGE (Nigerian Retail, Supermarkets & Wholesalers)
+// ─────────────────────────────────────────────────────────
+Route::get('/landing', [\App\Http\Controllers\Web\LandingController::class, 'index'])->name('landing');
+Route::get('/welcome', [\App\Http\Controllers\Web\LandingController::class, 'index'])->name('welcome');
+
+// ─────────────────────────────────────────────────────────
 // AUTHENTICATION & SESSIONS
 // ─────────────────────────────────────────────────────────
 Route::get('/login',  [AuthController::class, 'showLogin'])->name('login');
