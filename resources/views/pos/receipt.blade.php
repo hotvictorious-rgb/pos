@@ -208,10 +208,22 @@
                 <span>TOTAL:</span>
                 <span>₦{{ number_format($sale->totalAmount, 0) }}</span>
             </div>
+            @if($sale->tenderedAmount > 0 && $sale->tenderedAmount != $sale->paidAmount)
+            <div class="receipt-row" style="font-size: 0.85rem; color: #475569;">
+                <span>Total Tendered:</span>
+                <span>₦{{ number_format($sale->tenderedAmount, 0) }}</span>
+            </div>
+            @endif
             <div class="receipt-row" style="color: #16a34a; font-weight: 700;">
-                <span>Amount Paid:</span>
+                <span>Net Paid:</span>
                 <span>₦{{ number_format($sale->paidAmount, 0) }} ({{ $paymentStatus }})</span>
             </div>
+            @if($sale->changeAmount > 0)
+            <div class="receipt-row" style="color: #2563eb; font-weight: 800;">
+                <span>Change Returned:</span>
+                <span>₦{{ number_format($sale->changeAmount, 0) }}</span>
+            </div>
+            @endif
 
             @if($debtRemaining > 0)
             <div class="receipt-row" style="color: #dc2626; font-weight: 800;">

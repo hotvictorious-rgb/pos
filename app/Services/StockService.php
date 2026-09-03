@@ -155,15 +155,55 @@ class StockService
             }
 
             // Server is strictly authoritative for totalAmount
-            $totalAmount = $serverTotal;
-            $paidAmount = isset($saleData['paidAmount']) ? (float) $saleData['paidAmount'] : $totalAmount;
-            if ($paidAmount < 0) {
-                throw new \InvalidArgumentException("Paid amount cannot be negative.");
-            }
+            $totalAmount = (float) $serverTotal;
 
+            // Tender accounting & reconciliation
             $cashAmount = (float) ($saleData['cashAmount'] ?? 0);
             $posAmount = (float) ($saleData['posAmount'] ?? 0);
             $transferAmount = (float) ($saleData['transferAmount'] ?? 0);
+
+            if ($cashAmount < 0 || $posAmount < 0 || $transferAmount < 0) {
+                throw new \InvalidArgumentException("Payment tender amounts cannot be negative.");
+            }
+
+            // Total tender presented
+            $tenderedTotal = $cashAmount + $posAmount + $transferAmount;
+
+            // If no explicit split tender, fallback to paidAmount as cash tender
+            if ($tenderedTotal == 0 && isset($saleData['paidAmount'])) {
+                $tenderedTotal = (float) $saleData['paidAmount'];
+                $cashAmount = $tenderedTotal;
+            }
+
+            // Electronic payment validation: Cards & Transfers cannot exceed total bill
+            if (($posAmount + $transferAmount) > $totalAmount) {
+                throw new \InvalidArgumentException(
+                    "Electronic payments (POS & Transfer: ₦" . number_format($posAmount + $transferAmount, 2) . ") cannot exceed sale total amount of ₦" . number_format($totalAmount, 2) . ". Cash change cannot be disbursed from card/transfer overpayment."
+                );
+            }
+
+            // Change calculation: Cash tendered beyond what is required to pay the bill
+            $changeAmount = 0.0;
+            if ($tenderedTotal > $totalAmount) {
+                $changeAmount = round($tenderedTotal - $totalAmount, 2);
+                if ($changeAmount > $cashAmount) {
+                    throw new \InvalidArgumentException("Change amount cannot exceed cash tendered.");
+                }
+            }
+
+            // Net payment applied to the sale: CANNOT exceed totalAmount!
+            $paidAmount = min($totalAmount, max(0.0, round($tenderedTotal - $changeAmount, 2)));
+
+            // If a partial payment was explicitly declared by client (credit sale where customer tendered less than total):
+            if (isset($saleData['paidAmount']) && (float)$saleData['paidAmount'] < $totalAmount && (float)$saleData['paidAmount'] <= $tenderedTotal) {
+                $declaredPaid = (float) $saleData['paidAmount'];
+                $paidAmount = min($totalAmount, max(0.0, round($declaredPaid, 2)));
+                $changeAmount = max(0.0, round($tenderedTotal - $paidAmount, 2));
+            }
+
+            // Net cash kept in drawer
+            $netCashKept = max(0.0, round($cashAmount - $changeAmount, 2));
+
             $customerId = $saleData['customerId'] ?? null;
             $customerName = $saleData['customerName'] ?? 'Walk-in Customer';
 
@@ -173,12 +213,17 @@ class StockService
 
             $sale = Sale::create([
                 'id' => $saleId,
+                'tenant_id' => session('tenant_id') ?? null,
+                'warehouse_id' => $warehouseId,
                 'customerName' => $customerName,
                 'customerId' => $customerId,
                 'totalAmount' => $totalAmount,
                 'paidAmount' => $paidAmount,
-                'cashAmount' => $cashAmount,
-                'posAmount' => $posAmount + $transferAmount,
+                'tenderedAmount' => $tenderedTotal,
+                'changeAmount' => $changeAmount,
+                'cashAmount' => $netCashKept,
+                'posAmount' => $posAmount,
+                'transferAmount' => $transferAmount,
                 'note' => $saleData['note'] ?? null,
                 'status' => $saleStatus,
                 'sale_type' => $saleType,
@@ -198,6 +243,7 @@ class StockService
                 $lineTotal = $vItem['totalPrice'];
 
                 SaleItem::create([
+                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                     'saleId' => $saleId,
                     'productId' => $product->id,
                     'productName' => $product->name,
@@ -274,13 +320,59 @@ class StockService
                 }
             }
 
-            // Record initial payment entry if paidAmount > 0
-            if ($paidAmount > 0) {
+            // Record granular Payment records for each tender method used in mixed/split payments
+            $tenantId = session('tenant_id') ?? $sale->tenant_id ?? null;
+
+            // 1. Cash Tender (Net cash retained in cashier drawer after change)
+            if ($netCashKept > 0) {
                 Payment::create([
                     'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'saleId' => $saleId,
+                    'amount' => $netCashKept,
+                    'method' => 'CASH',
+                    'timestamp' => now()->toIso8601String(),
+                    'recordedBy' => $userName,
+                    'createdAt' => now()->toIso8601String(),
+                ]);
+            }
+
+            // 2. POS Card Payment
+            if ($posAmount > 0) {
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'saleId' => $saleId,
+                    'amount' => $posAmount,
+                    'method' => 'POS',
+                    'timestamp' => now()->toIso8601String(),
+                    'recordedBy' => $userName,
+                    'createdAt' => now()->toIso8601String(),
+                ]);
+            }
+
+            // 3. Bank Transfer Payment
+            if ($transferAmount > 0) {
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'saleId' => $saleId,
+                    'amount' => $transferAmount,
+                    'method' => 'TRANSFER',
+                    'timestamp' => now()->toIso8601String(),
+                    'recordedBy' => $userName,
+                    'createdAt' => now()->toIso8601String(),
+                ]);
+            }
+
+            // Fallback for legacy calls or tests where only paidAmount is provided without breakdown
+            if ($paidAmount > 0 && $netCashKept == 0 && $posAmount == 0 && $transferAmount == 0) {
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
                     'saleId' => $saleId,
                     'amount' => $paidAmount,
-                    'method' => $cashAmount > 0 ? 'CASH' : ($posAmount > 0 ? 'POS' : 'TRANSFER'),
+                    'method' => 'CASH',
                     'timestamp' => now()->toIso8601String(),
                     'recordedBy' => $userName,
                     'createdAt' => now()->toIso8601String(),
@@ -327,6 +419,11 @@ class StockService
     {
         return DB::transaction(function () use ($saleId, $warehouseId, $userId, $userName) {
             $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
+
+            // Branch isolation: Goods must be dispatched from the branch where they were originally sold/reserved
+            if (!empty($sale->warehouse_id) && (int) $sale->warehouse_id !== (int) $warehouseId) {
+                throw new \InvalidArgumentException("Cross-branch dispatch rejected: Sale #{$saleId} was reserved at Branch #{$sale->warehouse_id} and cannot be dispatched from Branch #{$warehouseId}.");
+            }
 
             if ($sale->deliveryStatus === 'DELIVERED') {
                 throw new \Exception('Sale has already been fully delivered/dispatched.');
@@ -765,6 +862,11 @@ class StockService
 
             $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
 
+            // Branch isolation: Returns must be processed at the originating branch
+            if (!empty($sale->warehouse_id) && (int) $sale->warehouse_id !== (int) $warehouseId) {
+                throw new \InvalidArgumentException("Cross-branch return rejected: Sale #{$saleId} originated at Branch #{$sale->warehouse_id} and cannot be returned at Branch #{$warehouseId}.");
+            }
+
             // Fetch prior returns for this sale to enforce refund & item quantity ceilings
             $priorReturns = \App\Models\SalesReturn::where('saleId', $saleId)->get();
             $priorRefundedTotal = (float) $priorReturns->sum('refundAmount');
@@ -851,6 +953,7 @@ class StockService
 
             $salesReturn = \App\Models\SalesReturn::create([
                 'id' => (string) Str::uuid(),
+                'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                 'saleId' => $saleId,
                 'customerName' => $sale->customerName,
                 'code' => 'RET-' . strtoupper(Str::random(6)),

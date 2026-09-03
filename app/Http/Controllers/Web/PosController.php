@@ -233,7 +233,7 @@ class PosController extends Controller
             'customerName' => $customerName ?: 'Walk-in Customer',
             'customerPhone' => $customerPhone ?: null,
             'customerId' => $customerId,
-            'sale_type' => $request->get('sale_type', 'RETAIL'),
+            'sale_type' => 'RETAIL', // Strictly forced: Client cannot select privileged wholesale mode at retail checkout
             'note' => $request->note,
         ];
 
@@ -289,10 +289,17 @@ class PosController extends Controller
      */
     public function receipt($id)
     {
-        $sale = Sale::with('items')->findOrFail($id);
-        $saleUser = \App\Models\User::find($sale->userId);
-        $saleWarehouseId = ($saleUser && !empty($saleUser->warehouse_id)) ? $saleUser->warehouse_id : session('active_warehouse_id');
-        $warehouse = Warehouse::find($saleWarehouseId) ?? Warehouse::first();
+        $sale = Sale::with(['items', 'warehouse'])->findOrFail($id);
+
+        // Branch Isolation: Cashiers are strictly restricted to receipts within their own assigned branch
+        $authUser = Auth::user();
+        if ($authUser && $authUser->role === 'cashier' && !empty($authUser->warehouse_id)) {
+            if (!empty($sale->warehouse_id) && (int) $sale->warehouse_id !== (int) $authUser->warehouse_id) {
+                abort(403, '🔒 Access Denied: Cashiers are strictly restricted to viewing receipts from their assigned branch.');
+            }
+        }
+
+        $warehouse = $sale->warehouse ?? Warehouse::find($sale->warehouse_id) ?? Warehouse::first();
 
         return view('pos.receipt', compact('sale', 'warehouse'));
     }

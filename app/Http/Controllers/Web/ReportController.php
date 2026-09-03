@@ -134,8 +134,14 @@ class ReportController extends Controller
         $totalInvoices = $sales->count();
         $totalDebtOwedAllTime = Customer::sum('total_debt');
 
-        // Top Selling Products (by revenue)
-        $topProducts = SaleItem::selectRaw('productName, code, sum(quantity) as total_qty, sum(totalPrice) as total_revenue')
+        // Top Selling Products (by revenue) - Strictly scoped to filtered sales within tenant & branch
+        $topProductsQuery = SaleItem::selectRaw('productName, code, sum(quantity) as total_qty, sum(totalPrice) as total_revenue');
+        if ($sales->isNotEmpty()) {
+            $topProductsQuery->whereIn('saleId', $sales->pluck('id'));
+        } else {
+            $topProductsQuery->whereRaw('1 = 0');
+        }
+        $topProducts = $topProductsQuery
             ->groupBy('productName', 'code')
             ->orderBy('total_revenue', 'desc')
             ->take(5)

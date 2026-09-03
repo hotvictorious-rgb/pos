@@ -50,7 +50,8 @@ class InstallerController extends Controller
                 $request->db_password ?? ''
             );
         } catch (\PDOException $e) {
-            return back()->withErrors(['db_host' => 'Cannot connect to database: ' . $e->getMessage()])
+            \Log::error("Installer DB connection error: " . $e->getMessage());
+            return back()->withErrors(['db_host' => 'Unable to connect to the database. Please verify your host, port, credentials, and database name.'])
                          ->withInput();
         }
 
@@ -91,11 +92,11 @@ class InstallerController extends Controller
             'admin_password' => 'required|min:8|confirmed',
         ]);
 
-        // Store admin details in session for the installing step
+        // Store pre-hashed password in session; never store plaintext passwords
         session([
-            'installer_admin_name'     => $request->admin_name,
-            'installer_admin_email'    => $request->admin_email,
-            'installer_admin_password' => $request->admin_password,
+            'installer_admin_name'          => $request->admin_name,
+            'installer_admin_email'         => $request->admin_email,
+            'installer_admin_password_hash' => Hash::make($request->admin_password),
         ]);
 
         return view('installer.installing');
@@ -114,16 +115,17 @@ class InstallerController extends Controller
             Artisan::call('migrate', ['--force' => true]);
 
             // Create the admin user
-            $adminName  = session('installer_admin_name');
-            $adminEmail = session('installer_admin_email');
-            $adminPass  = session('installer_admin_password');
+            $adminName     = session('installer_admin_name');
+            $adminEmail    = session('installer_admin_email');
+            $adminPassHash = session('installer_admin_password_hash');
 
-            if ($adminEmail) {
+            if ($adminEmail && $adminPassHash) {
                 \App\Models\User::updateOrCreate(
                     ['email' => $adminEmail],
                     [
                         'name'     => $adminName,
-                        'password' => Hash::make($adminPass),
+                        'password' => $adminPassHash,
+                        'role'     => 'admin',
                     ]
                 );
             }
@@ -137,7 +139,7 @@ class InstallerController extends Controller
             Artisan::call('view:cache');
 
             // Clear installer session data
-            session()->forget(['installer_admin_name', 'installer_admin_email', 'installer_admin_password']);
+            session()->forget(['installer_admin_name', 'installer_admin_email', 'installer_admin_password_hash']);
 
             return response()->json(['success' => true]);
         } catch (\Throwable $e) {

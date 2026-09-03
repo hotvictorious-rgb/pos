@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\BelongsToTenant;
 
 class SalesReturn extends Model
 {
+    use BelongsToTenant;
+
     protected $table = 'sales_returns';
 
     public $incrementing = false;
@@ -13,6 +16,7 @@ class SalesReturn extends Model
 
     protected $fillable = [
         'id',
+        'tenant_id',
         'saleId',
         'customerName',
         'code',
@@ -35,4 +39,16 @@ class SalesReturn extends Model
         'refundAmount' => 'double',
         'wasDelivered' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function ($return) {
+            if (empty($return->tenant_id) && !empty($return->saleId)) {
+                $parentSale = Sale::withoutGlobalScopes()->find($return->saleId);
+                if ($parentSale && !empty($parentSale->tenant_id)) {
+                    $return->tenant_id = $parentSale->tenant_id;
+                }
+            }
+        });
+    }
 }
