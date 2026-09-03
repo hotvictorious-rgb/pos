@@ -20,7 +20,7 @@ class CheckWebAuth
             'logout',
             'install',
             'install/*',
-            'api/*',
+            'api/login',
             'up',
         ];
 
@@ -31,25 +31,53 @@ class CheckWebAuth
         }
 
         $userId = session('user_id');
+        $isApi = ($request->ajax() || $request->wantsJson() || $request->is('api/*'));
 
         if (!$userId && !Auth::check()) {
-            if ($request->ajax() || $request->wantsJson()) {
+            if ($isApi) {
                 return response()->json(['error' => 'Unauthenticated.'], 401);
             }
             session()->put('url.intended', $request->fullUrl());
             return redirect()->route('login')->with('warning', 'Please log in to access the system.');
         }
 
-        $user = Auth::user() ?: User::find($userId);
+        $user = Auth::user() ?: User::findForAuthenticationById($userId);
 
         if (!$user || $user->disabled) {
-            session()->forget('user_id');
+            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);
             Auth::logout();
+            if ($isApi) {
+                return response()->json(['error' => 'Your session has expired or your account is disabled.'], 401);
+            }
             return redirect()->route('login')->with('error', 'Your session has expired or your account is disabled.');
         }
 
         if (!Auth::check() || Auth::id() !== $user->id) {
             Auth::login($user);
+        }
+
+        // Validate and synchronize tenant_id context securely
+        if (config('saas.enabled')) {
+            if (!session('is_impersonating')) {
+                // If a normal tenant user has no valid tenant, deny access rather than assigning them to the platform tenant
+                if (empty($user->tenant_id)) {
+                    session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);
+                    Auth::logout();
+                    if ($isApi) {
+                        return response()->json(['error' => 'Forbidden: Account is not associated with an active tenant.'], 403);
+                    }
+                    return redirect()->route('login')->with('error', 'Your account is not assigned to an active tenant.');
+                }
+
+                if (session('tenant_id') !== $user->tenant_id) {
+                    session(['tenant_id' => $user->tenant_id]);
+                }
+            }
+        } else {
+            // Standalone mode: set default tenant context if not set
+            if (!session()->has('tenant_id')) {
+                session(['tenant_id' => 'default-tenant']);
+            }
         }
 
         view()->share('authUser', $user);

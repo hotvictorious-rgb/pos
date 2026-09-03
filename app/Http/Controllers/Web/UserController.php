@@ -46,6 +46,19 @@ class UserController extends Controller
         $creatorName = Auth::user()->name ?? 'Auditor / Admin';
 
         $role = $request->role;
+        if ($role === 'super_admin' && (!Auth::check() || !Auth::user()->isSuperAdmin())) {
+            return back()->withErrors(['role' => 'Forbidden: Super-Administrator role cannot be assigned.']);
+        }
+
+        $warehouseId = null;
+        if ($request->filled('warehouse_id')) {
+            $wh = Warehouse::find($request->warehouse_id);
+            if (!$wh) {
+                return back()->withErrors(['warehouse_id' => 'Selected branch location does not exist in your business.']);
+            }
+            $warehouseId = $wh->id;
+        }
+
         $permissions = match($role) {
             'viewer', 'executive_readonly' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
             default => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true, 'adjustments' => true, 'users' => true],
@@ -57,7 +70,7 @@ class UserController extends Controller
             'email' => strtolower(trim($request->email)),
             'password' => Hash::make($request->password),
             'role' => $role,
-            'warehouse_id' => $request->warehouse_id ? (int) $request->warehouse_id : null,
+            'warehouse_id' => $warehouseId,
             'disabled' => false,
             'permissions' => $permissions,
         ]);
@@ -115,7 +128,18 @@ class UserController extends Controller
         $oldRole = $user->role;
         $oldWarehouse = $user->warehouse->name ?? 'All Branches';
         $newRole = $request->role;
-        $newWarehouseId = $request->warehouse_id ? (int) $request->warehouse_id : null;
+        if ($newRole === 'super_admin' && (!Auth::check() || !Auth::user()->isSuperAdmin())) {
+            return back()->withErrors(['role' => 'Forbidden: Super-Administrator role cannot be assigned.']);
+        }
+
+        $newWarehouseId = null;
+        if ($request->filled('warehouse_id')) {
+            $wh = Warehouse::find($request->warehouse_id);
+            if (!$wh) {
+                return back()->withErrors(['warehouse_id' => 'Selected branch location does not exist in your business.']);
+            }
+            $newWarehouseId = $wh->id;
+        }
 
         $permissions = match($newRole) {
             'viewer', 'executive_readonly' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],

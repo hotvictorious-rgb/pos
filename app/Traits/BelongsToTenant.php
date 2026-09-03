@@ -16,9 +16,26 @@ trait BelongsToTenant
         static::addGlobalScope(new TenantScope);
 
         static::creating(function ($model) {
-            if (config('saas.enabled') && session()->has('tenant_id')) {
-                if (empty($model->tenant_id)) {
-                    $model->tenant_id = session('tenant_id');
+            if (config('saas.enabled')) {
+                $sessionTenantId = session('tenant_id');
+
+                // If caller is an authenticated super-admin explicitly providing a target tenant_id, allow it
+                $isSuperAdmin = \Illuminate\Support\Facades\Auth::check()
+                    && method_exists(\Illuminate\Support\Facades\Auth::user(), 'isSuperAdmin')
+                    && \Illuminate\Support\Facades\Auth::user()->isSuperAdmin();
+
+                if ($isSuperAdmin && !empty($model->tenant_id)) {
+                    return;
+                }
+
+                // If running in console (e.g. migrations/seeders) without session, allow explicit tenant_id
+                if (app()->runningInConsole() && !empty($model->tenant_id)) {
+                    return;
+                }
+
+                // For all ordinary web/API requests, strictly enforce server-side session tenant context
+                if (!empty($sessionTenantId)) {
+                    $model->tenant_id = $sessionTenantId;
                 }
             }
         });

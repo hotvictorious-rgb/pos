@@ -37,6 +37,7 @@ echo "   ✅ PASS: System operates 100% as a traditional single-tenant app when 
 config(['saas.enabled' => true]);
 
 echo "[2/4] Setting up 2 Independent Tenants in Shared Database...\n";
+session(['tenant_id' => 'tenant-grace-101']);
 
 // Tenant 1: Grace Supermarket (2 Branches)
 $tenantA = Tenant::updateOrCreate(
@@ -99,6 +100,7 @@ $saleA = Sale::updateOrCreate(
 
 
 // Tenant 2: Alhaji Musa Grain Depot (1 Branch)
+session(['tenant_id' => 'tenant-alhaji-202']);
 $tenantB = Tenant::updateOrCreate(
     ['id' => 'tenant-alhaji-202'],
     [

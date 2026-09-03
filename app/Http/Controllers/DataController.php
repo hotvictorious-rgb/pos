@@ -29,23 +29,52 @@ class DataController extends Controller
 
     private function getSettings()
     {
-        $settings = Setting::find(1);
-        if (!$settings) {
-            $settings = Setting::create([
-                'id' => 1,
-                'businessName' => 'HYSAM VENTURES',
-                'businessAddress' => '123 Main Street, Lagos, Nigeria',
-                'businessPhone' => '+234 800 000 0000',
-                'businessEmail' => 'info@hysam.com',
-                'currency' => '₦',
-                'categories' => ['Power', 'Solar', 'Battery', 'Inverter', 'Accessories', 'General'],
-                'reportFooter' => 'Thank you for your business!',
-                'lowStockThreshold' => 5,
-                'transactionEditLimitDays' => 7,
-                'fontFamily' => 'Inter'
-            ]);
+        $settings = Setting::first();
+        if ($settings) {
+            return $settings;
         }
-        return $settings;
+
+        $tenantId = session('tenant_id') ?? 'default-tenant';
+        $tenantName = 'HYSAM VENTURES';
+        if ($tenantId !== 'default-tenant') {
+            $tenantObj = \App\Models\Tenant::find($tenantId);
+            if ($tenantObj) {
+                $tenantName = $tenantObj->name;
+            }
+        }
+
+        $defaults = [
+            'tenant_id' => $tenantId,
+            'businessName' => $tenantName,
+            'businessAddress' => '123 Main Street, Lagos, Nigeria',
+            'businessPhone' => '+234 800 000 0000',
+            'businessEmail' => 'info@hysam.com',
+            'currency' => '₦',
+            'categories' => ['Power', 'Solar', 'Battery', 'Inverter', 'Accessories', 'General'],
+            'reportFooter' => 'Thank you for your business!',
+            'lowStockThreshold' => 5,
+            'transactionEditLimitDays' => 7,
+            'fontFamily' => 'Inter'
+        ];
+
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $existing = Setting::first();
+            if ($existing) {
+                return $existing;
+            }
+
+            try {
+                $nextId = (int) (Setting::withoutGlobalScopes()->max('id') ?? 0) + 1;
+                return Setting::create(array_merge(['id' => $nextId], $defaults));
+            } catch (\Illuminate\Database\QueryException $e) {
+                $existing = Setting::first();
+                if ($existing) {
+                    return $existing;
+                }
+            }
+        }
+
+        return Setting::first();
     }
 
     public function get()
@@ -363,6 +392,11 @@ class DataController extends Controller
 
         if ($currentUser->role !== 'admin') {
             return response()->json(['error' => 'Forbidden. Only administrators can reset data.'], 403);
+        }
+
+        // In SaaS mode, full system reset is strictly restricted to platform super-administrators
+        if (config('saas.enabled') && !$currentUser->isSuperAdmin()) {
+            return response()->json(['error' => 'Forbidden. System data reset is restricted to platform super-administrators.'], 403);
         }
 
         DB::transaction(function () {

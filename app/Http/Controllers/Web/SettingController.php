@@ -40,7 +40,17 @@ class SettingController extends Controller
         );
 
         $warehouses = Warehouse::orderBy('id')->get();
-        $backups = Backup::orderBy('created_at', 'desc')->get();
+        $user = Auth::user();
+        if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            $backups = Backup::orderBy('created_at', 'desc')->get();
+        } else {
+            $backups = Backup::orderBy('created_at', 'desc')->get()->filter(function ($b) use ($tenantId) {
+                if (preg_match('/\[([^\]]+)\]$/', $b->created_by, $m)) {
+                    return $m[1] === $tenantId;
+                }
+                return false;
+            })->values();
+        }
 
         return view('settings.index', compact('settings', 'warehouses', 'backups'));
     }

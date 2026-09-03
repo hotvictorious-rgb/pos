@@ -18,8 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Check if the application has been installed & ensure web authentication
         $middleware->web(append: [
             \App\Http\Middleware\CheckInstalled::class,
-            \App\Http\Middleware\EnsureTenantActive::class,
             \App\Http\Middleware\CheckWebAuth::class,
+            \App\Http\Middleware\EnsureTenantActive::class,
             \App\Http\Middleware\BlockReadOnlyMutations::class,
         ]);
     })

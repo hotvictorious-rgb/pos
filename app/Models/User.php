@@ -7,10 +7,44 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 use App\Traits\BelongsToTenant;
+use App\Models\Scopes\TenantScope;
 
 class User extends Authenticatable
 {
     use HasFactory, Notifiable, BelongsToTenant;
+
+    /**
+     * Look up user strictly for pre-authentication identity verification.
+     * Controlled global scope bypass before session tenant context is established.
+     */
+    public static function findForAuthentication(string $email): ?self
+    {
+        $normalized = strtolower(trim($email));
+        return static::withoutGlobalScope(TenantScope::class)
+            ->whereRaw('LOWER(email) = ?', [$normalized])
+            ->first();
+    }
+
+    /**
+     * Look up user strictly for session re-hydration before session tenant context is verified.
+     */
+    public static function findForAuthenticationById($id): ?self
+    {
+        if (empty($id)) {
+            return null;
+        }
+        return static::withoutGlobalScope(TenantScope::class)->find($id);
+    }
+
+    /**
+     * Determine if user has platform-level SaaS super-administrator authority.
+     */
+    public function isSuperAdmin(): bool
+    {
+        $isMasterTenant = ($this->tenant_id === 'default-tenant');
+        $isAdminRole = in_array($this->role, ['super_admin', 'admin']);
+        return $isMasterTenant && $isAdminRole;
+    }
 
     public $incrementing = false;
     protected $keyType = 'string';

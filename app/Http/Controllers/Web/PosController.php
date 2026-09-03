@@ -347,11 +347,21 @@ class PosController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Sales Officer';
 
+        $authUser = Auth::user();
+        if ($authUser && $authUser->isBranchScoped()) {
+            $warehouseId = (int) $authUser->warehouse_id;
+        } else {
+            $warehouseId = (int) $request->warehouse_id;
+            if ($authUser && !$authUser->canAccessWarehouse($warehouseId)) {
+                return back()->withErrors(['error' => '🔒 Unauthorized: You cannot process returns for an unassigned branch!']);
+            }
+        }
+
         try {
             $salesReturn = $this->stockService->recordSaleReturn(
                 $request->sale_id,
                 $request->items,
-                (int) $request->warehouse_id,
+                $warehouseId,
                 $request->refund_method,
                 $request->reason,
                 $userId,

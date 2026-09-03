@@ -46,7 +46,7 @@ Route::prefix('saas')->name('saas.')->group(function () {
     Route::get('/suspended',     [\App\Http\Controllers\SaaS\SaaSController::class, 'suspended'])->name('suspended');
 
     // Super Admin Master SaaS Control Panel
-    Route::prefix('admin')->name('admin.')->middleware([\App\Http\Middleware\RequireAdmin::class])->group(function () {
+    Route::prefix('admin')->name('admin.')->middleware([\App\Http\Middleware\RequireSuperAdmin::class])->group(function () {
         Route::get('/',                 [\App\Http\Controllers\SaaS\SaaSController::class, 'adminIndex'])->name('index');
         Route::post('/settings',        [\App\Http\Controllers\SaaS\SaaSController::class, 'updateSettings'])->name('settings');
         Route::post('/tenant',          [\App\Http\Controllers\SaaS\SaaSController::class, 'storeTenant'])->name('tenant.store');

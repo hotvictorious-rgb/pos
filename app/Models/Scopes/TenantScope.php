@@ -18,11 +18,14 @@ class TenantScope implements Scope
             return;
         }
 
-        // 2. If tenant context exists in session, apply tenant_id isolation
-        if (session()->has('tenant_id')) {
+        // 2. If tenant context exists in session and is non-empty, apply tenant_id isolation
+        if (session()->has('tenant_id') && !empty(session('tenant_id'))) {
             $tenantId = session('tenant_id');
             $tableName = $model->getTable();
             $builder->where("{$tableName}.tenant_id", $tenantId);
+        } else {
+            // 3. FAIL-CLOSED GUARD: When SaaS is enabled and tenant context is missing or null, return 0 rows
+            $builder->whereRaw('1 = 0');
         }
     }
 }
