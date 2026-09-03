@@ -1650,7 +1650,7 @@
                 <div class="section-tag">SIMPLE NAIRA PRICING</div>
                 <h2 class="section-title">Transparent Plans Built for Nigerian Businesses</h2>
                 <p class="section-subtitle">
-                    No hidden implementation fees. No foreign exchange surprises. Start with a 14-day free trial on any plan.
+                    No hidden implementation fees. No foreign exchange surprises. Start with a {{ $trialDays ?? 14 }}-day free trial on any plan.
                 </p>
             </div>
 
@@ -1661,7 +1661,7 @@
                         <h3 class="plan-name">{{ $plans['basic']['name'] ?? 'Starter Plan' }}</h3>
                         <p class="plan-desc">Perfect for single-location supermarkets, neighborhood stores, and boutiques.</p>
                         <div class="plan-price-box">
-                            <span class="plan-currency">₦</span>
+                            <span class="plan-currency">{{ $currency ?? '₦' }}</span>
                             <span class="plan-amount">{{ number_format($plans['basic']['price_monthly'] ?? 15000) }}</span>
                             <span class="plan-interval">/ month</span>
                         </div>
@@ -1688,7 +1688,7 @@
                         <h3 class="plan-name">{{ $plans['pro']['name'] ?? 'Professional Growth' }}</h3>
                         <p class="plan-desc">Designed for expanding retail stores, wholesale depots, and multi-branch chains.</p>
                         <div class="plan-price-box">
-                            <span class="plan-currency">₦</span>
+                            <span class="plan-currency">{{ $currency ?? '₦' }}</span>
                             <span class="plan-amount">{{ number_format($plans['pro']['price_monthly'] ?? 35000) }}</span>
                             <span class="plan-interval">/ month</span>
                         </div>
@@ -1714,7 +1714,7 @@
                         <h3 class="plan-name">{{ $plans['enterprise']['name'] ?? 'Enterprise Multi-Branch' }}</h3>
                         <p class="plan-desc">For large supermarket chains, major distribution hubs, and nationwide brands.</p>
                         <div class="plan-price-box">
-                            <span class="plan-currency">₦</span>
+                            <span class="plan-currency">{{ $currency ?? '₦' }}</span>
                             <span class="plan-amount">{{ number_format($plans['enterprise']['price_monthly'] ?? 75000) }}</span>
                             <span class="plan-interval">/ month</span>
                         </div>

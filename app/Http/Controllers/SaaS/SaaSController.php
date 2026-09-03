@@ -39,6 +39,11 @@ class SaaSController extends Controller
     /** Process Tenant Self-Registration */
     public function processRegister(Request $request)
     {
+        $allowRegistration = SaaSSetting::get('allow_registration', '1');
+        if ($allowRegistration === '0') {
+            return back()->withInput()->with('error', 'New merchant registrations are currently paused by the platform administrator.');
+        }
+
         $request->validate([
             'business_name' => 'required|string|max:255',
             'owner_name'    => 'required|string|max:255',

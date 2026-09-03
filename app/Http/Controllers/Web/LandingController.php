@@ -20,29 +20,33 @@ class LandingController extends Controller
             return redirect()->route('dashboard');
         }
 
-        $plans = config('saas.plans', [
+        $priceBasic = (float) \App\Models\SaaSSetting::get('monthly_price_basic', config('saas.plans.basic.price_monthly', 15000));
+        $pricePro = (float) \App\Models\SaaSSetting::get('monthly_price_pro', config('saas.plans.pro.price_monthly', 35000));
+        $priceEnterprise = (float) \App\Models\SaaSSetting::get('monthly_price_enterprise', config('saas.plans.enterprise.price_monthly', 75000));
+        $trialDays = (int) \App\Models\SaaSSetting::get('trial_days', config('saas.trial_days', 14));
+        $currency = \App\Models\SaaSSetting::get('currency_symbol', '₦');
+
+        $plans = [
             'basic' => [
-                'name' => 'Starter Plan',
-                'max_branches' => 1,
-                'max_users' => 3,
-                'price_monthly' => 15000,
+                'name' => config('saas.plans.basic.name', 'Starter Plan'),
+                'max_branches' => config('saas.plans.basic.max_branches', 1),
+                'max_users' => config('saas.plans.basic.max_users', 3),
+                'price_monthly' => $priceBasic,
             ],
             'pro' => [
-                'name' => 'Professional Growth',
-                'max_branches' => 5,
-                'max_users' => 15,
-                'price_monthly' => 35000,
+                'name' => config('saas.plans.pro.name', 'Professional Growth'),
+                'max_branches' => config('saas.plans.pro.max_branches', 5),
+                'max_users' => config('saas.plans.pro.max_users', 15),
+                'price_monthly' => $pricePro,
             ],
             'enterprise' => [
-                'name' => 'Enterprise Multi-Branch',
-                'max_branches' => 999,
-                'max_users' => 999,
-                'price_monthly' => 75000,
+                'name' => config('saas.plans.enterprise.name', 'Enterprise Multi-Branch'),
+                'max_branches' => config('saas.plans.enterprise.max_branches', 999),
+                'max_users' => config('saas.plans.enterprise.max_users', 999),
+                'price_monthly' => $priceEnterprise,
             ],
-        ]);
+        ];
 
-        $trialDays = config('saas.trial_days', 14);
-
-        return view('landing', compact('plans', 'trialDays'));
+        return view('landing', compact('plans', 'trialDays', 'currency'));
     }
 }

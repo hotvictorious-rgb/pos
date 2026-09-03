@@ -67,9 +67,9 @@
             <div class="form-group">
                 <label>Choose Subscription Plan</label>
                 <select name="plan" required>
-                    <option value="basic">Starter Plan (1 Branch, 3 Users)</option>
-                    <option value="pro" selected>Professional Growth (5 Branches, 15 Users)</option>
-                    <option value="enterprise">Enterprise Multi-Branch (Unlimited)</option>
+                    <option value="basic" {{ request('plan') === 'basic' ? 'selected' : '' }}>Starter Plan ({{ $settings['currency_symbol'] ?? '₦' }}{{ number_format((float)($settings['price_basic'] ?? 15000)) }}/mo — 1 Branch, 3 Users)</option>
+                    <option value="pro" {{ (request('plan') === 'pro' || !request('plan')) ? 'selected' : '' }}>Professional Growth ({{ $settings['currency_symbol'] ?? '₦' }}{{ number_format((float)($settings['price_pro'] ?? 35000)) }}/mo — 5 Branches, 15 Users)</option>
+                    <option value="enterprise" {{ request('plan') === 'enterprise' ? 'selected' : '' }}>Enterprise Multi-Branch ({{ $settings['currency_symbol'] ?? '₦' }}{{ number_format((float)($settings['price_enterprise'] ?? 75000)) }}/mo — Unlimited)</option>
                 </select>
             </div>
 

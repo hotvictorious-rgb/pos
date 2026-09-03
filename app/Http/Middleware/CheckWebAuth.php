@@ -32,6 +32,8 @@ class CheckWebAuth
             'api/login',
             'landing',
             'welcome',
+            'saas/register',
+            'saas/suspended',
             'up',
         ];
 

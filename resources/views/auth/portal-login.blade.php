@@ -276,6 +276,23 @@
             </button>
         </form>
 
+        @if($meta['portal'] === 'tenant')
+            <div style="margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid rgba(255, 255, 255, 0.08); text-align: center;">
+                <div style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 0.6rem;">
+                    New business owner? Don't have a store account yet?
+                </div>
+                <a href="{{ route('saas.register') }}" style="display: block; width: 100%; padding: 0.8rem; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399; font-weight: 700; border-radius: 8px; text-decoration: none; font-size: 0.92rem; transition: all 0.2s;">
+                    🚀 Register Your Business (14-Day Free Trial)
+                </a>
+            </div>
+        @endif
+
+        <div style="margin-top: 1.25rem; text-align: center;">
+            <a href="{{ url('/') }}" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">
+                ← Back to VMarket POS Home
+            </a>
+        </div>
+
         <div class="portal-switch">
             <div>Switch Portal:</div>
             <div class="portal-switch-links">
