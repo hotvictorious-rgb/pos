@@ -104,11 +104,6 @@ class AccountingReportService
         $cashTendered = max(0.0, (float) ($tender['cashAmount'] ?? 0));
         $posTendered  = max(0.0, (float) ($tender['posAmount'] ?? 0));
 
-        // Fallback for single tender / legacy requests
-        if ($cashTendered == 0.0 && $posTendered == 0.0 && isset($tender['paidAmount'])) {
-            $cashTendered = max(0.0, (float) $tender['paidAmount']);
-        }
-
         // Invariant: Electronic overpayment rejected! POS cannot exceed gross total
         if ($posTendered > $grossTotal) {
             throw new \InvalidArgumentException(
@@ -905,6 +900,40 @@ class AccountingReportService
                 'transfer_accounting_integrity' => $checks['transfer_accounting_integrity'],
             ],
             'detailed'    => $checks,
+        ];
+    }
+
+    /**
+     * Reconciles physical stock level allocation against active customer reservations.
+     * Invariant: StockLevel.allocated_stock == sum(reserved_qty - fulfilled_qty - cancelled_qty).
+     */
+    public function reconcileReservationAllocations(string|int $productId, int $warehouseId): array
+    {
+        $stock = \App\Models\StockLevel::where('product_id', (string) $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->first();
+
+        $allocatedStock = $stock ? (int) $stock->allocated_stock : 0;
+
+        $reservations = \App\Models\StockReservation::where('product_id', (string) $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED'])
+            ->get();
+
+        $sumOutstanding = 0;
+        foreach ($reservations as $res) {
+            $sumOutstanding += (int) $res->outstanding_qty;
+        }
+
+        $variance = $allocatedStock - $sumOutstanding;
+
+        return [
+            'productId'        => $productId,
+            'warehouseId'      => $warehouseId,
+            'allocatedStock'   => $allocatedStock,
+            'sumOutstanding'   => $sumOutstanding,
+            'variance'         => $variance,
+            'balanced'         => ($variance === 0),
         ];
     }
 }

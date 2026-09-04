@@ -328,6 +328,8 @@ class OnlineOnlyApiSecurityAuditTest extends TestCase
         ])->postJson('/pos/checkout', [
             'warehouse_id' => $this->branchA1->id,
             'is_supplied' => 'yes',
+            'customerName' => 'Alhaji Test',
+            'customerPhone' => '08031234567',
             'paidAmount' => 1.00,
             'cashAmount' => 1.00,
             'items' => [

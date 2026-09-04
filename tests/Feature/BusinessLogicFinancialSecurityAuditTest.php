@@ -113,8 +113,8 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
             'paidAmount' => 1000.00,
             'cashAmount' => 1000.00,
             'posAmount' => 0,
-            'transferAmount' => 0,
-            'customerName' => 'Walk-in Customer',
+            'customerName' => 'Alhaji Musa',
+            'customerPhone' => '08031234567',
             'items' => [
                 [
                     'productId' => $this->product->id,

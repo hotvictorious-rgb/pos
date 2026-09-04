@@ -123,13 +123,27 @@ class TransactionController extends Controller
         if ($request->filled('payment_status')) {
             $pStatus = strtoupper($request->payment_status);
             if ($pStatus === 'PAID') {
-                $query->whereColumn('paidAmount', '>=', 'totalAmount');
+                $query->where(function ($q) {
+                    $q->where('status', 'COMPLETED')
+                      ->orWhereColumn('paidAmount', '>=', 'totalAmount');
+                });
             } elseif (in_array($pStatus, ['PART_PAID', 'PARTIAL'])) {
-                $query->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0);
+                $query->where(function ($q) {
+                    $q->where('status', 'PARTIAL')
+                      ->orWhere(function ($sq) {
+                          $sq->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0);
+                      });
+                });
             } elseif (in_array($pStatus, ['NOT_PAID', 'UNPAID'])) {
-                $query->where('paidAmount', '<=', 0);
+                $query->where(function ($q) {
+                    $q->where('status', 'PENDING')
+                      ->orWhere('paidAmount', '<=', 0);
+                });
             } elseif ($pStatus === 'DEBT') {
-                $query->whereColumn('paidAmount', '<', 'totalAmount');
+                $query->where(function ($q) {
+                    $q->whereIn('status', ['PARTIAL', 'PENDING'])
+                      ->orWhereColumn('paidAmount', '<', 'totalAmount');
+                });
             }
         }
 

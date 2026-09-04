@@ -63,4 +63,23 @@ class Sale extends Model
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id', 'id');
     }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class, 'saleId', 'id');
+    }
+
+    public function returns()
+    {
+        return $this->hasMany(SalesReturn::class, 'saleId', 'id');
+    }
+
+    /**
+     * Authoritatively calculated current outstanding balance for this sale invoice.
+     * Consumes canonical AccountingReportService logic.
+     */
+    public function getInvoiceBalanceAttribute(): float
+    {
+        return app(\App\Services\Accounting\AccountingReportService::class)->calculateInvoiceBalance($this);
+    }
 }

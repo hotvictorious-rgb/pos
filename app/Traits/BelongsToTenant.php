@@ -19,14 +19,6 @@ trait BelongsToTenant
             if (config('saas.enabled')) {
                 $sessionTenantId = session('tenant_id');
 
-                // If caller is an authenticated super-admin explicitly providing a target tenant_id, allow it
-                $isSuperAdmin = \Illuminate\Support\Facades\Auth::check()
-                    && method_exists(\Illuminate\Support\Facades\Auth::user(), 'isSuperAdmin')
-                    && \Illuminate\Support\Facades\Auth::user()->isSuperAdmin();
-
-                if ($isSuperAdmin && !empty($model->tenant_id)) {
-                    return;
-                }
 
                 // If running in console or tests with explicit tenant_id, allow it
                 if ((app()->runningInConsole() || app()->environment('testing')) && !empty($model->tenant_id)) {

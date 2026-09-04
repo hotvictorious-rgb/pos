@@ -75,7 +75,7 @@ class IdempotencyService
                 ->where('idempotency_key', $cleanKey)
                 ->first();
 
-            if ($persistentRecord) {
+            if ($persistentRecord && $persistentRecord->status !== 'FAILED') {
                 // Check 1: Request Fingerprint Invariance
                 if ($persistentRecord->payload_fingerprint !== $fingerprint) {
                     throw new \InvalidArgumentException(
@@ -103,12 +103,16 @@ class IdempotencyService
 
                     return $result;
                 }
+
+                // If currently processing within 60s window, prevent concurrent re-entry
+                if ($persistentRecord->status === 'PROCESSING' && $persistentRecord->updated_at && $persistentRecord->updated_at->diffInSeconds(now()) < 60) {
+                    throw new \InvalidArgumentException(
+                        "Idempotency Conflict: Operation '{$operation}' with key '{$cleanKey}' is currently processing. Please wait for completion."
+                    );
+                }
             }
 
-            // ── Execution: Run the transactional business operation ──
-            $result = $callback();
-
-            // Store in L2 Persistent Database
+            // Mark record as PROCESSING before execution
             IdempotencyRecord::withoutGlobalScopes()->updateOrCreate(
                 [
                     'tenant_id' => $tenantId,
@@ -119,10 +123,41 @@ class IdempotencyService
                     'id' => (string) Str::uuid(),
                     'user_id' => $userId,
                     'payload_fingerprint' => $fingerprint,
-                    'status' => 'COMPLETED',
-                    'response_data' => $this->serializeResult($result),
+                    'status' => 'PROCESSING',
+                    'response_data' => null,
                 ]
             );
+
+            // ── Atomic Execution: Run the business operation and transition to COMPLETED in the same transaction ──
+            try {
+                $result = \Illuminate\Support\Facades\DB::transaction(function () use ($callback, $tenantId, $operation, $cleanKey) {
+                    $res = $callback();
+
+                    IdempotencyRecord::withoutGlobalScopes()->where([
+                        'tenant_id' => $tenantId,
+                        'operation' => $operation,
+                        'idempotency_key' => $cleanKey,
+                    ])->update([
+                        'status' => 'COMPLETED',
+                        'response_data' => json_encode($this->serializeResult($res)),
+                        'updated_at' => now(),
+                    ]);
+
+                    return $res;
+                });
+            } catch (\Throwable $e) {
+                IdempotencyRecord::withoutGlobalScopes()->where([
+                    'tenant_id' => $tenantId,
+                    'operation' => $operation,
+                    'idempotency_key' => $cleanKey,
+                ])->update([
+                    'status' => 'FAILED',
+                    'response_data' => json_encode(['error' => $e->getMessage()]),
+                    'updated_at' => now(),
+                ]);
+
+                throw $e;
+            }
 
             // Store in L1 Cache with 24-hour TTL
             Cache::put($cacheKey, [
@@ -158,6 +193,13 @@ class IdempotencyService
      */
     protected function deserializeResult(mixed $data): mixed
     {
+        if (is_string($data)) {
+            $decoded = json_decode($data, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $data = $decoded;
+            }
+        }
+
         if (is_array($data) && ($data['__type'] ?? null) === 'eloquent_model') {
             $class = $data['__class'] ?? null;
             $id = $data['id'] ?? null;

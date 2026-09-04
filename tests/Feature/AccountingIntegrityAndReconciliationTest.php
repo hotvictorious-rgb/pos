@@ -609,8 +609,9 @@ class AccountingIntegrityAndReconciliationTest extends TestCase
         );
 
         $sale->refresh();
-        $this->assertEquals(80000.00, $sale->totalAmount); // 120k original - 40k debt reduction
+        $this->assertEquals(120000.00, $sale->totalAmount, "Historical gross invoice is immutable and must not be mutated on return.");
         $this->assertEquals(40000.00, $sale->paidAmount);
+        $this->assertEquals(0.00, $this->accountingService->calculateInvoiceBalance($sale), "Net invoice balance after returns must be 0.");
         $this->assertEquals(0.00, $customer->fresh()->total_debt, "Debt reduction must eliminate customer debt.");
 
         // Return 3: Attempting to return 2 more bags (only 1 remaining eligible out of original 3)

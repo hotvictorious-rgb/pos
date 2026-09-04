@@ -133,29 +133,49 @@ class PosController extends Controller
      */
     public function checkout(Request $request)
     {
-        $request->validate([
+        try {
+            $request->validate([
             'warehouse_id' => 'required',
             'items' => 'required|array|min:1',
             'items.*.productId' => 'required',
             'items.*.quantity' => 'required|integer|min:1',
-            'paidAmount' => 'required|numeric|min:0',
+            'cashAmount' => 'nullable|numeric|min:0',
+            'posAmount' => 'nullable|numeric|min:0',
+            'paidAmount' => 'nullable|numeric|min:0',
             'is_supplied' => 'required', // 'yes' or 'no'
         ]);
 
         $cashAmount = max(0.0, (float) ($request->cashAmount ?? 0));
         $posAmount = max(0.0, (float) ($request->posAmount ?? 0));
         $transferAmount = 0.0; // Strictly retired
-        $paidAmount = (float) $request->paidAmount;
 
-        if ($cashAmount == 0.0 && $posAmount == 0.0 && $paidAmount > 0) {
-            $cashAmount = $paidAmount;
+        // Map legacy single paidAmount input if cash/pos amounts were omitted
+        if ($cashAmount == 0.0 && $posAmount == 0.0 && $request->filled('paidAmount')) {
+            $cashAmount = max(0.0, (float) $request->paidAmount);
         }
 
-        if ($paidAmount > 0 && ($cashAmount + $posAmount) < $paidAmount) {
-            $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$paidAmount}).";
+        $declaredPaid = (float) ($request->paidAmount ?? 0);
+        if ($declaredPaid > 0 && ($cashAmount + $posAmount) < $declaredPaid) {
+            $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$declaredPaid}).";
             if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
             return back()->withErrors(['error' => $errorMsg])->withInput();
         }
+
+        // 🔒 Server-Authoritative Financial Evaluation: Calculate catalog pricing & tender FIRST
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $calc = $accountingService->calculateCheckout(
+            $request->items,
+            [
+                'cashAmount' => $cashAmount,
+                'posAmount' => $posAmount,
+            ],
+            'RETAIL'
+        );
+
+        $grossTotal = $calc['grossTotal'];
+        $paidAmount = $calc['paidAmount'];
+        $outstandingDebt = $calc['outstandingDebt'];
+        $hasDebt = ($outstandingDebt > 0.01);
 
         $authUser = Auth::user();
         if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
@@ -178,8 +198,7 @@ class PosController extends Controller
         $userId = Auth::id() ?? 'POS-USER-1';
         $userName = Auth::user()->name ?? 'Sales Officer';
 
-        $totalAmount = (float) ($request->totalAmount ?? 0);
-        $hasDebt = ($paidAmount < $totalAmount);
+        $totalAmount = $grossTotal; // Authoritative catalog pricing replaces any client input
         $isNotSupplied = !$isSuppliedNow;
 
         $customerId = $request->customerId ? (int) $request->customerId : null;
@@ -197,7 +216,7 @@ class PosController extends Controller
 
         $customerName = trim($request->customerName ?? '');
 
-        // 🔒 ZERO BYPASS RULE FOR DEBT & PICKUP ORDERS
+        // 🔒 ZERO BYPASS RULE FOR DEBT & PICKUP ORDERS (Evaluated using authoritative server debt)
         if ($hasDebt || $isNotSupplied) {
             $reason = $hasDebt ? 'Credit / Part-Payment' : 'Delayed Pickup (Not Supplied)';
 
@@ -250,11 +269,11 @@ class PosController extends Controller
         }
 
         $saleData = [
-            'totalAmount' => $totalAmount,
+            'totalAmount' => $grossTotal,
             'paidAmount' => $paidAmount,
-            'cashAmount' => (float) ($request->cashAmount ?? 0),
-            'posAmount' => (float) ($request->posAmount ?? 0),
-            'transferAmount' => (float) ($request->transferAmount ?? 0),
+            'cashAmount' => $cashAmount,
+            'posAmount' => $posAmount,
+            'transferAmount' => 0.0,
             'customerName' => $customerName ?: 'Walk-in Customer',
             'customerPhone' => $customerPhone ?: null,
             'customerId' => $customerId,
@@ -265,7 +284,6 @@ class PosController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('sale_id');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
-        try {
             if ($idempotencyKey) {
                 $idempotencyService = app(\App\Services\IdempotencyService::class);
                 $sale = $idempotencyService->execute(
@@ -276,7 +294,7 @@ class PosController extends Controller
                     [
                         'warehouse_id' => $warehouseId,
                         'items' => $request->items,
-                        'paidAmount' => $paidAmount,
+                        'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
                         'cashAmount' => (float) ($request->cashAmount ?? 0),
                         'posAmount' => (float) ($request->posAmount ?? 0),
                         'transferAmount' => (float) ($request->transferAmount ?? 0),

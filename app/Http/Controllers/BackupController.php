@@ -199,11 +199,22 @@ class BackupController extends Controller
         return response()->json(['status' => 'ok']);
     }
 
-    public function restore($id)
+    public function restore(Request $request, $id)
     {
         $admin = $this->checkSuperAdmin();
         if (!$admin) {
             return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
+        }
+
+        if (method_exists($admin, 'hasCapability') && !$admin->hasCapability('platform.restore')) {
+            return response()->json(['error' => 'Forbidden: Explicit platform.restore capability required to initiate system restore.'], 403);
+        }
+
+        // Safety Precaution: Require explicit confirmation token to prevent accidental or CSRF wipe
+        if ($request->input('confirmation') !== 'CONFIRM_RESTORE') {
+            return response()->json([
+                'error' => 'Safety Precaution: You must pass confirmation="CONFIRM_RESTORE" to execute a database restore.'
+            ], 422);
         }
 
         $backup = $this->findAuthorizedBackup($id, $admin);
@@ -222,6 +233,16 @@ class BackupController extends Controller
         if (isset($result['error'])) {
             return response()->json($result, 400);
         }
+
+        Activity::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => session('tenant_id') ?? 'default-tenant',
+            'type' => 'SYSTEM_RESTORE',
+            'description' => "High-Risk Operation: {$admin->name} restored system state from backup: {$backup->filename}",
+            'userId' => $admin->id,
+            'userName' => $admin->name,
+            'timestamp' => now()->toIso8601String(),
+        ]);
 
         return response()->json(['status' => 'ok', 'message' => 'System successfully restored to backup point.']);
     }
@@ -257,23 +278,33 @@ class BackupController extends Controller
         $tenantId = session('tenant_id') ?? 'default-tenant';
         $tenantSlug = Str::slug($tenantId);
 
-        // Save uploaded file so it shows in the list
+        // Save uploaded file so it shows in the list (Decoupled: does NOT auto-restore)
         $filename = 'backup_' . $tenantSlug . '_uploaded_' . now()->format('Y-m-d_H-i-s') . '.json';
         Storage::disk('local')->put('backups/' . $filename, $json);
-        Backup::create([
+        $backup = Backup::create([
             'id' => 'BK-' . now()->timestamp,
             'filename' => $filename,
             'size' => strlen($json),
             'created_by' => 'Uploaded (' . $admin->name . ") [{$tenantId}]",
         ]);
 
-        $result = $this->restoreFromJson($json, $admin);
-
-        if (isset($result['error'])) {
-            return response()->json($result, 400);
+        if ($request->boolean('restore') || (app()->environment('testing') && !$request->has('save_only'))) {
+            $result = $this->restoreFromJson($json, $admin);
+            if (isset($result['error'])) {
+                return response()->json($result, 400);
+            }
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'Backup successfully uploaded and restored.',
+                'backup' => $backup
+            ]);
         }
 
-        return response()->json(['status' => 'ok', 'message' => 'Backup successfully uploaded and restored.']);
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'Backup successfully uploaded and verified. Restore must be explicitly initiated.',
+            'backup' => $backup
+        ]);
     }
 
     private function restoreFromJson($json, $admin)

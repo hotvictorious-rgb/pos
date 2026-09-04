@@ -181,7 +181,11 @@ class StockService
 
             // Server-authoritative checkout calculation via AccountingReportService
             $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-            $calc = $accountingService->calculateCheckout($items, $saleData, $saleData['sale_type'] ?? 'RETAIL');
+            $tenderData = $saleData;
+            if (!isset($tenderData['cashAmount']) && !isset($tenderData['posAmount']) && isset($tenderData['paidAmount'])) {
+                $tenderData['cashAmount'] = $tenderData['paidAmount'];
+            }
+            $calc = $accountingService->calculateCheckout($items, $tenderData, $saleData['sale_type'] ?? 'RETAIL');
 
             $validatedItems = $calc['validatedItems'];
             $totalAmount    = $calc['totalAmount'];
@@ -350,19 +354,7 @@ class StockService
                 ]);
             }
 
-            // Fallback for tests or legacy callers where only paidAmount was supplied without breakdown
-            if ($paidAmount > 0 && $netCashKept == 0.0 && $posAmount == 0.0) {
-                Payment::create([
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                    'saleId' => $saleId,
-                    'amount' => $paidAmount,
-                    'method' => 'CASH',
-                    'timestamp' => now()->toIso8601String(),
-                    'recordedBy' => $userName,
-                    'createdAt' => now()->toIso8601String(),
-                ]);
-            }
+
 
             // Handle Customer Debt Ledger for Part Payments
             $remainingDebt = max(0, $totalAmount - $paidAmount);
@@ -494,6 +486,98 @@ class StockService
             ]);
 
             return $sale;
+        });
+    }
+
+    /**
+     * Authoritative unit/partial fulfillment of an unsupplied stock reservation.
+     */
+    public function fulfillStockReservation(string $saleId, string $productId, int $warehouseId, int $qty, string $userId, string $userName): \App\Models\StockReservation
+    {
+        $this->assertUserCapability('stock.transfer');
+        $this->assertTenantWarehouse($warehouseId);
+
+        if ($qty <= 0) {
+            throw new \InvalidArgumentException('Fulfillment quantity must be greater than zero.');
+        }
+
+        return DB::transaction(function () use ($saleId, $productId, $warehouseId, $qty, $userId, $userName) {
+            $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
+
+            if (!empty($sale->warehouse_id) && (int) $sale->warehouse_id !== (int) $warehouseId) {
+                throw new \InvalidArgumentException("Cross-branch reservation fulfillment rejected: Sale #{$saleId} was reserved at Branch #{$sale->warehouse_id} and cannot be fulfilled from Branch #{$warehouseId}.");
+            }
+
+            $stock = $this->getStockLevel($productId, $warehouseId, true);
+            if ($stock->allocated_stock < $qty || $stock->physical_stock < $qty) {
+                $product = Product::find($productId);
+                $pName = $product ? $product->name : $productId;
+                $pCode = $product ? $product->code : $productId;
+                throw new InsufficientStockException(
+                    "Cannot fulfill reservation for Sale #{$saleId}: Insufficient allocated ({$stock->allocated_stock}) or physical stock ({$stock->physical_stock}) for '{$pName}' ({$pCode}) at branch #{$warehouseId}. Requested: {$qty}",
+                    $pCode,
+                    $pName,
+                    $warehouseId,
+                    $stock->allocated_stock,
+                    $qty
+                );
+            }
+
+            $stock->physical_stock -= $qty;
+            $stock->allocated_stock -= $qty;
+            $stock->save();
+
+            $product = Product::find($productId);
+            if ($product) {
+                $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
+                $product->save();
+            }
+
+            $reservation = \App\Models\StockReservation::where('sale_id', $saleId)
+                ->where('product_id', $productId)
+                ->where('warehouse_id', $warehouseId)
+                ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED'])
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($reservation->outstanding_qty < $qty) {
+                throw new \InvalidArgumentException("Requested fulfillment quantity ({$qty}) exceeds outstanding reservation ({$reservation->outstanding_qty}).");
+            }
+
+            $reservation->fulfilled_qty += $qty;
+            if ($reservation->fulfilled_qty >= $reservation->reserved_qty) {
+                $reservation->status = 'FULFILLED';
+            } else {
+                $reservation->status = 'PARTIALLY_FULFILLED';
+            }
+            $reservation->save();
+
+            $remainingActive = \App\Models\StockReservation::where('sale_id', $saleId)
+                ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED'])
+                ->count();
+            if ($remainingActive === 0) {
+                $sale->deliveryStatus = 'DELIVERED';
+                $sale->deliveredAt = now()->toIso8601String();
+                $sale->deliveredBy = $userName;
+                $sale->save();
+            }
+
+            InventoryLog::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                'productId' => $productId,
+                'warehouse_id' => $warehouseId,
+                'type' => 'DISPATCH_FULFILLED',
+                'quantity' => -$qty,
+                'userId' => $userId,
+                'userName' => $userName,
+                'productCode' => $product ? $product->code : '',
+                'productName' => $product ? $product->name : '',
+                'description' => "Reservation fulfilled ({$qty} units) for Sale #{$saleId} to {$sale->customerName}",
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
+            return $reservation;
         });
     }
 
@@ -1115,17 +1199,20 @@ class StockService
                 ]);
             }
 
-            // Financial integrity: Debt reduction reduces the invoice total and customer debt balance
+            // Financial integrity: Debt reduction applies against outstanding invoice debt and customer debt balance.
+            // Invariant: The historical gross invoice ($sale->totalAmount) is NEVER mutated!
+            // The return credit is authoritatively recorded in SalesReturn ($lineRefund), which calculateInvoiceBalance() deducts from gross invoice.
             if ($refundMethod === 'DEBT_REDUCTION') {
-                $invoiceOutstanding = max(0.0, (float) $sale->totalAmount - (float) $sale->paidAmount);
+                $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+                $invoiceOutstanding = $accountingService->calculateInvoiceBalance($sale);
                 if ($totalRefundAmount > $invoiceOutstanding) {
                     throw new \InvalidArgumentException(
                         "Cannot apply debt reduction of ₦" . number_format($totalRefundAmount, 2) . ". Outstanding balance on Sale #{$saleId} is only ₦" . number_format($invoiceOutstanding, 2) . "."
                     );
                 }
 
-                $sale->totalAmount = max(0.0, round($sale->totalAmount - $totalRefundAmount, 2));
-                if ($sale->paidAmount >= $sale->totalAmount) {
+                $balanceAfterReturn = max(0.0, round($invoiceOutstanding - $totalRefundAmount, 2));
+                if ($balanceAfterReturn <= 0.01) {
                     $sale->status = 'COMPLETED';
                 }
                 $sale->save();

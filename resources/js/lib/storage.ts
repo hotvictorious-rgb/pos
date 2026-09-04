@@ -111,20 +111,8 @@ export const storage = {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(INITIAL_SETTINGS));
     }
 
-    // Start background auto-sync timer (syncs every 15 seconds automatically)
-    if (!autoSyncInterval && typeof window !== 'undefined') {
-      autoSyncInterval = setInterval(() => {
-        storage.sync();
-      }, 15000);
-    }
-
-    // Set up auto-sync on browser back online
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => {
-        console.log('Browser back online! Running real-time synchronization...');
-        storage.sync();
-      });
-    }
+    // Online-only architecture: Backend Laravel database is the sole authoritative source of truth.
+    // Periodic background client-side auto-merging is deactivated to preserve accounting and inventory integrity.
   },
 
   getVerificationResult: (): SyncVerificationResult | null => {
@@ -224,120 +212,10 @@ export const storage = {
   },
 
   sync: async () => {
-    if (syncTimeout) {
-      clearTimeout(syncTimeout);
-      syncTimeout = null;
-    }
-
-    if (isSyncing) {
-      hasPendingSyncRequest = true;
-      return;
-    }
-    isSyncing = true;
-    hasPendingSyncRequest = false;
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('hysam-sync-start'));
-    }
-
-    try {
-      const headers = await getAuthHeaders();
-      
-      // 1. Build current local data payload to push
-      const pushData = {
-        users: storage.getUsers(),
-        products: storage.getProducts(),
-        sales: storage.getSales(),
-        payments: storage.getPayments(),
-        logs: storage.getLogs(),
-        activities: storage.getActivities(),
-        returns: storage.getReturns(),
-        settings: storage.getSettings(),
-        custom_roles: storage.getCustomRoles()
-      };
-
-      // 2. Push local changes first so the server has the latest client updates
-      const pushRes = await fetch('/api/data', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(pushData)
-      });
-
-      if (!pushRes.ok) {
-        throw new Error(`Push sync failed with status code ${pushRes.status}`);
-      }
-
-      // 3. Pull fresh data from server (which now includes our updates)
-      const pullRes = await fetch('/api/data', { headers });
-      if (pullRes.ok) {
-        const serverData = await pullRes.json();
-        
-        // Helper to safely merge local and server lists by item ID
-        const mergeLists = <T extends { id: string }>(localList: T[], serverList: T[] | undefined): T[] => {
-          if (!serverList || serverList.length === 0) return localList;
-          const mergedMap = new Map<string, T>();
-          // Server wins on conflicts for established records, but local keeps its new ones
-          for (const item of serverList) {
-            mergedMap.set(item.id, item);
-          }
-          for (const item of localList) {
-            if (!mergedMap.has(item.id)) {
-              mergedMap.set(item.id, item);
-            }
-          }
-          return Array.from(mergedMap.values());
-        };
-
-        const localUsers = storage.getUsers();
-        const localProducts = storage.getProducts();
-        const localSales = storage.getSales();
-        const localPayments = storage.getPayments();
-        const localLogs = storage.getLogs();
-        const localActivities = storage.getActivities();
-        const localReturns = storage.getReturns();
-        const localCustomRoles = storage.getCustomRoles();
-
-        const mergedUsers = mergeLists(localUsers, serverData.users);
-        const mergedProducts = mergeLists(localProducts, serverData.products);
-        const mergedSales = mergeLists(localSales, serverData.sales);
-        const mergedPayments = mergeLists(localPayments, serverData.payments);
-        const mergedLogs = mergeLists(localLogs, serverData.logs);
-        const mergedActivities = mergeLists(localActivities, serverData.activities);
-        const mergedReturns = mergeLists(localReturns, serverData.returns);
-        const mergedCustomRoles = mergeLists(localCustomRoles, serverData.custom_roles);
-
-        // Update local storage with merged results
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(mergedUsers));
-        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(mergedProducts));
-        localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(mergedSales));
-        localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(mergedPayments));
-        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(mergedLogs));
-        localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(mergedActivities));
-        localStorage.setItem(STORAGE_KEYS.RETURNS, JSON.stringify(mergedReturns));
-        localStorage.setItem(STORAGE_KEYS.CUSTOM_ROLES, JSON.stringify(mergedCustomRoles));
-        
-        if (serverData.settings) {
-          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(serverData.settings));
-        }
-        notifyDataUpdated();
-
-        // Perform verification
-        storage.verifyDataCounts(serverData);
-      }
-
-      storage.setSyncPending(false);
-    } catch (e) {
-      console.warn('Failed to sync with server, data remains local:', e);
-      storage.setSyncPending(true);
-    } finally {
-      isSyncing = false;
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('hysam-sync-end'));
-      }
-      if (hasPendingSyncRequest) {
-        setTimeout(() => storage.sync(), 50);
-      }
-    }
+    // Online-only authoritative architecture:
+    // The backend Laravel API and database are the single source of truth.
+    // Client-side bulk merge and unauthenticated /api/data syncing are permanently retired.
+    storage.setSyncPending(false);
   },
 
   getData: <T>(key: string): T[] => {

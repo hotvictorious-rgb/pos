@@ -33,4 +33,9 @@ class CustomerLedger extends Model
     {
         return $this->belongsTo(Customer::class);
     }
+
+    public function sale(): BelongsTo
+    {
+        return $this->belongsTo(Sale::class, 'sale_id');
+    }
 }

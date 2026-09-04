@@ -32,7 +32,7 @@ class SecurityHeaders
 
         // 6. Content Security Policy (allows local assets, Google fonts, and inline styles/scripts)
         $csp = "default-src 'self'; " .
-               "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " .
+               "script-src 'self' 'unsafe-inline'; " .
                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
                "font-src 'self' https://fonts.gstatic.com data:; " .
                "img-src 'self' data: blob:; " .

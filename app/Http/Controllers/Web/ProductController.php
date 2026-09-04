@@ -207,8 +207,8 @@ class ProductController extends Controller
      */
     public function importCsv(Request $request)
     {
-        if (Auth::check() && Auth::user()->role !== 'admin') {
-            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can bulk import new catalog products.');
+        if (Auth::check() && !Auth::user()->hasCapability('products.write') && Auth::user()->role !== 'admin') {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: You lack the products.write capability to bulk import new catalog products.');
         }
 
         $request->validate([
@@ -278,15 +278,16 @@ class ProductController extends Controller
                 ]);
 
                 if ($initialStock > 0) {
-                    $stock = StockLevel::firstOrCreate(
-                        ['product_id' => $product->id, 'warehouse_id' => $warehouseId],
-                        ['physical_stock' => 0]
+                    $stockService = app(\App\Services\StockService::class);
+                    $stockService->recordStockIn(
+                        $product->id,
+                        $warehouseId,
+                        $initialStock,
+                        'CSV Stock In',
+                        Auth::id() ?? 'ADMIN',
+                        Auth::user()->name ?? 'Manager / Admin',
+                        "Bulk CSV Import Additional Stock for {$product->name}"
                     );
-                    $stock->physical_stock += $initialStock;
-                    $stock->save();
-
-                    $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
-                    $product->save();
                 }
 
                 $updatedCount++;
@@ -300,17 +301,26 @@ class ProductController extends Controller
                     'brand' => $brand,
                     'size' => $size,
                     'unitPrice' => $unitPrice,
-                    'currentStock' => $initialStock,
+                    'currentStock' => 0, // Canonical stock updated authoritatively by StockService
                     'minStockLevel' => $minStock,
                     'archived' => false,
                     'updatedAt' => now()->toIso8601String(),
                 ]);
 
-                StockLevel::create([
-                    'product_id' => $newProduct->id,
-                    'warehouse_id' => $warehouseId,
-                    'physical_stock' => $initialStock,
-                ]);
+                $stockService = app(\App\Services\StockService::class);
+                if ($initialStock > 0) {
+                    $stockService->recordStockIn(
+                        $newProduct->id,
+                        $warehouseId,
+                        $initialStock,
+                        'CSV Initial Balance',
+                        Auth::id() ?? 'ADMIN',
+                        Auth::user()->name ?? 'Manager / Admin',
+                        "Bulk CSV Import Initial Stock for {$newProduct->name}"
+                    );
+                } else {
+                    $stockService->getStockLevel($newProduct->id, $warehouseId, false);
+                }
 
                 $importedCount++;
             }

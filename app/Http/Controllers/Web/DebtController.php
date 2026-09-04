@@ -32,9 +32,10 @@ class DebtController extends Controller
         $query = Customer::where('total_debt', '>', 0);
 
         if ($assignedWarehouseId) {
-            $branchStaffIds = \App\Models\User::where('warehouse_id', $assignedWarehouseId)->pluck('id');
-            $customerNamesFromSales = \App\Models\Sale::whereIn('userId', $branchStaffIds)->pluck('customerName');
-            $query->whereIn('name', $customerNamesFromSales);
+            $customerIdsAtBranch = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
+                ->whereNotNull('customerId')
+                ->pluck('customerId');
+            $query->whereIn('id', $customerIdsAtBranch);
         }
 
         if ($search) {
@@ -70,12 +71,10 @@ class DebtController extends Controller
         $totalDebtorsCount = (clone $query)->count();
         $highRiskDebtorsCount = (clone $query)->where('total_debt', '>=', 100000)->count();
 
-        $recentPaymentsQuery = CustomerLedger::with('customer')->where('type', 'PAYMENT');
+        $recentPaymentsQuery = CustomerLedger::with(['customer', 'sale'])->where('type', 'PAYMENT');
         if ($assignedWarehouseId) {
-            $branchStaffNames = \App\Models\User::where('warehouse_id', $assignedWarehouseId)->pluck('name');
-            if ($branchStaffNames->isNotEmpty()) {
-                $recentPaymentsQuery->whereIn('recorded_by', $branchStaffNames);
-            }
+            $saleIdsAtBranch = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)->pluck('id');
+            $recentPaymentsQuery->whereIn('sale_id', $saleIdsAtBranch);
         }
         $recentPayments = $recentPaymentsQuery->orderBy('created_at', 'desc')->take(15)->get();
 
