@@ -319,7 +319,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
     {
         // 1. Sale of 2 units
         $sale = $this->stockService->recordSale(
-            ['totalAmount' => 80000.00, 'paidAmount' => 80000.00],
+            ['totalAmount' => 80000.00, 'cashAmount' => 80000.00],
             [['productId' => $this->product->id, 'quantity' => 2]],
             $this->warehouse->id,
             true,
@@ -357,7 +357,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
     {
         // Sale of 2 units (₦80,000), but customer paid only ₦40,000 on part-payment
         $sale = $this->stockService->recordSale(
-            ['totalAmount' => 80000.00, 'paidAmount' => 40000.00],
+            ['totalAmount' => 80000.00, 'cashAmount' => 40000.00],
             [['productId' => $this->product->id, 'quantity' => 2]],
             $this->warehouse->id,
             true,
@@ -441,7 +441,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
 
         // 2. Sell 5 units
         $sale = $this->stockService->recordSale(
-            ['totalAmount' => 40000.00 * 5, 'paidAmount' => 40000.00 * 5],
+            ['totalAmount' => 40000.00 * 5, 'cashAmount' => 40000.00 * 5],
             [['productId' => $this->product->id, 'quantity' => 5]],
             $this->warehouse->id,
             true,

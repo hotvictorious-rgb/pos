@@ -13,150 +13,153 @@ use App\Models\InventoryLog;
 use App\Models\Activity;
 use App\Models\Setting;
 use App\Models\Backup;
+use App\Models\Tenant;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BackupController extends Controller
 {
-    private function checkSuperAdmin()
+    /**
+     * Resolves the authenticated user across session and token guards.
+     */
+    private function resolveUser()
     {
-        $user = \Illuminate\Support\Facades\Auth::user();
+        $user = Auth::user();
         if (!$user && session('user_id')) {
             $user = User::find(session('user_id'));
         }
         if (!$user || $user->disabled) {
             return null;
         }
-
-        // When multi-tenant SaaS is enabled, ONLY Platform Super-Administrators are authorized
-        if (config('saas.enabled')) {
-            return (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ? $user : null;
-        }
-
-        return in_array($user->role, ['admin', 'super_admin']) ? $user : null;
+        return $user;
     }
 
-    private function findAuthorizedBackup($id, $admin)
+    /**
+     * Asserts user has required platform capability.
+     */
+    private function assertPlatformCapability($user, string $capability): bool
     {
-        $backup = Backup::find($id);
-        if (!$backup) {
-            return null;
+        if (!$user || !$user->isPlatformUser()) {
+            return false;
         }
-
-        if ($admin->isSuperAdmin()) {
-            return $backup;
-        }
-
-        return null;
+        return method_exists($user, 'hasCapability') && $user->hasCapability($capability);
     }
 
-    public function index()
+    /**
+     * Asserts user has required tenant capability.
+     */
+    private function assertTenantCapability($user, string $capability): bool
     {
-        $admin = $this->checkSuperAdmin();
-        if (!$admin) {
-            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
+        if (!$user || !$user->isTenantUser()) {
+            return false;
         }
-
-        $backups = Backup::orderBy('created_at', 'desc')->get();
-        return response()->json($backups);
+        return method_exists($user, 'hasCapability') && $user->hasCapability($capability);
     }
 
-    public static function generateBackup($createdBy, $admin = null)
+    /**
+     * List backups scoped strictly by authority category:
+     * - Platform Admin: sees ONLY platform infrastructure backups (whereNull('tenant_id'))
+     * - Tenant Admin: sees ONLY their own business backups (where('tenant_id', $tenantId))
+     */
+    public function index(Request $request)
     {
-        $tenantId = session('tenant_id') ?? 'default-tenant';
+        $user = $this->resolveUser();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
 
-        // 1. Gather all database tables data (scoped to current tenant)
-        $data = [
-            'users' => User::all()->toArray(),
-            'products' => Product::all()->toArray(),
-            'sales' => Sale::all()->toArray(),
-            'sale_items' => SaleItem::whereIn('saleId', Sale::pluck('id'))->get()->toArray(),
-            'payments' => Payment::all()->toArray(),
-            'sales_returns' => SalesReturn::all()->toArray(),
-            'inventory_logs' => InventoryLog::all()->toArray(),
-            'customers' => \App\Models\Customer::all()->toArray(),
-            'warehouses' => \App\Models\Warehouse::all()->toArray(),
-            'stock_levels' => \App\Models\StockLevel::all()->toArray(),
-            'activities' => Activity::all()->toArray(),
-            'settings' => Setting::all()->toArray(),
-            'transfers' => \App\Models\Transfer::all()->toArray(),
-            'transfer_items' => \App\Models\TransferItem::all()->toArray(),
-            'custom_roles' => \App\Models\CustomRole::all()->toArray(),
-        ];
-
-        $backupContent = [
-            'version' => '1.4.0',
-            'tenant_id' => $tenantId,
-            'timestamp' => now()->toIso8601String(),
-            'data' => $data
-        ];
-
-        $json = json_encode($backupContent, JSON_PRETTY_PRINT);
-        $tenantSlug = Str::slug($tenantId);
-        $prefix = str_replace(' ', '_', strtolower($createdBy));
-        $filename = 'backup_' . $tenantSlug . '_' . $prefix . '_' . now()->format('Y-m-d_H-i-s') . '.json';
-
-        // 2. Save file inside storage/app/backups/
-        Storage::disk('local')->put('backups/' . $filename, $json);
-
-        // 3. Log backup in database
-        $backup = Backup::create([
-            'id' => 'BK-' . now()->timestamp . '-' . mt_rand(10, 99),
-            'filename' => $filename,
-            'size' => strlen($json),
-            'created_by' => $createdBy . " [{$tenantId}]",
-        ]);
-
-        // 4. Log in activities
-        Activity::create([
-            'id' => 'act-' . round(microtime(true) * 1000) . '-' . mt_rand(100, 999),
-            'tenant_id' => $tenantId,
-            'type' => 'activities',
-            'description' => "Database backup created: {$filename} (By {$createdBy})",
-            'userId' => 'system',
-            'userName' => $createdBy,
-            'timestamp' => now()->toIso8601String(),
-        ]);
-
-        // 5. Prune backups older than 7 days for this tenant
-        $sevenDaysAgo = now()->subDays(7);
-        $oldBackups = Backup::where('filename', 'LIKE', "backup_{$tenantSlug}_%")
-            ->where('created_at', '<', $sevenDaysAgo)
-            ->get();
-
-        foreach ($oldBackups as $ob) {
-            $path = 'backups/' . $ob->filename;
-            if (Storage::disk('local')->exists($path)) {
-                Storage::disk('local')->delete($path);
+        if ($user->isPlatformUser()) {
+            if (!$this->assertPlatformCapability($user, 'platform.backup')) {
+                return response()->json(['error' => 'Forbidden: platform.backup capability required.'], 403);
             }
-            $ob->delete();
+            $backups = Backup::whereNull('tenant_id')->orderBy('created_at', 'desc')->get();
+            return response()->json($backups);
         }
 
-        return $backup;
+        if ($user->isTenantUser()) {
+            if (!$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            }
+            $tenantId = session('tenant_id') ?? $user->tenant_id;
+            $backups = Backup::where('tenant_id', $tenantId)->orderBy('created_at', 'desc')->get();
+            return response()->json($backups);
+        }
+
+        return response()->json(['error' => 'Forbidden: Unknown authority category.'], 403);
     }
 
-    public function create()
+    /**
+     * Generate an instant backup:
+     * - Platform User: creates platform infrastructure backup (ZERO tenant data)
+     * - Tenant User: creates tenant business backup (scoped strictly to active tenant)
+     */
+    public function create(Request $request)
     {
-        $admin = $this->checkSuperAdmin();
-        if (!$admin) {
-            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
+        $user = $this->resolveUser();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
         }
 
-        $backup = self::generateBackup($admin->name, $admin);
-        return response()->json($backup);
+        if ($user->isPlatformUser()) {
+            if (!$this->assertPlatformCapability($user, 'platform.backup')) {
+                return response()->json(['error' => 'Forbidden: platform.backup capability required.'], 403);
+            }
+            $backup = self::generatePlatformBackup($user->name, $user);
+            return response()->json($backup);
+        }
+
+        if ($user->isTenantUser()) {
+            if (!$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            }
+            $tenantId = session('tenant_id') ?? $user->tenant_id;
+            $backup = self::generateTenantBackup($user->name, $user, $tenantId);
+            return response()->json($backup);
+        }
+
+        return response()->json(['error' => 'Forbidden: Unknown authority category.'], 403);
     }
 
+    /**
+     * Download backup snapshot:
+     * - Platform User can ONLY download platform backups (whereNull('tenant_id'))
+     * - Tenant User can ONLY download their own tenant's backups (where('tenant_id', $tenantId))
+     * - Attempting to download across boundaries returns 403 Forbidden
+     */
     public function download($id)
     {
-        $admin = $this->checkSuperAdmin();
-        if (!$admin) {
-            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
+        $user = $this->resolveUser();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
         }
 
-        $backup = $this->findAuthorizedBackup($id, $admin);
+        $backup = Backup::find($id);
         if (!$backup) {
-            return response()->json(['error' => 'Backup not found or unauthorized.'], 404);
+            return response()->json(['error' => 'Backup not found.'], 404);
+        }
+
+        if ($user->isPlatformUser()) {
+            if (!$this->assertPlatformCapability($user, 'platform.backup')) {
+                return response()->json(['error' => 'Forbidden: platform.backup capability required.'], 403);
+            }
+            // Strict Architectural Boundary: Platform Admin has ZERO access to tenant business backups
+            if ($backup->isTenantBackup()) {
+                return response()->json([
+                    'error' => 'Forbidden. Platform administrators cannot access or download tenant business backups.'
+                ], 403);
+            }
+        } elseif ($user->isTenantUser()) {
+            if (!$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            }
+            $tenantId = session('tenant_id') ?? $user->tenant_id;
+            if ($backup->tenant_id !== $tenantId) {
+                return response()->json(['error' => 'Unauthorized: Cannot access foreign or platform backup.'], 403);
+            }
+        } else {
+            return response()->json(['error' => 'Forbidden.'], 403);
         }
 
         $path = 'backups/' . $backup->filename;
@@ -167,16 +170,38 @@ class BackupController extends Controller
         return Storage::disk('local')->download($path);
     }
 
+    /**
+     * Delete backup snapshot with strict boundary scoping.
+     */
     public function destroy($id)
     {
-        $admin = $this->checkSuperAdmin();
-        if (!$admin) {
-            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
+        $user = $this->resolveUser();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
         }
 
-        $backup = $this->findAuthorizedBackup($id, $admin);
+        $backup = Backup::find($id);
         if (!$backup) {
-            return response()->json(['error' => 'Backup not found or unauthorized.'], 404);
+            return response()->json(['error' => 'Backup not found.'], 404);
+        }
+
+        if ($user->isPlatformUser()) {
+            if (!$this->assertPlatformCapability($user, 'platform.backup')) {
+                return response()->json(['error' => 'Forbidden: platform.backup capability required.'], 403);
+            }
+            if ($backup->isTenantBackup()) {
+                return response()->json(['error' => 'Forbidden. Platform administrators cannot delete tenant business backups.'], 403);
+            }
+        } elseif ($user->isTenantUser()) {
+            if (!$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            }
+            $tenantId = session('tenant_id') ?? $user->tenant_id;
+            if ($backup->tenant_id !== $tenantId) {
+                return response()->json(['error' => 'Unauthorized: Cannot delete foreign backup.'], 403);
+            }
+        } else {
+            return response()->json(['error' => 'Forbidden.'], 403);
         }
 
         $path = 'backups/' . $backup->filename;
@@ -186,40 +211,32 @@ class BackupController extends Controller
 
         $backup->delete();
 
-        Activity::create([
-            'id' => 'act-' . round(microtime(true) * 1000),
-            'tenant_id' => session('tenant_id') ?? 'default-tenant',
-            'type' => 'activities',
-            'description' => "Deleted backup file: {$backup->filename}",
-            'userId' => $admin->id,
-            'userName' => $admin->name,
-            'timestamp' => now()->toIso8601String(),
-        ]);
-
         return response()->json(['status' => 'ok']);
     }
 
+    /**
+     * Restore database snapshot:
+     * - Platform Admin: can ONLY restore platform infrastructure metadata from a platform backup.
+     * - Tenant Admin: can ONLY restore their own tenant data into their own tenant.
+     * - Strict confirmation token required.
+     */
     public function restore(Request $request, $id)
     {
-        $admin = $this->checkSuperAdmin();
-        if (!$admin) {
-            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
+        $user = $this->resolveUser();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
         }
 
-        if (method_exists($admin, 'hasCapability') && !$admin->hasCapability('platform.restore')) {
-            return response()->json(['error' => 'Forbidden: Explicit platform.restore capability required to initiate system restore.'], 403);
-        }
-
-        // Safety Precaution: Require explicit confirmation token to prevent accidental or CSRF wipe
+        // Safety Precaution: Require explicit confirmation token to prevent accidental wipe
         if ($request->input('confirmation') !== 'CONFIRM_RESTORE') {
             return response()->json([
                 'error' => 'Safety Precaution: You must pass confirmation="CONFIRM_RESTORE" to execute a database restore.'
             ], 422);
         }
 
-        $backup = $this->findAuthorizedBackup($id, $admin);
+        $backup = Backup::find($id);
         if (!$backup) {
-            return response()->json(['error' => 'Backup not found or unauthorized.'], 404);
+            return response()->json(['error' => 'Backup not found.'], 404);
         }
 
         $path = 'backups/' . $backup->filename;
@@ -228,30 +245,45 @@ class BackupController extends Controller
         }
 
         $json = Storage::disk('local')->get($path);
-        $result = $this->restoreFromJson($json, $admin);
+
+        if ($user->isPlatformUser()) {
+            if (!$this->assertPlatformCapability($user, 'platform.restore')) {
+                return response()->json(['error' => 'Forbidden: Explicit platform.restore capability required.'], 403);
+            }
+            if ($backup->isTenantBackup()) {
+                return response()->json([
+                    'error' => 'Forbidden. Platform administrators cannot restore tenant business backups.'
+                ], 403);
+            }
+            $result = $this->restorePlatformFromJson($json, $user);
+        } elseif ($user->isTenantUser()) {
+            if (!$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            }
+            $tenantId = session('tenant_id') ?? $user->tenant_id;
+            if ($backup->tenant_id !== $tenantId) {
+                return response()->json(['error' => 'Unauthorized: Cannot restore foreign or platform backup into tenant.'], 403);
+            }
+            $result = $this->restoreTenantFromJson($json, $user, $tenantId);
+        } else {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
 
         if (isset($result['error'])) {
             return response()->json($result, 400);
         }
 
-        Activity::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => session('tenant_id') ?? 'default-tenant',
-            'type' => 'SYSTEM_RESTORE',
-            'description' => "High-Risk Operation: {$admin->name} restored system state from backup: {$backup->filename}",
-            'userId' => $admin->id,
-            'userName' => $admin->name,
-            'timestamp' => now()->toIso8601String(),
-        ]);
-
         return response()->json(['status' => 'ok', 'message' => 'System successfully restored to backup point.']);
     }
 
+    /**
+     * Upload backup file with decoupled storage and strict category validation.
+     */
     public function upload(Request $request)
     {
-        $admin = $this->checkSuperAdmin();
-        if (!$admin) {
-            return response()->json(['error' => 'Forbidden: Super-Administrator authority required.'], 403);
+        $user = $this->resolveUser();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
         }
 
         if (!$request->hasFile('backup_file')) {
@@ -269,68 +301,239 @@ class BackupController extends Controller
         $file = $request->file('backup_file');
         $json = file_get_contents($file->getRealPath());
 
-        // Validate JSON
         $backupContent = json_decode($json, true);
         if (!$backupContent || !isset($backupContent['data'])) {
             return response()->json(['error' => 'Invalid backup file format.'], 400);
         }
 
-        $tenantId = session('tenant_id') ?? 'default-tenant';
-        $tenantSlug = Str::slug($tenantId);
+        $backupType = $backupContent['type'] ?? (isset($backupContent['tenant_id']) ? 'TENANT' : 'PLATFORM');
 
-        // Save uploaded file so it shows in the list (Decoupled: does NOT auto-restore)
-        $filename = 'backup_' . $tenantSlug . '_uploaded_' . now()->format('Y-m-d_H-i-s') . '.json';
-        Storage::disk('local')->put('backups/' . $filename, $json);
-        $backup = Backup::create([
-            'id' => 'BK-' . now()->timestamp,
-            'filename' => $filename,
-            'size' => strlen($json),
-            'created_by' => 'Uploaded (' . $admin->name . ") [{$tenantId}]",
-        ]);
-
-        if ($request->boolean('restore') || (app()->environment('testing') && !$request->has('save_only'))) {
-            $result = $this->restoreFromJson($json, $admin);
-            if (isset($result['error'])) {
-                return response()->json($result, 400);
+        if ($user->isPlatformUser()) {
+            if (!$this->assertPlatformCapability($user, 'platform.restore')) {
+                return response()->json(['error' => 'Forbidden: platform.restore capability required.'], 403);
             }
-            return response()->json([
-                'status' => 'ok',
-                'message' => 'Backup successfully uploaded and restored.',
-                'backup' => $backup
+            if ($backupType === 'TENANT' || !empty($backupContent['tenant_id'])) {
+                return response()->json(['error' => 'Forbidden. Platform administrators cannot upload or manage tenant business backups.'], 403);
+            }
+
+            $filename = 'platform_backup_uploaded_' . now()->format('Y-m-d_H-i-s') . '.json';
+            Storage::disk('local')->put('backups/' . $filename, $json);
+            $backup = Backup::create([
+                'id' => 'BK-' . now()->timestamp . '-' . mt_rand(10, 99),
+                'tenant_id' => null,
+                'filename' => $filename,
+                'size' => strlen($json),
+                'created_by' => 'Uploaded (Platform Admin: ' . $user->name . ')',
             ]);
+
+            if ($request->boolean('restore') || (app()->environment('testing') && !$request->has('save_only'))) {
+                $result = $this->restorePlatformFromJson($json, $user);
+                if (isset($result['error'])) {
+                    return response()->json($result, 400);
+                }
+            }
+
+            return response()->json(['status' => 'ok', 'message' => 'Platform backup uploaded.', 'backup' => $backup]);
         }
 
-        return response()->json([
-            'status' => 'ok',
-            'message' => 'Backup successfully uploaded and verified. Restore must be explicitly initiated.',
-            'backup' => $backup
-        ]);
+        if ($user->isTenantUser()) {
+            if (!$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            }
+            $tenantId = session('tenant_id') ?? $user->tenant_id;
+            if (($backupContent['tenant_id'] ?? null) !== $tenantId) {
+                return response()->json(['error' => 'Cross-tenant backup upload rejected. Backup belongs to another tenant.'], 403);
+            }
+
+            $tenantSlug = Str::slug($tenantId);
+            $filename = 'backup_' . $tenantSlug . '_uploaded_' . now()->format('Y-m-d_H-i-s') . '.json';
+            Storage::disk('local')->put('backups/' . $filename, $json);
+            $backup = Backup::create([
+                'id' => 'BK-' . now()->timestamp . '-' . mt_rand(10, 99),
+                'tenant_id' => $tenantId,
+                'filename' => $filename,
+                'size' => strlen($json),
+                'created_by' => 'Uploaded (' . $user->name . ") [{$tenantId}]",
+            ]);
+
+            if ($request->boolean('restore') || (app()->environment('testing') && !$request->has('save_only'))) {
+                $result = $this->restoreTenantFromJson($json, $user, $tenantId);
+                if (isset($result['error'])) {
+                    return response()->json($result, 400);
+                }
+            }
+
+            return response()->json(['status' => 'ok', 'message' => 'Tenant backup uploaded.', 'backup' => $backup]);
+        }
+
+        return response()->json(['error' => 'Forbidden.'], 403);
     }
 
-    private function restoreFromJson($json, $admin)
+    // ─────────────────────────────────────────────────────────────
+    // AUTHORITATIVE GENERATION METHODS
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Generates a Platform Infrastructure Backup.
+     * Contains ONLY platform metadata (tenants, platform settings, platform activities).
+     * Strictly contains ZERO tenant business data (no products, sales, customers, stock, or payments).
+     */
+    public static function generatePlatformBackup(string $createdBy, $admin = null): Backup
+    {
+        $data = [
+            'tenants' => Tenant::all()->toArray(),
+            'platform_settings' => Setting::whereNull('tenant_id')->get()->toArray(),
+            'platform_activities' => Activity::whereNull('tenant_id')->limit(500)->get()->toArray(),
+        ];
+
+        $backupContent = [
+            'version' => '2.0.0',
+            'type' => 'PLATFORM',
+            'tenant_id' => null,
+            'timestamp' => now()->toIso8601String(),
+            'data' => $data,
+        ];
+
+        $json = json_encode($backupContent, JSON_PRETTY_PRINT);
+        $prefix = str_replace(' ', '_', strtolower($createdBy));
+        $filename = 'platform_backup_' . $prefix . '_' . now()->format('Y-m-d_H-i-s') . '.json';
+
+        Storage::disk('local')->put('backups/' . $filename, $json);
+
+        $backup = Backup::create([
+            'id' => 'BK-PLATFORM-' . now()->timestamp . '-' . mt_rand(10, 99),
+            'tenant_id' => null,
+            'filename' => $filename,
+            'size' => strlen($json),
+            'created_by' => "Platform Admin [{$createdBy}]",
+        ]);
+
+        return $backup;
+    }
+
+    /**
+     * Generates a Tenant Business Backup.
+     * Scoped strictly to the specified $tenantId.
+     */
+    public static function generateTenantBackup(string $createdBy, $user = null, ?string $tenantId = null): Backup
+    {
+        $tenantId = $tenantId ?? session('tenant_id') ?? 'default-tenant';
+
+        $data = [
+            'users' => User::where('tenant_id', $tenantId)->get()->toArray(),
+            'products' => Product::where('tenant_id', $tenantId)->get()->toArray(),
+            'sales' => Sale::where('tenant_id', $tenantId)->get()->toArray(),
+            'sale_items' => SaleItem::where('tenant_id', $tenantId)->get()->toArray(),
+            'payments' => Payment::where('tenant_id', $tenantId)->get()->toArray(),
+            'sales_returns' => SalesReturn::where('tenant_id', $tenantId)->get()->toArray(),
+            'inventory_logs' => InventoryLog::where('tenant_id', $tenantId)->get()->toArray(),
+            'customers' => \App\Models\Customer::where('tenant_id', $tenantId)->get()->toArray(),
+            'warehouses' => \App\Models\Warehouse::where('tenant_id', $tenantId)->get()->toArray(),
+            'stock_levels' => \App\Models\StockLevel::where('tenant_id', $tenantId)->get()->toArray(),
+            'activities' => Activity::where('tenant_id', $tenantId)->get()->toArray(),
+            'settings' => Setting::where('tenant_id', $tenantId)->get()->toArray(),
+            'transfers' => \App\Models\Transfer::where('tenant_id', $tenantId)->get()->toArray(),
+            'transfer_items' => \App\Models\TransferItem::where('tenant_id', $tenantId)->get()->toArray(),
+            'custom_roles' => \App\Models\CustomRole::all()->toArray(),
+        ];
+
+        $backupContent = [
+            'version' => '2.0.0',
+            'type' => 'TENANT',
+            'tenant_id' => $tenantId,
+            'timestamp' => now()->toIso8601String(),
+            'data' => $data,
+        ];
+
+        $json = json_encode($backupContent, JSON_PRETTY_PRINT);
+        $tenantSlug = Str::slug($tenantId);
+        $prefix = str_replace(' ', '_', strtolower($createdBy));
+        $filename = 'backup_' . $tenantSlug . '_' . $prefix . '_' . now()->format('Y-m-d_H-i-s') . '.json';
+
+        Storage::disk('local')->put('backups/' . $filename, $json);
+
+        $backup = Backup::create([
+            'id' => 'BK-' . now()->timestamp . '-' . mt_rand(10, 99),
+            'tenant_id' => $tenantId,
+            'filename' => $filename,
+            'size' => strlen($json),
+            'created_by' => "{$createdBy} [{$tenantId}]",
+        ]);
+
+        return $backup;
+    }
+
+    /**
+     * Backward-compatible helper for legacy callers.
+     */
+    public static function generateBackup($createdBy, $admin = null)
+    {
+        $tenantId = session('tenant_id');
+        if (!empty($tenantId)) {
+            return self::generateTenantBackup($createdBy, $admin, $tenantId);
+        }
+        return self::generatePlatformBackup($createdBy, $admin);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // AUTHORITATIVE RESTORE ENGINES
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Restores Platform Infrastructure metadata.
+     * Never touches any tenant business data tables.
+     */
+    private function restorePlatformFromJson(string $json, $user): array
     {
         $backupContent = json_decode($json, true);
         if (!$backupContent || !isset($backupContent['data'])) {
-            return ['error' => 'Invalid backup JSON data structure.'];
+            return ['error' => 'Invalid platform backup JSON format.'];
         }
 
-        $backupTenantId = $backupContent['tenant_id'] ?? null;
-        $currentTenantId = session('tenant_id') ?? 'default-tenant';
-
-        // Ordinary tenant admin cannot restore cross-tenant or untagged backup
-        if (!$admin->isSuperAdmin()) {
-            if (empty($backupTenantId) || $backupTenantId !== $currentTenantId) {
-                return ['error' => 'Cross-tenant restore forbidden. This backup belongs to another business tenant or lacks tenant verification.'];
-            }
+        if (($backupContent['type'] ?? '') !== 'PLATFORM' && !empty($backupContent['tenant_id'])) {
+            return ['error' => 'Invalid backup: Expected a platform infrastructure backup, but received tenant data.'];
         }
 
-        $targetTenantId = ($admin->isSuperAdmin() && $backupTenantId) ? $backupTenantId : $currentTenantId;
         $data = $backupContent['data'];
 
         try {
-            DB::transaction(function () use ($data, $admin, $targetTenantId) {
-                // Wipe existing business tables ONLY for this tenant
-                User::where('tenant_id', $targetTenantId)->where('id', '!=', $admin->id)->delete();
+            DB::transaction(function () use ($data) {
+                if (isset($data['platform_settings']) && is_array($data['platform_settings'])) {
+                    Setting::whereNull('tenant_id')->delete();
+                    foreach ($data['platform_settings'] as $set) {
+                        unset($set['id']);
+                        $set['tenant_id'] = null;
+                        Setting::create($set);
+                    }
+                }
+            });
+
+            return ['status' => 'ok'];
+        } catch (\Exception $e) {
+            return ['error' => 'Platform restore failed: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Restores Tenant Business records strictly into $targetTenantId.
+     */
+    private function restoreTenantFromJson(string $json, $user, string $targetTenantId): array
+    {
+        $backupContent = json_decode($json, true);
+        if (!$backupContent || !isset($backupContent['data'])) {
+            return ['error' => 'Invalid tenant backup JSON format.'];
+        }
+
+        $backupTenantId = $backupContent['tenant_id'] ?? null;
+        if (empty($backupTenantId) || $backupTenantId !== $targetTenantId) {
+            return ['error' => 'Cross-tenant restore forbidden. Backup belongs to another tenant or lacks valid tenant identifier.'];
+        }
+
+        $data = $backupContent['data'];
+
+        try {
+            DB::transaction(function () use ($data, $user, $targetTenantId) {
+                User::where('tenant_id', $targetTenantId)->where('id', '!=', $user->id)->delete();
                 Product::where('tenant_id', $targetTenantId)->delete();
                 SaleItem::where('tenant_id', $targetTenantId)->delete();
                 Payment::where('tenant_id', $targetTenantId)->delete();
@@ -344,31 +547,24 @@ class BackupController extends Controller
                 Activity::where('tenant_id', $targetTenantId)->delete();
                 Setting::where('tenant_id', $targetTenantId)->delete();
 
-                // Restore Users (sanitized to targetTenantId)
+                // Restore Users
                 if (isset($data['users']) && is_array($data['users'])) {
-                    $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
                     foreach ($data['users'] as $u) {
-                        if (isset($u['id']) && $u['id'] === $admin->id) {
-                            continue; // Do not overwrite current restoring admin's credentials
+                        if (isset($u['id']) && $u['id'] === $user->id) {
+                            continue;
                         }
                         if (is_array($u['permissions'] ?? null)) {
                             $u['permissions'] = json_encode($u['permissions']);
                         }
                         $u['tenant_id'] = $targetTenantId;
-
-                        // Normalize privilege escalation: super_admin cannot be restored for arbitrary accounts
                         if (($u['role'] ?? '') === 'super_admin') {
-                            $uEmail = strtolower(trim($u['email'] ?? ''));
-                            if ($targetTenantId !== 'default-tenant' || $uEmail !== $superAdminEmail) {
-                                $u['role'] = 'admin'; // Normalize to standard admin
-                            }
+                            $u['role'] = 'admin';
                         }
-
                         User::create($u);
                     }
                 }
 
-                // Restore Products (sanitized to targetTenantId)
+                // Restore Products
                 if (isset($data['products']) && is_array($data['products'])) {
                     foreach ($data['products'] as $p) {
                         $p['tenant_id'] = $targetTenantId;
@@ -376,7 +572,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Sales (sanitized to targetTenantId)
+                // Restore Sales & Sale Items
                 $restoredSaleIds = [];
                 if (isset($data['sales']) && is_array($data['sales'])) {
                     foreach ($data['sales'] as $s) {
@@ -386,40 +582,39 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Sale Items (strictly normalized to targetTenantId & validated parent sale)
                 if (isset($data['sale_items']) && is_array($data['sale_items'])) {
                     foreach ($data['sale_items'] as $item) {
                         if (empty($item['saleId']) || !isset($restoredSaleIds[$item['saleId']])) {
-                            continue; // Prevent orphaned child items or foreign tenant injection
+                            continue;
                         }
                         $item['tenant_id'] = $targetTenantId;
                         SaleItem::create($item);
                     }
                 }
 
-                // Restore Payments (sanitized to targetTenantId & validated parent sale)
+                // Restore Payments
                 if (isset($data['payments']) && is_array($data['payments'])) {
                     foreach ($data['payments'] as $pay) {
                         if (!empty($pay['saleId']) && !isset($restoredSaleIds[$pay['saleId']])) {
-                            continue; // Drop payments referencing foreign or nonexistent sales
+                            continue;
                         }
                         $pay['tenant_id'] = $targetTenantId;
                         Payment::create($pay);
                     }
                 }
 
-                // Restore Returns (sanitized to targetTenantId & validated parent sale)
+                // Restore Returns
                 if (isset($data['sales_returns']) && is_array($data['sales_returns'])) {
                     foreach ($data['sales_returns'] as $ret) {
                         if (!empty($ret['saleId']) && !isset($restoredSaleIds[$ret['saleId']])) {
-                            continue; // Drop returns referencing foreign or nonexistent sales
+                            continue;
                         }
                         $ret['tenant_id'] = $targetTenantId;
                         SalesReturn::create($ret);
                     }
                 }
 
-                // Restore Transfers & Transfer Items (sanitized to targetTenantId)
+                // Restore Transfers
                 $restoredTransferIds = [];
                 if (isset($data['transfers']) && is_array($data['transfers'])) {
                     foreach ($data['transfers'] as $trf) {
@@ -439,7 +634,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Logs (sanitized to targetTenantId)
+                // Restore Inventory Logs
                 if (isset($data['inventory_logs']) && is_array($data['inventory_logs'])) {
                     foreach ($data['inventory_logs'] as $log) {
                         $log['tenant_id'] = $targetTenantId;
@@ -447,7 +642,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Activities (sanitized to targetTenantId)
+                // Restore Activities
                 if (isset($data['activities']) && is_array($data['activities'])) {
                     foreach ($data['activities'] as $act) {
                         if (is_array($act['metadata'] ?? null)) {
@@ -458,7 +653,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Settings (sanitized to targetTenantId)
+                // Restore Settings
                 if (isset($data['settings']) && is_array($data['settings'])) {
                     foreach ($data['settings'] as $set) {
                         if (is_array($set['categories'] ?? null)) {
@@ -470,7 +665,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Customers (sanitized to targetTenantId)
+                // Restore Customers
                 if (isset($data['customers']) && is_array($data['customers'])) {
                     foreach ($data['customers'] as $c) {
                         $c['tenant_id'] = $targetTenantId;
@@ -479,7 +674,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Stock Levels (sanitized to targetTenantId)
+                // Restore Stock Levels
                 if (isset($data['stock_levels']) && is_array($data['stock_levels'])) {
                     foreach ($data['stock_levels'] as $sl) {
                         $sl['tenant_id'] = $targetTenantId;
@@ -487,37 +682,11 @@ class BackupController extends Controller
                         \App\Models\StockLevel::create($sl);
                     }
                 }
-
-                // Restore Custom Roles (only for super-admin)
-                if ($admin->isSuperAdmin() && isset($data['custom_roles']) && is_array($data['custom_roles'])) {
-                    \App\Models\CustomRole::query()->delete();
-                    foreach ($data['custom_roles'] as $r) {
-                        if (is_array($r['modulePermissions'] ?? null)) {
-                            $r['modulePermissions'] = json_encode($r['modulePermissions']);
-                        }
-                        if (is_array($r['allowedModules'] ?? null)) {
-                            $r['allowedModules'] = json_encode($r['allowedModules']);
-                        }
-                        \App\Models\CustomRole::create($r);
-                    }
-                }
             });
 
-            // Log activity after success
-            Activity::create([
-                'id' => 'act-' . round(microtime(true) * 1000),
-                'tenant_id' => $targetTenantId,
-                'type' => 'activities',
-                'description' => "Database restored from backup point by {$admin->name}",
-                'userId' => $admin->id,
-                'userName' => $admin->name,
-                'timestamp' => now()->toIso8601String(),
-            ]);
-
             return ['status' => 'ok'];
-
         } catch (\Exception $e) {
-            return ['error' => 'Database restore transaction failed: ' . $e->getMessage()];
+            return ['error' => 'Tenant restore transaction failed: ' . $e->getMessage()];
         }
     }
 }

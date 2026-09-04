@@ -233,7 +233,7 @@
                     </p>
                 </div>
 
-                <form id="backupForm" method="POST" action="/api/backups">
+                <form id="backupForm" method="POST" action="/settings/backups">
                     @csrf
                     <button type="button" class="btn btn-success" onclick="confirmCreateBackup()">
                         📦 Create Instant DB Backup
@@ -258,7 +258,7 @@
                             <td>{{ date('d M Y, h:i A', strtotime($b->created_at)) }}</td>
                             <td>{{ number_format(($b->size ?? 1024) / 1024, 1) }} KB</td>
                             <td>
-                                <a href="/api/backups/{{ $b->id }}/download" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;">
+                                <a href="/settings/backups/{{ $b->id }}/download" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;">
                                     ⬇️ Download
                                 </a>
                             </td>

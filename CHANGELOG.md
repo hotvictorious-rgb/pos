@@ -8,6 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Platform vs. Tenant Backup Isolation & Zero Tenant Data Access**:
+  - Partitioned backups with indexed `tenant_id` column: Platform backups (`tenant_id = null`) vs Tenant backups (`tenant_id = $tenantId`).
+  - Platform backups archive strictly SaaS infrastructure (`tenants`, platform settings, platform activities), with ZERO business data (0 products, 0 sales, 0 customers, 0 stock).
+  - Platform Admin is strictly forbidden (`403 Forbidden`) from viewing, creating, downloading, or restoring tenant backups.
+  - Cross-tenant backup restores are prevented: Tenant Admin can only restore backups matching their verified `tenant_id`.
+  - Added dedicated tenant backup UI route (`/settings/backups`) protected by `capability:settings.manage`.
+- **Strict CSRF Boundary Enforcement**:
+  - Restricted CSRF verification exemption in `bootstrap/app.php` strictly to `api/login`.
+  - All state-mutating API and web endpoints (`/api/*`, `/settings/backups/*`) now strictly enforce CSRF tokens in production.
+- **Pure Payment Tender Architecture & Authoritative Checkout**:
+  - Completely eliminated the legacy `paidAmount` input parameter from `PosController` and `StockService`.
+  - The server strictly accepts and validates `cashAmount` and `posAmount`, deriving the aggregate paid total server-side.
+- **Extended Idempotency Lock TTL**:
+  - Increased lock duration in `IdempotencyService` from 15s to 60s (with a 15s wait timeout) to prevent lease expiry during extended transactional mutations.
+- **Frontend External DB Legacy Clean-Up**:
+  - Cleared all references to `hysam_external_db_config`, `hysam_external_db_autosync`, and `X-Database-Config` headers from `storage.ts`.
+- **Expanded Automated Test Suite**:
+  - Added `BackupIsolationAndCsrfHardeningTest` with 8 comprehensive security tests.
+  - Reconciled full automated test suite to **212 passed tests (1,245 assertions, 0 errors, 0 failures)** across 27 test suites.
 - **Permanent Engineering Quality Criterion & Twelve-Point Evaluation Pipeline**:
   - Formally enshrined VM-018 in `docs/V_MARKET_SECURITY_CONTRACT.md`: No feature is complete merely because its happy path works; it is complete only when its authority, tenant isolation, branch isolation, ownership, concurrency, accounting/inventory effects, idempotency, auditability, and failure paths have been verified.
   - Standardized the 12-point pipeline across Authentication, Authority Category, Tenant Context, Branch Context, Capability, Ownership, Server Validation, Transactions + Locks, State Machine, Accounting/Inventory, Immutable Audit, and Idempotency.

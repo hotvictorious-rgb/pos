@@ -41,8 +41,8 @@ class SettingController extends Controller
 
         $warehouses = Warehouse::orderBy('id')->get();
         $user = Auth::user();
-        if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            $backups = Backup::orderBy('created_at', 'desc')->get();
+        if ($user && $user->isTenantUser()) {
+            $backups = Backup::where('tenant_id', $tenantId)->orderBy('created_at', 'desc')->get();
         } else {
             $backups = collect();
         }

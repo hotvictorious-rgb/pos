@@ -539,7 +539,7 @@ class FourLevelAuthorityArchitectureTest extends TestCase
             'items' => [
                 ['productId' => $this->productA1->id, 'quantity' => 2, 'unitPrice' => 15000]
             ],
-            'paidAmount' => 30000,
+            'cashAmount' => 30000,
             'is_supplied' => true,
         ]);
 

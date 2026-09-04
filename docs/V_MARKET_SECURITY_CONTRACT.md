@@ -124,3 +124,11 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 10. `Accounting / Inventory` → What authoritative business effects occurred?
 11. `Immutable Audit` → What happened and who did it?
 12. `Idempotency` → Can this request safely be retried?
+
+### VM-019: Platform vs Tenant Backup Segregation & Pure Tenders
+- **Zero Tenant Data in Platform Backups**: Platform backups strictly archive platform infrastructure (`tenants`, platform settings, platform activities). Platform Admin has ZERO access to tenant business data (products, sales, customers, stock, ledgers) through backup files or download endpoints.
+- **Tenant Backups Strict Ownership**: Tenant backups are strictly isolated to the authenticated tenant (`tenant_id`). Only the designated Tenant Admin can initiate, download, or restore tenant backups.
+- **Cross-Tenant Restore Immunity**: Cross-tenant backup restoration is physically prevented. Neither Platform Admin nor foreign Tenant Admins can inject or restore backup snapshots into a foreign tenant.
+- **Strict CSRF Boundary**: All state-mutating endpoints (`/api/*`, `/settings/backups/*`, `/stock/*`, `/sales/*`) enforce CSRF token verification. Only stateless credential exchange (`api/login`) is exempt from CSRF validation.
+- **Pure Tender Authority**: Checkout strictly accepts separate `cashAmount` and `posAmount` tenders. Client-supplied `paidAmount` inputs are rejected, and total paid amount is strictly derived from verified tenders on the server.
+

@@ -760,12 +760,12 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
             json_encode($backupPayload)
         );
 
-        $response = $this->actingAs($superAdmin)->withSession([
-            'user_id' => $superAdmin->id,
-            'user_role' => 'super_admin',
-            'tenant_id' => 'default-tenant',
-            'portal' => 'super_admin',
-        ])->post('/api/backups/upload', [
+        $response = $this->actingAs($this->adminUser)->withSession([
+            'user_id' => $this->adminUser->id,
+            'user_role' => 'admin',
+            'tenant_id' => $this->tenant->id,
+            'portal' => 'tenant-admin',
+        ])->post('/settings/backups/upload', [
             'backup_file' => $file,
         ]);
 

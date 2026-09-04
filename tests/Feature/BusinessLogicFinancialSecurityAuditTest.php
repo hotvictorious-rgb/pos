@@ -307,7 +307,7 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
     {
         // Sale worth ₦100,000, customer only paid ₦20,000 on credit
         $sale = $this->stockService->recordSale(
-            ['totalAmount' => 100000.00, 'paidAmount' => 20000.00],
+            ['totalAmount' => 100000.00, 'cashAmount' => 20000.00],
             [['productId' => $this->product->id, 'quantity' => 2]],
             $this->warehouse->id,
             true,

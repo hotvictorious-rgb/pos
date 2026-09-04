@@ -380,7 +380,7 @@ class UnsuppliedStockReservationIntegrityTest extends TestCase
             [
                 'id' => (string) Str::uuid(),
                 'totalAmount' => 180000,
-                'paidAmount' => 180000,
+                'cashAmount' => 180000,
                 'customerName' => 'Cancelling Buyer',
             ],
             [

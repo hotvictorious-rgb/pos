@@ -149,11 +149,6 @@ class PosController extends Controller
         $posAmount = max(0.0, (float) ($request->posAmount ?? 0));
         $transferAmount = 0.0; // Strictly retired
 
-        // Map legacy single paidAmount input if cash/pos amounts were omitted
-        if ($cashAmount == 0.0 && $posAmount == 0.0 && $request->filled('paidAmount')) {
-            $cashAmount = max(0.0, (float) $request->paidAmount);
-        }
-
         $declaredPaid = (float) ($request->paidAmount ?? 0);
         if ($declaredPaid > 0 && ($cashAmount + $posAmount) < $declaredPaid) {
             $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$declaredPaid}).";

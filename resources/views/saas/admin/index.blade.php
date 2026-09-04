@@ -351,7 +351,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
                 <div>
                     <div class="section-title" style="margin-bottom: 4px;">💾 Platform Database Backups & Snapshots</div>
-                    <p style="color: #94a3b8; font-size: 13px;">Manage and download full platform and tenant safety backup snapshots. Restricted exclusively to Platform Super-Administrators.</p>
+                    <p style="color: #94a3b8; font-size: 13px;">Manage and download platform infrastructure and configuration backup snapshots. Restricted exclusively to Platform Super-Administrators (contains zero tenant business records).</p>
                 </div>
                 <form method="POST" action="/api/backups" onsubmit="return confirm('Generate an instant database safety backup now?');">
                     @csrf

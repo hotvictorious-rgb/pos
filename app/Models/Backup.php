@@ -11,8 +11,19 @@ class Backup extends Model
 
     protected $fillable = [
         'id',
+        'tenant_id',
         'filename',
         'size',
         'created_by',
     ];
+
+    public function isPlatformBackup(): bool
+    {
+        return empty($this->tenant_id);
+    }
+
+    public function isTenantBackup(): bool
+    {
+        return !empty($this->tenant_id);
+    }
 }

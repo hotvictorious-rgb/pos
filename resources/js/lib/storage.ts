@@ -15,14 +15,11 @@ const STORAGE_KEYS = {
 
 const getAuthHeaders = async () => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-
-  try {
-    const dbConfig = localStorage.getItem('hysam_external_db_config');
-    if (dbConfig) {
-      headers['X-Database-Config'] = btoa(unescape(encodeURIComponent(dbConfig)));
-    }
-  } catch (err) {
-    console.error('Failed to encode DB Config:', err);
+  const csrfToken = typeof document !== 'undefined'
+    ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    : null;
+  if (csrfToken) {
+    headers['X-CSRF-TOKEN'] = csrfToken;
   }
   return headers;
 };
@@ -95,12 +92,8 @@ let autoSyncInterval: any = null;
 
 export const storage = {
   init: async () => {
-    // Default auto-sync to enabled
-    if (localStorage.getItem('hysam_external_db_autosync') === null) {
-      localStorage.setItem('hysam_external_db_autosync', 'true');
-    }
-
-    // Initial local setup defaults
+    // Online-only architecture: Backend Laravel database is the sole authoritative source of truth.
+    // Client-side shadow databases and background sync are permanently retired.
     if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify([]));
     }
@@ -199,23 +192,16 @@ export const storage = {
   },
 
   isSyncPending: (): boolean => {
-    return localStorage.getItem('hysam_sync_pending') === 'true';
+    return false;
   },
 
   setSyncPending: (pending: boolean) => {
-    localStorage.setItem('hysam_sync_pending', String(pending));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('hysam-sync-status', {
-        detail: { pending, online: navigator.onLine }
-      }));
-    }
+    // No-op in online-only architecture
   },
 
   sync: async () => {
     // Online-only authoritative architecture:
     // The backend Laravel API and database are the single source of truth.
-    // Client-side bulk merge and unauthenticated /api/data syncing are permanently retired.
-    storage.setSyncPending(false);
   },
 
   getData: <T>(key: string): T[] => {
@@ -225,9 +211,7 @@ export const storage = {
 
   saveData: <T>(key: string, data: T[]) => {
     localStorage.setItem(key, JSON.stringify(data));
-    storage.setSyncPending(true);
     notifyDataUpdated();
-    triggerDebouncedSync(); // Trigger background sync with debounce
   },
 
   forceSync: async () => {

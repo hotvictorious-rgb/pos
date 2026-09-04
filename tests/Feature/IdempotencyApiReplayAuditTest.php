@@ -506,7 +506,7 @@ class IdempotencyApiReplayAuditTest extends TestCase
 
         // 1. Sale
         $sale = $this->stockService->recordSale(
-            ['totalAmount' => 50000.00, 'paidAmount' => 50000.00],
+            ['totalAmount' => 50000.00, 'cashAmount' => 50000.00],
             [['productId' => $this->productA1->id, 'quantity' => 1]],
             $this->warehouseA->id,
             true,

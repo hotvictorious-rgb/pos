@@ -181,11 +181,7 @@ class StockService
 
             // Server-authoritative checkout calculation via AccountingReportService
             $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-            $tenderData = $saleData;
-            if (!isset($tenderData['cashAmount']) && !isset($tenderData['posAmount']) && isset($tenderData['paidAmount'])) {
-                $tenderData['cashAmount'] = $tenderData['paidAmount'];
-            }
-            $calc = $accountingService->calculateCheckout($items, $tenderData, $saleData['sale_type'] ?? 'RETAIL');
+            $calc = $accountingService->calculateCheckout($items, $saleData, $saleData['sale_type'] ?? 'RETAIL');
 
             $validatedItems = $calc['validatedItems'];
             $totalAmount    = $calc['totalAmount'];

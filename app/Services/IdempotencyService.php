@@ -43,10 +43,10 @@ class IdempotencyService
         $cacheKey = "idempotency:{$tenantId}:{$operation}:{$cleanKey}";
         $lockKey = "lock:{$cacheKey}";
 
-        // Atomic lock to serialize concurrent identical requests
-        $lock = Cache::lock($lockKey, 15);
+        // Atomic lock to serialize concurrent identical requests (60s TTL protects against premature lease expiration)
+        $lock = Cache::lock($lockKey, 60);
 
-        return $lock->block(10, function () use ($cacheKey, $cleanKey, $fingerprint, $tenantId, $operation, $userId, $callback) {
+        return $lock->block(15, function () use ($cacheKey, $cleanKey, $fingerprint, $tenantId, $operation, $userId, $callback) {
             // ── L1: In-Memory / Distributed Cache Fast-Path ──
             $cached = Cache::get($cacheKey);
 
