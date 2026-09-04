@@ -99,55 +99,43 @@ class DebtController extends Controller
     {
         $request->validate([
             'amount' => 'required|numeric|min:1',
-            'payment_method' => 'required|string',
+            'payment_method' => 'required|string|in:CASH,POS,cash,pos',
         ]);
 
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Cashier';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('reference_no');
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('reference_no') ?? (string) \Illuminate\Support\Str::uuid();
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         try {
-            if ($idempotencyKey) {
-                $idempotencyService = app(\App\Services\IdempotencyService::class);
-                $ledger = $idempotencyService->execute(
-                    'debt_payment',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    [
-                        'customerId' => (int) $customerId,
-                        'amount' => (float) $request->amount,
-                        'payment_method' => $request->payment_method,
-                    ],
-                    function () use ($customerId, $request, $userId, $userName) {
-                        return $this->stockService->recordCustomerPayment(
-                            (int) $customerId,
-                            (float) $request->amount,
-                            $request->payment_method,
-                            $request->reference_no,
-                            $userId,
-                            $userName,
-                            $request->notes
-                        );
-                    }
-                );
-            } else {
-                $ledger = $this->stockService->recordCustomerPayment(
-                    (int) $customerId,
-                    (float) $request->amount,
-                    $request->payment_method,
-                    $request->reference_no,
-                    $userId,
-                    $userName,
-                    $request->notes
-                );
-            }
+            $idempotencyService = app(\App\Services\IdempotencyService::class);
+            $ledger = $idempotencyService->execute(
+                'debt_payment',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                [
+                    'customerId' => (int) $customerId,
+                    'amount' => (float) $request->amount,
+                    'payment_method' => $request->payment_method,
+                ],
+                function () use ($customerId, $request, $userId, $userName) {
+                    return $this->stockService->recordCustomerPayment(
+                        (int) $customerId,
+                        (float) $request->amount,
+                        $request->payment_method,
+                        $request->reference_no,
+                        $userId,
+                        $userName,
+                        $request->notes
+                    );
+                }
+            );
 
-            return redirect()->route('debts.index')->with('success', "✓ Payment of ₦" . number_format($request->amount, 0) . " received successfully!");
+            return redirect()->route('debts.index')->with('success', "✓ Payment of ₦" . number_format($request->amount, 2) . " successfully credited to customer ledger!");
         } catch (\Throwable $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => $e->getMessage()])->withInput();
         }
     }
 }

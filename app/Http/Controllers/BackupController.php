@@ -315,6 +315,7 @@ class BackupController extends Controller
 
                 // Restore Users (sanitized to targetTenantId)
                 if (isset($data['users']) && is_array($data['users'])) {
+                    $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
                     foreach ($data['users'] as $u) {
                         if (isset($u['id']) && $u['id'] === $admin->id) {
                             continue; // Do not overwrite current restoring admin's credentials
@@ -323,6 +324,15 @@ class BackupController extends Controller
                             $u['permissions'] = json_encode($u['permissions']);
                         }
                         $u['tenant_id'] = $targetTenantId;
+
+                        // Normalize privilege escalation: super_admin cannot be restored for arbitrary accounts
+                        if (($u['role'] ?? '') === 'super_admin') {
+                            $uEmail = strtolower(trim($u['email'] ?? ''));
+                            if ($targetTenantId !== 'default-tenant' || $uEmail !== $superAdminEmail) {
+                                $u['role'] = 'admin'; // Normalize to standard admin
+                            }
+                        }
+
                         User::create($u);
                     }
                 }

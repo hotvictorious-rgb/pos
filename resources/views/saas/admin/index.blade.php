@@ -61,7 +61,10 @@
             <div>
                 <strong>👁️ Impersonation Mode Active:</strong> You are currently viewing the system as tenant <code>{{ session('tenant_id') }}</code>.
             </div>
-            <a href="{{ route('saas.admin.stop_impersonate') }}" class="btn btn-warning">Exit Impersonation</a>
+            <form action="{{ route('saas.admin.stop_impersonate') }}" method="POST" style="margin: 0; display: inline;">
+                @csrf
+                <button type="submit" class="btn btn-warning">Exit Impersonation</button>
+            </form>
         </div>
     @endif
 
@@ -164,9 +167,12 @@
                         <td>
                             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                                 <!-- Impersonate Button -->
-                                <a href="{{ route('saas.admin.impersonate', $t->id) }}" class="btn btn-secondary btn-sm" title="Impersonate Dashboard">
-                                    👁️ View
-                                </a>
+                                <form action="{{ route('saas.admin.impersonate', $t->id) }}" method="POST" style="display: inline-block; margin: 0;">
+                                    @csrf
+                                    <button type="submit" class="btn btn-secondary btn-sm" title="Impersonate Dashboard">
+                                        👁️ View
+                                    </button>
+                                </form>
 
                                 <!-- Activate / Suspend Toggle -->
                                 <form action="{{ route('saas.admin.toggle', $t->id) }}" method="POST" style="display: inline-block;">

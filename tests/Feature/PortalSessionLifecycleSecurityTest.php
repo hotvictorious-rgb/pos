@@ -271,14 +271,14 @@ class PortalSessionLifecycleSecurityTest extends TestCase
         ]);
 
         // Start impersonation
-        $impRes = $this->get(route('saas.admin.impersonate', ['id' => $this->tenantA->id]));
+        $impRes = $this->post(route('saas.admin.impersonate', ['id' => $this->tenantA->id]));
         $impRes->assertRedirect('/');
         $this->assertEquals($this->tenantA->id, session('tenant_id'));
         $this->assertTrue(session('is_impersonating'));
         $this->assertEquals($this->superAdmin->id, session('impersonator_id'));
 
         // Stop impersonation
-        $stopRes = $this->get(route('saas.admin.stop_impersonate'));
+        $stopRes = $this->post(route('saas.admin.stop_impersonate'));
         $stopRes->assertRedirect(route('saas.admin.index'));
         $this->assertEquals('default-tenant', session('tenant_id'));
         $this->assertFalse(session()->has('is_impersonating'));
@@ -296,7 +296,7 @@ class PortalSessionLifecycleSecurityTest extends TestCase
             'email' => 'superadmin@hysam.com',
             'password' => 'supersecret',
         ]);
-        $this->get(route('saas.admin.impersonate', ['id' => $this->tenantA->id]));
+        $this->post(route('saas.admin.impersonate', ['id' => $this->tenantA->id]));
 
         $this->assertTrue(session('is_impersonating'));
 

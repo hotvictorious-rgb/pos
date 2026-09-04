@@ -24,7 +24,10 @@ class SaaSConfigurablePricingAndRegistrationSecurityTest extends TestCase
     {
         parent::setUp();
 
-        config(['saas.enabled' => true]);
+        config([
+            'saas.enabled' => true,
+            'saas.super_admin_email' => 'master.superadmin@vmarketplatform.com',
+        ]);
 
         Tenant::firstOrCreate(
             ['id' => 'default-tenant'],

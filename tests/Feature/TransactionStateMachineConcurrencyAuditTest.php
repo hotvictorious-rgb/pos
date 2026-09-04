@@ -323,11 +323,11 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
             'total_debt' => 15000.00,
         ]);
 
-        // Request 1 pays ₦10,000
+        // Request 1 pays ₦10,000 via POS
         $this->stockService->recordCustomerPayment(
             $customer->id,
             10000.00,
-            'TRANSFER',
+            'POS',
             'REF-A',
             $this->cashier->id,
             $this->cashier->name
@@ -343,7 +343,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
         $this->stockService->recordCustomerPayment(
             $customer->id,
             10000.00,
-            'TRANSFER',
+            'POS',
             'REF-B',
             $this->cashier->id,
             $this->cashier->name
@@ -437,6 +437,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
 
     public function test_stock_in_with_negative_or_zero_quantity_is_rejected()
     {
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Stock in quantity must be at least 1 unit.");
 
@@ -445,13 +446,14 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
             $this->warehouse->id,
             -10, // Attacker attempts negative stock in
             'Bogus Supplier',
-            $this->cashier->id,
-            $this->cashier->name
+            $this->admin->id,
+            $this->admin->name
         );
     }
 
     public function test_stock_adjustment_write_off_with_negative_quantity_is_rejected()
     {
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Write-off quantity must be at least 1 unit.");
 
@@ -461,13 +463,14 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
             'DAMAGED',
             -5, // Attacker attempts negative write-off to manufacture stock
             'Sneaky adjustment',
-            $this->cashier->id,
-            $this->cashier->name
+            $this->admin->id,
+            $this->admin->name
         );
     }
 
     public function test_inventory_conservation_equation()
     {
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         $initialStock = 50;
         $stock = StockLevel::where('product_id', $this->product->id)->where('warehouse_id', $this->warehouse->id)->first();
         $this->assertEquals($initialStock, $stock->physical_stock);
@@ -520,6 +523,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
 
     public function test_transfer_receive_replay_is_rejected()
     {
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         // 1. Dispatch 10 units from Hub 1 to Outlet 2
         $transfer = $this->stockService->initiateTransfer(
             $this->warehouse->id,
@@ -564,6 +568,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
 
     public function test_transfer_recall_replay_is_rejected()
     {
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         // 1. Dispatch 5 units from Hub 1 to Outlet 2
         $transfer = $this->stockService->initiateTransfer(
             $this->warehouse->id,
@@ -604,6 +609,7 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
 
     public function test_transfer_discrepancy_and_inventory_conservation()
     {
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         $originStockBefore = StockLevel::where('product_id', $this->product->id)->where('warehouse_id', $this->warehouse->id)->first()->physical_stock;
         $destStockBefore = StockLevel::where('product_id', $this->product->id)->where('warehouse_id', $this->warehouse2->id)->first()->physical_stock;
 

@@ -139,18 +139,19 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
 
     public function test_pos_checkout_strictly_forces_retail_pricing_and_ignores_client_tampering()
     {
-        // An attacker attempts to select wholesale pricing and submit unitPrice = 100 via /pos/checkout
+        // An attacker attempts to select wholesale mode and forged totalAmount = 100 via /pos/checkout
         $payload = [
             'warehouse_id' => $this->branchA->id,
             'is_supplied' => 'yes',
             'sale_type' => 'WHOLESALE_DISPATCH', // Privileged mode injection attempt
-            'paidAmount' => 100.00,
-            'cashAmount' => 100.00,
+            'totalAmount' => 100.00, // Forged client total
+            'paidAmount' => 40000.00,
+            'cashAmount' => 40000.00,
             'items' => [
                 [
                     'productId' => $this->productA->id,
                     'quantity' => 1,
-                    'unitPrice' => 100.00, // Price tampering attempt (Catalog price is 40,000!)
+                    // No negotiated price passed: must default to catalog price (40,000)
                 ],
             ],
         ];
@@ -162,8 +163,6 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
             'portal' => 'tenant-employee',
         ])->postJson('/pos/checkout', $payload);
 
-        // Checkout should either succeed at the authoritative retail price (40,000) or fail due to insufficient tender
-        // Since paidAmount is 100 but catalog price is 40,000, it marks the sale as 40,000 total!
         $response->assertStatus(200);
         $saleId = $response->json('saleId');
 
@@ -455,13 +454,12 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
             ]
         );
 
-        // Mixed Tender: Cash 20k + POS 10k + Transfer 5k = 35,000
+        // Mixed Tender: Cash 25k + POS 10k = 35,000 (Strictly Cash and POS only)
         $payload = [
             'warehouse_id' => $this->branchA->id,
             'is_supplied' => 'yes',
-            'cashAmount' => 20000.00,
+            'cashAmount' => 25000.00,
             'posAmount' => 10000.00,
-            'transferAmount' => 5000.00,
             'paidAmount' => 35000.00,
             'items' => [
                 ['productId' => $product35k->id, 'quantity' => 1],
@@ -482,29 +480,24 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
         // Sale breakdown
         $this->assertEquals(35000.00, $sale->totalAmount);
         $this->assertEquals(35000.00, $sale->paidAmount);
-        $this->assertEquals(20000.00, $sale->cashAmount);
+        $this->assertEquals(25000.00, $sale->cashAmount);
         $this->assertEquals(10000.00, $sale->posAmount);
-        $this->assertEquals(5000.00, $sale->transferAmount);
+        $this->assertEquals(0.00, $sale->transferAmount);
         $this->assertEquals(0.00, $sale->changeAmount);
 
-        // Granular Payment Records in Database
+        // Granular Payment Records in Database: exactly Cash and POS
         $payments = Payment::where('saleId', $saleId)->get();
-        $this->assertCount(3, $payments, "Must generate exactly 3 discrete payment records for Cash, POS, and Transfer.");
+        $this->assertCount(2, $payments, "Must generate exactly 2 discrete payment records for Cash and POS.");
 
         $cashPayment = $payments->firstWhere('method', 'CASH');
         $this->assertNotNull($cashPayment);
-        $this->assertEquals(20000.00, $cashPayment->amount);
+        $this->assertEquals(25000.00, $cashPayment->amount);
         $this->assertEquals($this->tenant->id, $cashPayment->tenant_id);
 
         $posPayment = $payments->firstWhere('method', 'POS');
         $this->assertNotNull($posPayment);
         $this->assertEquals(10000.00, $posPayment->amount);
         $this->assertEquals($this->tenant->id, $posPayment->tenant_id);
-
-        $transferPayment = $payments->firstWhere('method', 'TRANSFER');
-        $this->assertNotNull($transferPayment);
-        $this->assertEquals(5000.00, $transferPayment->amount);
-        $this->assertEquals($this->tenant->id, $transferPayment->tenant_id);
 
         // The sum of payments must equal the total paid amount exactly
         $this->assertEquals(35000.00, $payments->sum('amount'));
@@ -542,10 +535,11 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
             $this->cashierA->name
         );
 
-        // Verify Tenant A can see its own records
+        // Verify Tenant A can see its own records (1 sale item, 1 return, 2 payments: sale payment + negative cash refund payment)
         $this->assertEquals(1, \App\Models\SaleItem::count());
         $this->assertEquals(1, \App\Models\SalesReturn::count());
-        $this->assertEquals(1, \App\Models\Payment::count());
+        $this->assertEquals(2, \App\Models\Payment::count());
+        $this->assertEquals(0.00, \App\Models\Payment::sum('amount'));
 
         // 2. Tenant B Session Context
         $tenantB = Tenant::create([

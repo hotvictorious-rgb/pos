@@ -29,10 +29,16 @@ class ReportController extends Controller
         $activeTab = $request->get('tab', 'overview');
         $authUser = Auth::user();
 
+        if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
+            abort(403, '🔒 Access Restricted: You are not assigned to any branch location. Please contact an administrator.');
+        }
+
         // 1. Build Filter Query for Sales
         $salesQuery = Sale::with('items');
+        $isBranchScoped = ($authUser && $authUser->isBranchScoped());
+        $shopStaffIds = collect();
 
-        if ($authUser && !empty($authUser->warehouse_id)) {
+        if ($isBranchScoped) {
             $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
             $staffList = User::where('warehouse_id', $authUser->warehouse_id)->get();
             $shopStaffIds = $staffList->pluck('id');
@@ -175,6 +181,12 @@ class ReportController extends Controller
 
         // 4. Transfers & Logistics
         $transfersQuery = Transfer::with(['source', 'destination', 'items']);
+        if ($isBranchScoped) {
+            $transfersQuery->where(function ($q) use ($authUser) {
+                $q->where('source_warehouse_id', $authUser->warehouse_id)
+                  ->orWhere('destination_warehouse_id', $authUser->warehouse_id);
+            });
+        }
         if ($request->filled('transfer_status')) {
             $transfersQuery->where('status', $request->transfer_status);
         }
@@ -189,21 +201,36 @@ class ReportController extends Controller
         }
 
         // 5. Debt Aging Analysis
-        $debtors = Customer::where('total_debt', '>', 0)->orderBy('total_debt', 'desc')->get()->map(function ($c) {
+        $debtorsQuery = Customer::where('total_debt', '>', 0);
+        if ($isBranchScoped && $sales->isNotEmpty()) {
+            $debtorsQuery->whereIn('id', $sales->pluck('customerId')->filter());
+        }
+        $debtors = $debtorsQuery->orderBy('total_debt', 'desc')->get()->map(function ($c) {
             $daysOld = $c->updated_at ? Carbon::parse($c->updated_at)->diffInDays(now()) : 0;
             $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
             return $c;
         });
 
         // 6. Damaged Goods Write-offs
-        $adjustments = StockAdjustment::with('warehouse')->orderBy('created_at', 'desc')->take(50)->get();
+        $adjustmentsQuery = StockAdjustment::with('warehouse');
+        if ($isBranchScoped) {
+            $adjustmentsQuery->where('warehouse_id', $authUser->warehouse_id);
+        }
+        $adjustments = $adjustmentsQuery->orderBy('created_at', 'desc')->take(50)->get();
         $totalDamagedUnits = $adjustments->sum('quantity');
 
         // 7. Immutable Activity Logs
-        $activities = Activity::orderBy('timestamp', 'desc')->take(50)->get();
+        $activitiesQuery = Activity::query();
+        if ($isBranchScoped && $shopStaffIds->isNotEmpty()) {
+            $activitiesQuery->whereIn('userId', $shopStaffIds);
+        }
+        $activities = $activitiesQuery->orderBy('timestamp', 'desc')->take(50)->get();
 
         // 8. Returns & Refunds Query
         $returnsQuery = SalesReturn::query();
+        if ($isBranchScoped && $sales->isNotEmpty()) {
+            $returnsQuery->whereIn('saleId', $sales->pluck('id'));
+        }
         if ($fromDate && $toDate) {
             $returnsQuery->whereBetween('createdAt', [
                 Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
@@ -281,21 +308,31 @@ class ReportController extends Controller
      */
     public function exportCsv(Request $request, $type)
     {
+        $authUser = Auth::user();
+        if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
+            abort(403, '🔒 Access Restricted: You are not assigned to any branch location.');
+        }
+
+        $isBranchScoped = ($authUser && $authUser->isBranchScoped());
+        $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
         $fileName = "hysam_{$type}_report_" . date('Y_m_d_His') . ".csv";
 
-        return new StreamedResponse(function () use ($type) {
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $filters = $request->all();
+
+        return new StreamedResponse(function () use ($type, $isBranchScoped, $branchWarehouseId, $accountingService, $filters) {
             $handle = fopen('php://output', 'w');
 
             if ($type === 'sales') {
-                fputcsv($handle, ['Invoice ID', 'Date & Time', 'Customer Name', 'Customer Phone', 'Items Count', 'Gross Total (NGN)', 'Paid Amount (NGN)', 'Debt Balance (NGN)', 'Delivery / Handover Status', 'Cashier Name']);
-                foreach (Sale::with('items')->orderBy('createdAt', 'desc')->cursor() as $s) {
+                fputcsv($handle, ['SALE ID', 'DATE', 'CUSTOMER', 'BRANCH', 'TOTAL AMOUNT', 'PAID AMOUNT', 'DEBT BALANCE', 'DELIVERY STATUS', 'CASHIER']);
+                $salesQuery = $accountingService->buildSalesQuery($filters);
+                foreach ($salesQuery->cursor() as $s) {
                     $debt = max(0, $s->totalAmount - $s->paidAmount);
                     fputcsv($handle, [
                         $s->id,
                         $s->createdAt,
                         $s->customerName,
-                        $s->customerPhone ?? 'N/A',
-                        $s->items->count(),
+                        $s->warehouse->name ?? 'Main Branch',
                         $s->totalAmount,
                         $s->paidAmount,
                         $debt,
@@ -306,13 +343,18 @@ class ReportController extends Controller
             } elseif ($type === 'inventory') {
                 fputcsv($handle, ['Product ID', 'SKU', 'Product Name', 'Category', 'Brand', 'Size', 'Selling Price (NGN)', 'Total Physical Shelf Units', 'Stock Status', 'Total Asset Valuation (NGN)']);
                 foreach (Product::where('archived', false)->cursor() as $p) {
-                    $stock = StockLevel::where('product_id', $p->id)->sum('physical_stock');
+                    $stockQuery = StockLevel::where('product_id', $p->id);
+                    if ($isBranchScoped) {
+                        $stockQuery->where('warehouse_id', $branchWarehouseId);
+                    }
+                    $stock = $stockQuery->sum('physical_stock');
                     $status = $stock <= 0 ? 'OUT_OF_STOCK' : ($stock <= 5 ? 'LOW_STOCK' : 'IN_STOCK');
                     fputcsv($handle, [$p->id, $p->code, $p->name, $p->category, $p->brand, $p->size, $p->unitPrice, $stock, $status, $stock * (float)$p->unitPrice]);
                 }
             } elseif ($type === 'transfers') {
                 fputcsv($handle, ['Transfer No', 'Dispatched Date', 'Origin Branch', 'Destination Branch', 'Carrier Driver', 'Status', 'Dispatched By', 'Received By', 'Notes']);
-                foreach (Transfer::with(['source', 'destination'])->orderBy('created_at', 'desc')->cursor() as $t) {
+                $transferQuery = $accountingService->buildTransfersQuery($filters);
+                foreach ($transferQuery->cursor() as $t) {
                     fputcsv($handle, [
                         $t->transfer_no,
                         $t->created_at,
@@ -327,12 +369,21 @@ class ReportController extends Controller
                 }
             } elseif ($type === 'debtors') {
                 fputcsv($handle, ['Customer Name', 'Phone Number', 'Address / Market Location', 'Total Debt Owed (NGN)', 'Last Updated']);
-                foreach (Customer::where('total_debt', '>', 0)->cursor() as $c) {
+                $debtorsQuery = Customer::where('total_debt', '>', 0);
+                if ($isBranchScoped) {
+                    $branchSaleCustomerIds = Sale::where('warehouse_id', $branchWarehouseId)->pluck('customerId')->filter();
+                    $debtorsQuery->whereIn('id', $branchSaleCustomerIds);
+                }
+                foreach ($debtorsQuery->cursor() as $c) {
                     fputcsv($handle, [$c->name, $c->phone, $c->address, $c->total_debt, $c->updated_at]);
                 }
             } elseif ($type === 'damages') {
                 fputcsv($handle, ['Date & Time', 'Shop Location', 'SKU', 'Product Name', 'Incident Category', 'Quantity Deducted', 'Reason / Notes', 'Staff Responsible']);
-                foreach (StockAdjustment::with('warehouse')->orderBy('created_at', 'desc')->cursor() as $a) {
+                $damagesQuery = StockAdjustment::with('warehouse')->orderBy('created_at', 'desc');
+                if ($isBranchScoped) {
+                    $damagesQuery->where('warehouse_id', $branchWarehouseId);
+                }
+                foreach ($damagesQuery->cursor() as $a) {
                     fputcsv($handle, [
                         $a->created_at,
                         $a->warehouse->name ?? 'Shop',
@@ -346,7 +397,8 @@ class ReportController extends Controller
                 }
             } elseif ($type === 'returns') {
                 fputcsv($handle, ['Date & Time', 'Original Invoice ID', 'Customer Name', 'SKU', 'Product Name', 'Returned Qty', 'Refunded Amount (NGN)', 'Reason', 'Handled By']);
-                foreach (SalesReturn::orderBy('createdAt', 'desc')->cursor() as $r) {
+                $returnsQuery = $accountingService->buildReturnsQuery($filters);
+                foreach ($returnsQuery->cursor() as $r) {
                     fputcsv($handle, [
                         $r->createdAt,
                         $r->saleId,
@@ -373,36 +425,58 @@ class ReportController extends Controller
      */
     public function exportJson(Request $request, $type)
     {
+        $authUser = Auth::user();
+        if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
+            abort(403, '🔒 Access Restricted: You are not assigned to any branch location.');
+        }
+
+        $isBranchScoped = ($authUser && $authUser->isBranchScoped());
+        $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
         $fileName = "hysam_{$type}_business_data_" . date('Y_m_d_His') . ".json";
+
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $filters = $request->all();
+
+        $salesQuery = $accountingService->buildSalesQuery($filters);
+        $transfersQuery = $accountingService->buildTransfersQuery($filters);
+        $returnsQuery = $accountingService->buildReturnsQuery($filters);
+        $damagesQuery = $accountingService->buildStockMovementsQuery($filters);
 
         $data = match($type) {
             'sales' => [
+                'meta' => ['report' => 'Sales & Revenue Analysis', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Sales & Revenue Analysis', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => Sale::with('items')->orderBy('createdAt', 'desc')->get()
+                'data' => $salesQuery->get()
             ],
             'inventory' => [
+                'meta' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'data' => Product::with('stockLevels')->where('archived', false)->get()
             ],
             'transfers' => [
+                'meta' => ['report' => 'Inter-Branch Transfer Movements & Discrepancies', 'generated_at' => now()->toIso8601String()],
                 'metadata' => ['report' => 'Inter-Branch Transfer Movements & Discrepancies', 'generated_at' => now()->toIso8601String()],
-                'data' => Transfer::with(['source', 'destination', 'items'])->orderBy('created_at', 'desc')->get()
+                'data' => $transfersQuery->get()
             ],
             'debtors' => [
+                'meta' => ['report' => 'Debtors Ledger & Credit Exposure', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Debtors Ledger & Credit Exposure', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => Customer::where('total_debt', '>', 0)->get()
+                'data' => $debtorsQuery->get()
             ],
             'damages' => [
+                'meta' => ['report' => 'Damaged Goods & Loss Audit Trail', 'generated_at' => now()->toIso8601String()],
                 'metadata' => ['report' => 'Damaged Goods & Loss Audit Trail', 'generated_at' => now()->toIso8601String()],
-                'data' => StockAdjustment::with('warehouse')->orderBy('created_at', 'desc')->get()
+                'data' => $damagesQuery->get()
             ],
             'activities' => [
+                'meta' => ['report' => 'Immutable System Audit Activity Log', 'generated_at' => now()->toIso8601String()],
                 'metadata' => ['report' => 'Immutable System Audit Activity Log', 'generated_at' => now()->toIso8601String()],
-                'data' => Activity::orderBy('timestamp', 'desc')->get()
+                'data' => $activitiesQuery->get()
             ],
             'returns' => [
+                'meta' => ['report' => 'Customer Returns & Refunds Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Customer Returns & Refunds Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => SalesReturn::orderBy('createdAt', 'desc')->get()
+                'data' => $returnsQuery->get()
             ],
             default => ['error' => 'Invalid report type'],
         };

@@ -36,6 +36,19 @@ class User extends Authenticatable
         return static::withoutGlobalScope(TenantScope::class)->find($id);
     }
 
+    protected static function booted(): void
+    {
+        static::saving(function ($user) {
+            $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
+            // Prevent non-root identities from acquiring super_admin role
+            if ($user->role === 'super_admin') {
+                if ($user->tenant_id !== 'default-tenant' || strtolower(trim($user->email)) !== $superAdminEmail) {
+                    $user->role = 'admin'; // Normalize privilege escalation attempt
+                }
+            }
+        });
+    }
+
     /**
      * Determine if user has platform-level SaaS super-administrator authority.
      */
@@ -45,13 +58,43 @@ class User extends Authenticatable
             return false;
         }
 
-        if ($this->role === 'super_admin') {
-            return true;
-        }
-
         $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
 
-        return ($this->role === 'admin') && (strtolower(trim($this->email)) === $superAdminEmail);
+        return in_array($this->role, ['admin', 'super_admin'], true) 
+            && (strtolower(trim($this->email)) === $superAdminEmail);
+    }
+
+    /**
+     * Check if user possesses a specific capability.
+     */
+    public function hasCapability(string $capability): bool
+    {
+        return \App\Services\Auth\CapabilityService::userHasCapability($this, $capability);
+    }
+
+    /**
+     * Check if user possesses at least one capability from a list.
+     */
+    public function hasAnyCapability(array $capabilities): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+        $userCaps = \App\Services\Auth\CapabilityService::getCapabilitiesForUser($this);
+        foreach ($capabilities as $cap) {
+            if (in_array($cap, $userCaps, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get all assigned capabilities for this user.
+     */
+    public function getCapabilities(): array
+    {
+        return \App\Services\Auth\CapabilityService::getCapabilitiesForUser($this);
     }
 
     /**

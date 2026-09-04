@@ -556,8 +556,8 @@ class IdempotencyApiReplayAuditTest extends TestCase
         $ledger = $this->stockService->recordCustomerPayment(
             $customer->id,
             15000.00,
-            'TRANSFER',
-            'TRF-AUDIT-999',
+            'POS',
+            'POS-AUDIT-999',
             $this->userA1->id,
             $this->userA1->name
         );

@@ -39,11 +39,18 @@ class PosController extends Controller
         }
 
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
+        if ($user && !$user->isExecutive() && empty($user->warehouse_id)) {
+            abort(403, '🔒 Access Restricted: You are not assigned to any branch location. Please contact an administrator.');
+        }
+
+        if ($user && $user->isBranchScoped()) {
             $activeWarehouseId = $user->warehouse_id;
             $warehouses = Warehouse::where('id', $user->warehouse_id)->get();
         } else {
             $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
+            if ($user && !$user->canAccessWarehouse($activeWarehouseId)) {
+                abort(403, '🔒 Access Restricted: You do not have permission to access this branch.');
+            }
         }
         session(['active_warehouse_id' => $activeWarehouseId]);
 
@@ -132,22 +139,37 @@ class PosController extends Controller
             'is_supplied' => 'required', // 'yes' or 'no'
         ]);
 
-        $cashAmount = (float) ($request->cashAmount ?? 0);
-        $posAmount = (float) ($request->posAmount ?? 0);
-        $transferAmount = (float) ($request->transferAmount ?? 0);
+        $cashAmount = max(0.0, (float) ($request->cashAmount ?? 0));
+        $posAmount = max(0.0, (float) ($request->posAmount ?? 0));
+        $transferAmount = 0.0; // Strictly retired
         $paidAmount = (float) $request->paidAmount;
 
-        if ($paidAmount > 0 && ($cashAmount + $posAmount + $transferAmount) < $paidAmount) {
-            $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount} + Transfer ₦{$transferAmount}) must be equal to or greater than the recorded paid amount (₦{$paidAmount}).";
+        if ($cashAmount == 0.0 && $posAmount == 0.0 && $paidAmount > 0) {
+            $cashAmount = $paidAmount;
+        }
+
+        if ($paidAmount > 0 && ($cashAmount + $posAmount) < $paidAmount) {
+            $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$paidAmount}).";
             if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
             return back()->withErrors(['error' => $errorMsg])->withInput();
         }
 
         $authUser = Auth::user();
-        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+        if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
+            $errorMsg = '🔒 Unauthorized: You are not assigned to any branch location and cannot process sales.';
+            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
+            return back()->withErrors(['error' => $errorMsg])->withInput();
+        }
+
+        if ($authUser && $authUser->isBranchScoped()) {
             $warehouseId = (int) $authUser->warehouse_id;
         } else {
             $warehouseId = (int) $request->warehouse_id;
+            if ($authUser && !$authUser->canAccessWarehouse($warehouseId)) {
+                $errorMsg = '🔒 Unauthorized: You cannot process checkout for an unassigned branch!';
+                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
+                return back()->withErrors(['error' => $errorMsg])->withInput();
+            }
         }
         $isSuppliedNow = in_array(strtolower($request->is_supplied), ['1', 'yes', 'true', 'on']);
         $userId = Auth::id() ?? 'POS-USER-1';
@@ -384,7 +406,7 @@ class PosController extends Controller
             'sale_id' => 'required',
             'warehouse_id' => 'required',
             'items' => 'required|array|min:1',
-            'refund_method' => 'required|string', // CASH_REFUND, DEBT_REDUCTION
+            'refund_method' => 'required|string|in:CASH_REFUND,DEBT_REDUCTION',
             'reason' => 'required|string',
         ]);
 
@@ -392,12 +414,20 @@ class PosController extends Controller
         $userName = Auth::user()->name ?? 'Sales Officer';
 
         $authUser = Auth::user();
+        if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
+            $errorMsg = '🔒 Unauthorized: You are not assigned to any branch location!';
+            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
+            return back()->withErrors(['error' => $errorMsg]);
+        }
+
         if ($authUser && $authUser->isBranchScoped()) {
             $warehouseId = (int) $authUser->warehouse_id;
         } else {
             $warehouseId = (int) $request->warehouse_id;
             if ($authUser && !$authUser->canAccessWarehouse($warehouseId)) {
-                return back()->withErrors(['error' => '🔒 Unauthorized: You cannot process returns for an unassigned branch!']);
+                $errorMsg = '🔒 Unauthorized: You cannot process returns for an unassigned branch!';
+                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
+                return back()->withErrors(['error' => $errorMsg]);
             }
         }
 

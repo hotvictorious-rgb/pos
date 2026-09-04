@@ -15,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'api/*',
         ]);
+        $middleware->alias([
+            'capability' => \App\Http\Middleware\RequireCapability::class,
+        ]);
         // Check if the application has been installed, ensure web authentication & attach security headers
         $middleware->web(append: [
             \App\Http\Middleware\SecurityHeaders::class,

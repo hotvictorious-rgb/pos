@@ -29,6 +29,7 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Auth::logout();
 
         config(['saas.enabled' => true]);
 
@@ -245,12 +246,13 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
 
         $this->assertEquals('UNSUPPLIED', $sale->deliveryStatus);
 
-        // 2. First dispatch succeeds
+        // 2. First dispatch succeeds with authorized manager/admin
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         $dispatchedSale = $this->stockService->dispatchUnsuppliedSale(
             $sale->id,
             $this->warehouse->id,
-            $this->cashier->id,
-            $this->cashier->name
+            $this->admin->id,
+            $this->admin->name
         );
         $this->assertEquals('DELIVERED', $dispatchedSale->deliveryStatus);
 
@@ -265,8 +267,8 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
         $this->stockService->dispatchUnsuppliedSale(
             $sale->id,
             $this->warehouse->id,
-            $this->cashier->id,
-            $this->cashier->name
+            $this->admin->id,
+            $this->admin->name
         );
     }
 
@@ -379,12 +381,12 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
             'createdAt' => now()->toIso8601String(),
         ]);
 
-        // Customer pays remaining ₦10,000 debt
+        // Customer pays remaining ₦10,000 debt via POS
         $this->stockService->recordCustomerPayment(
             $customer->id,
             10000.00,
-            'TRANSFER',
-            'TRF-777',
+            'POS',
+            'POS-777',
             $this->cashier->id,
             $this->cashier->name
         );
@@ -432,6 +434,7 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
         ]);
 
         // Attacker claims they counted 1,000 units on destination arrival
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('cannot exceed dispatched quantity (5)');
 
@@ -474,6 +477,7 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
         ]);
 
         // Receive transfer
+        \Illuminate\Support\Facades\Auth::login($this->admin);
         $this->stockService->receiveTransfer(
             $transfer->id,
             [$this->product->id => 4],
@@ -549,7 +553,7 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
             'id' => 'super-audit-user',
             'tenant_id' => 'default-tenant',
             'name' => 'Platform Super Admin',
-            'email' => 'super@hysamventures.com',
+            'email' => 'superadmin@hysam.com',
             'password' => bcrypt('SuperPassword123!'),
             'role' => 'super_admin',
         ]);

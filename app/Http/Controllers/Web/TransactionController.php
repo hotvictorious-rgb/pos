@@ -37,6 +37,22 @@ class TransactionController extends Controller
             } else {
                 $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
             }
+        } elseif ($fromDate) {
+            $start = Carbon::parse($fromDate)->startOfDay();
+            $end = Carbon::now()->endOfDay();
+            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
+                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
+            } else {
+                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
+            }
+        } elseif ($toDate) {
+            $start = Carbon::parse('2020-01-01')->startOfDay();
+            $end = Carbon::parse($toDate)->endOfDay();
+            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
+                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
+            } else {
+                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
+            }
         } elseif ($datePreset === 'TODAY') {
             $start = Carbon::today()->startOfDay();
             $end = Carbon::today()->endOfDay();
@@ -169,6 +185,10 @@ class TransactionController extends Controller
             }
         }
 
+        if ($request->filled('product_id')) {
+            $query->where('productId', $request->product_id);
+        }
+
         if ($request->filled('search')) {
             $search = trim($request->search);
             $query->where(function ($q) use ($search) {
@@ -210,19 +230,24 @@ class TransactionController extends Controller
             $query->whereIn('userId', $shopStaffIds);
         }
 
-        if ($request->filled('outflow_type')) {
-            $oType = strtoupper($request->outflow_type);
-            if ($oType === 'CUSTOMER_PICKUP') {
+        $outflowParam = $request->get('outflow_type') ?: $request->get('movement_type');
+        if (!empty($outflowParam)) {
+            $oType = strtoupper($outflowParam);
+            if ($oType === 'CUSTOMER_PICKUP' || $oType === 'DISPATCH_FULFILLED') {
                 $query->where('type', 'DISPATCH_FULFILLED');
-            } elseif ($oType === 'TRANSFER') {
+            } elseif ($oType === 'TRANSFER' || $oType === 'TRANSFER_OUT') {
                 $query->where('type', 'TRANSFER_OUT');
-            } elseif ($oType === 'DAMAGE') {
+            } elseif (str_contains($oType, 'DAMAGE')) {
                 $query->where('type', 'like', '%DAMAGE%');
-            } elseif ($oType === 'EXPIRED') {
+            } elseif (str_contains($oType, 'EXPIRED')) {
                 $query->where('type', 'like', '%EXPIRED%');
-            } elseif ($oType === 'LOST') {
+            } elseif (str_contains($oType, 'LOST')) {
                 $query->where('type', 'like', '%LOST%');
             }
+        }
+
+        if ($request->filled('product_id')) {
+            $query->where('productId', $request->product_id);
         }
 
         if ($request->filled('search')) {

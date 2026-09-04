@@ -16,15 +16,58 @@ use App\Models\Activity;
 use App\Models\Warehouse;
 use App\Exceptions\InsufficientStockException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Str;
 
 class StockService
 {
     /**
+     * Authoritatively assert that a warehouse exists and belongs to the active tenant.
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function assertTenantWarehouse(int $warehouseId): Warehouse
+    {
+        $wh = Warehouse::withoutGlobalScopes()->find($warehouseId);
+        if (!$wh) {
+            throw new \InvalidArgumentException("Warehouse #{$warehouseId} does not exist.");
+        }
+
+        if (config('saas.enabled')) {
+            $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null) ?? 'default-tenant';
+            if ($wh->tenant_id !== $currentTenantId) {
+                throw new \InvalidArgumentException("Security Violation: Warehouse #{$warehouseId} does not belong to active tenant '{$currentTenantId}'. Cross-tenant stock transfers are strictly forbidden.");
+            }
+        }
+
+        return $wh;
+    }
+
+    /**
+     * Authoritatively assert that the acting user holds the required capability.
+     *
+     * @throws AuthorizationException
+     */
+    public function assertUserCapability(string $capability): void
+    {
+        if (Auth::check()) {
+            $user = Auth::user();
+            if (!$user->isSuperAdmin() && !$user->hasCapability($capability)) {
+                throw new AuthorizationException(
+                    "Unauthorized: User {$user->name} lacks the required '{$capability}' capability."
+                );
+            }
+        }
+    }
+
+    /**
      * Get or create stock level record for a product at a warehouse with optional row-level locking.
      */
     public function getStockLevel(string $productId, int $warehouseId, bool $lockForUpdate = false): StockLevel
     {
+        $this->assertTenantWarehouse($warehouseId);
+
         $query = StockLevel::where('product_id', $productId)->where('warehouse_id', $warehouseId);
         if ($lockForUpdate) {
             $query->lockForUpdate();
@@ -32,14 +75,24 @@ class StockService
         $stock = $query->first();
 
         if (!$stock) {
-            $stock = StockLevel::create([
-                'product_id' => $productId,
-                'warehouse_id' => $warehouseId,
-                'physical_stock' => 0,
-                'allocated_stock' => 0,
-                'min_stock_alert' => 5,
-            ]);
-            if ($lockForUpdate) {
+            try {
+                $stock = StockLevel::create([
+                    'product_id' => $productId,
+                    'warehouse_id' => $warehouseId,
+                    'physical_stock' => 0,
+                    'allocated_stock' => 0,
+                    'min_stock_alert' => 5,
+                ]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Gracefully resolve race conditions on concurrent first-creation
+                $query = StockLevel::where('product_id', $productId)->where('warehouse_id', $warehouseId);
+                if ($lockForUpdate) {
+                    $query->lockForUpdate();
+                }
+                $stock = $query->firstOrFail();
+            }
+
+            if ($lockForUpdate && $stock) {
                 $stock = StockLevel::where('id', $stock->id)->lockForUpdate()->first();
             }
         }
@@ -52,6 +105,9 @@ class StockService
      */
     public function recordStockIn(string $productId, int $warehouseId, int $quantity, ?string $supplierName, string $userId, string $userName, ?string $notes = null): StockLevel
     {
+        $this->assertUserCapability('stock.in');
+        $this->assertTenantWarehouse($warehouseId);
+
         return DB::transaction(function () use ($productId, $warehouseId, $quantity, $supplierName, $userId, $userName, $notes) {
             if ($quantity <= 0) {
                 throw new \InvalidArgumentException("Stock in quantity must be at least 1 unit.");
@@ -103,6 +159,9 @@ class StockService
      */
     public function recordSale(array $saleData, array $items, int $warehouseId, bool $isSuppliedNow, string $userId, string $userName): Sale
     {
+        $this->assertUserCapability('pos.checkout');
+        $this->assertTenantWarehouse($warehouseId);
+
         return DB::transaction(function () use ($saleData, $items, $warehouseId, $isSuppliedNow, $userId, $userName) {
             $saleId = $saleData['id'] ?? (string) Str::uuid();
 
@@ -118,97 +177,24 @@ class StockService
                 throw new \InvalidArgumentException("Checkout requires at least one sale line item.");
             }
 
-            // Server-authoritative line items and pricing calculation
-            $serverTotal = 0;
-            $validatedItems = [];
-            foreach ($items as $item) {
-                $productId = $item['productId'] ?? $item['product_id'] ?? null;
-                if (!$productId) {
-                    throw new \InvalidArgumentException("Invalid line item: Product ID missing.");
-                }
-                $product = Product::findOrFail($productId);
-                $qty = (int) ($item['quantity'] ?? 0);
-                if ($qty <= 0) {
-                    throw new \InvalidArgumentException("Quantity for product '{$product->name}' must be at least 1 unit.");
-                }
+            // Server-authoritative checkout calculation via AccountingReportService
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            $calc = $accountingService->calculateCheckout($items, $saleData, $saleData['sale_type'] ?? 'RETAIL');
 
-                // Server is strictly authoritative for retail catalog pricing; client prices are ignored
-                $saleType = $saleData['sale_type'] ?? 'RETAIL';
-                if ($saleType === 'RETAIL' || !isset($item['unitPrice'])) {
-                    $unitPrice = (float) $product->unitPrice;
-                } else {
-                    $unitPrice = (float) $item['unitPrice'];
-                }
-                if ($unitPrice < 0) {
-                    throw new \InvalidArgumentException("Unit price for product '{$product->name}' cannot be negative.");
-                }
-
-                $lineTotal = $qty * $unitPrice;
-                $serverTotal += $lineTotal;
-
-                $validatedItems[] = [
-                    'product' => $product,
-                    'quantity' => $qty,
-                    'unitPrice' => $unitPrice,
-                    'totalPrice' => $lineTotal,
-                ];
-            }
-
-            // Server is strictly authoritative for totalAmount
-            $totalAmount = (float) $serverTotal;
-
-            // Tender accounting & reconciliation
-            $cashAmount = (float) ($saleData['cashAmount'] ?? 0);
-            $posAmount = (float) ($saleData['posAmount'] ?? 0);
-            $transferAmount = (float) ($saleData['transferAmount'] ?? 0);
-
-            if ($cashAmount < 0 || $posAmount < 0 || $transferAmount < 0) {
-                throw new \InvalidArgumentException("Payment tender amounts cannot be negative.");
-            }
-
-            // Total tender presented
-            $tenderedTotal = $cashAmount + $posAmount + $transferAmount;
-
-            // If no explicit split tender, fallback to paidAmount as cash tender
-            if ($tenderedTotal == 0 && isset($saleData['paidAmount'])) {
-                $tenderedTotal = (float) $saleData['paidAmount'];
-                $cashAmount = $tenderedTotal;
-            }
-
-            // Electronic payment validation: Cards & Transfers cannot exceed total bill
-            if (($posAmount + $transferAmount) > $totalAmount) {
-                throw new \InvalidArgumentException(
-                    "Electronic payments (POS & Transfer: ₦" . number_format($posAmount + $transferAmount, 2) . ") cannot exceed sale total amount of ₦" . number_format($totalAmount, 2) . ". Cash change cannot be disbursed from card/transfer overpayment."
-                );
-            }
-
-            // Change calculation: Cash tendered beyond what is required to pay the bill
-            $changeAmount = 0.0;
-            if ($tenderedTotal > $totalAmount) {
-                $changeAmount = round($tenderedTotal - $totalAmount, 2);
-                if ($changeAmount > $cashAmount) {
-                    throw new \InvalidArgumentException("Change amount cannot exceed cash tendered.");
-                }
-            }
-
-            // Net payment applied to the sale: CANNOT exceed totalAmount!
-            $paidAmount = min($totalAmount, max(0.0, round($tenderedTotal - $changeAmount, 2)));
-
-            // If a partial payment was explicitly declared by client (credit sale where customer tendered less than total):
-            if (isset($saleData['paidAmount']) && (float)$saleData['paidAmount'] < $totalAmount && (float)$saleData['paidAmount'] <= $tenderedTotal) {
-                $declaredPaid = (float) $saleData['paidAmount'];
-                $paidAmount = min($totalAmount, max(0.0, round($declaredPaid, 2)));
-                $changeAmount = max(0.0, round($tenderedTotal - $paidAmount, 2));
-            }
-
-            // Net cash kept in drawer
-            $netCashKept = max(0.0, round($cashAmount - $changeAmount, 2));
+            $validatedItems = $calc['validatedItems'];
+            $totalAmount    = $calc['totalAmount'];
+            $netCashKept    = $calc['retainedCash'];
+            $posAmount      = $calc['retainedPos'];
+            $transferAmount = 0.0; // Strictly retired across the system
+            $tenderedTotal  = $calc['totalTendered'];
+            $changeAmount   = $calc['changeAmount'];
+            $paidAmount     = $calc['paidAmount'];
+            $saleStatus     = $calc['status'];
 
             $customerId = $saleData['customerId'] ?? null;
             $customerName = $saleData['customerName'] ?? 'Walk-in Customer';
 
             $deliveryStatus = $isSuppliedNow ? 'DELIVERED' : 'UNSUPPLIED';
-            $saleStatus = ($paidAmount >= $totalAmount) ? 'COMPLETED' : 'PARTIAL';
             $saleType = $saleData['sale_type'] ?? 'RETAIL';
 
             $sale = Sale::create([
@@ -223,7 +209,7 @@ class StockService
                 'changeAmount' => $changeAmount,
                 'cashAmount' => $netCashKept,
                 'posAmount' => $posAmount,
-                'transferAmount' => $transferAmount,
+                'transferAmount' => 0.0,
                 'note' => $saleData['note'] ?? null,
                 'status' => $saleStatus,
                 'sale_type' => $saleType,
@@ -351,22 +337,8 @@ class StockService
                 ]);
             }
 
-            // 3. Bank Transfer Payment
-            if ($transferAmount > 0) {
-                Payment::create([
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                    'saleId' => $saleId,
-                    'amount' => $transferAmount,
-                    'method' => 'TRANSFER',
-                    'timestamp' => now()->toIso8601String(),
-                    'recordedBy' => $userName,
-                    'createdAt' => now()->toIso8601String(),
-                ]);
-            }
-
-            // Fallback for legacy calls or tests where only paidAmount is provided without breakdown
-            if ($paidAmount > 0 && $netCashKept == 0 && $posAmount == 0 && $transferAmount == 0) {
+            // Fallback for tests or legacy callers where only paidAmount was supplied without breakdown
+            if ($paidAmount > 0 && $netCashKept == 0.0 && $posAmount == 0.0) {
                 Payment::create([
                     'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
@@ -417,6 +389,9 @@ class StockService
      */
     public function dispatchUnsuppliedSale(string $saleId, int $warehouseId, string $userId, string $userName): Sale
     {
+        $this->assertUserCapability('stock.transfer');
+        $this->assertTenantWarehouse($warehouseId);
+
         return DB::transaction(function () use ($saleId, $warehouseId, $userId, $userName) {
             $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
 
@@ -433,23 +408,23 @@ class StockService
                 $stock = $this->getStockLevel($item->productId, $warehouseId, true);
                 $qty = (int) $item->quantity;
 
-                if ($stock->physical_stock < $qty) {
+                if ($stock->allocated_stock < $qty || $stock->physical_stock < $qty) {
                     $product = Product::find($item->productId);
                     $pName = $product ? $product->name : $item->productName;
                     $pCode = $product ? $product->code : $item->code;
                     throw new InsufficientStockException(
-                        "Cannot fulfill dispatch for Sale #{$saleId}: Insufficient physical stock for '{$pName}' ({$pCode}) at branch #{$warehouseId}. Available: {$stock->physical_stock}, Requested: {$qty}",
+                        "Cannot fulfill dispatch for Sale #{$saleId}: Insufficient allocated reservation ({$stock->allocated_stock}) or physical stock ({$stock->physical_stock}) for '{$pName}' ({$pCode}) at branch #{$warehouseId}. Requested: {$qty}",
                         $pCode,
                         $pName,
                         $warehouseId,
-                        $stock->physical_stock,
+                        $stock->allocated_stock,
                         $qty
                     );
                 }
 
                 // Deduct from physical stock and release allocated stock
                 $stock->physical_stock = $stock->physical_stock - $qty;
-                $stock->allocated_stock = max(0, $stock->allocated_stock - $qty);
+                $stock->allocated_stock = $stock->allocated_stock - $qty;
                 $stock->save();
 
                 $product = Product::find($item->productId);
@@ -495,6 +470,10 @@ class StockService
      */
     public function initiateTransfer(int $sourceWarehouseId, int $destWarehouseId, array $items, ?string $carrierName, string $userId, string $userName, ?string $notes = null): Transfer
     {
+        $this->assertUserCapability('stock.transfer');
+        $this->assertTenantWarehouse($sourceWarehouseId);
+        $this->assertTenantWarehouse($destWarehouseId);
+
         return DB::transaction(function () use ($sourceWarehouseId, $destWarehouseId, $items, $carrierName, $userId, $userName, $notes) {
             // 1. Validate branch identity and distinctness
             if ($sourceWarehouseId === $destWarehouseId) {
@@ -545,15 +524,16 @@ class StockService
                     throw new \InvalidArgumentException("Transfer quantity for product '{$product->name}' ({$product->code}) must be an integer greater than zero (received: {$qty}). Negative quantities are strictly prohibited.");
                 }
 
-                // Row-level lock on source physical stock to prevent race-condition overdraft
+                // Row-level lock on source stock to prevent overdraft of available unallocated stock
                 $stock = $this->getStockLevel($product->id, $sourceWarehouseId, true);
-                if ($stock->physical_stock < $qty) {
+                $availableStock = (int) ($stock->physical_stock - $stock->allocated_stock);
+                if ($availableStock < $qty) {
                     throw new InsufficientStockException(
-                        "Cannot dispatch transfer: Insufficient physical stock for '{$product->name}' ({$product->code}) at origin branch #{$sourceWarehouseId}. Available: {$stock->physical_stock}, Requested: {$qty}",
+                        "Cannot dispatch transfer: Insufficient available unallocated stock for '{$product->name}' ({$product->code}) at origin branch #{$sourceWarehouseId}. Physical: {$stock->physical_stock}, Allocated: {$stock->allocated_stock}, Available: {$availableStock}, Requested: {$qty}",
                         $product->code,
                         $product->name,
                         $sourceWarehouseId,
-                        $stock->physical_stock,
+                        $availableStock,
                         $qty
                     );
                 }
@@ -639,6 +619,8 @@ class StockService
      */
     public function receiveTransfer(int $transferId, array $countedItems, string $userId, string $userName, ?string $discrepancyNotes = null): Transfer
     {
+        $this->assertUserCapability('stock.receive');
+
         return DB::transaction(function () use ($transferId, $countedItems, $userId, $userName, $discrepancyNotes) {
             $transfer = Transfer::with('items')->where('id', $transferId)->lockForUpdate()->firstOrFail();
 
@@ -729,6 +711,8 @@ class StockService
      */
     public function recallTransfer(int $transferId, string $userId, string $userName, ?string $reason = null): Transfer
     {
+        $this->assertUserCapability('stock.recall');
+
         return DB::transaction(function () use ($transferId, $userId, $userName, $reason) {
             $transfer = Transfer::with(['items', 'source', 'destination'])->where('id', $transferId)->lockForUpdate()->firstOrFail();
 
@@ -786,7 +770,14 @@ class StockService
      */
     public function recordCustomerPayment(int $customerId, float $amount, string $paymentMethod, ?string $refNo, string $userId, string $userName, ?string $notes = null): CustomerLedger
     {
-        return DB::transaction(function () use ($customerId, $amount, $paymentMethod, $refNo, $userId, $userName, $notes) {
+        $this->assertUserCapability('debt.pay');
+
+        $cleanMethod = strtoupper(trim($paymentMethod));
+        if (!in_array($cleanMethod, ['CASH', 'POS'], true)) {
+            throw new \InvalidArgumentException("Debt payment method must be either 'CASH' or 'POS'.");
+        }
+
+        return DB::transaction(function () use ($customerId, $amount, $cleanMethod, $refNo, $userId, $userName, $notes) {
             if ($amount <= 0) {
                 throw new \InvalidArgumentException("Payment amount must be greater than zero.");
             }
@@ -799,18 +790,21 @@ class StockService
                 );
             }
 
-            $customer->total_debt = max(0, $customer->total_debt - $amount);
+            $customer->total_debt = max(0, round($customer->total_debt - $amount, 2));
             $customer->save();
 
-            // Reconcile customer's oldest partial sales
+            // Reconcile customer's oldest open invoices and record financial payment records
             $remainingPayment = $amount;
-            $partialSales = Sale::where('customerId', $customerId)
-                ->where('status', 'PARTIAL')
+            $openSales = Sale::where('customerId', $customerId)
+                ->whereColumn('paidAmount', '<', 'totalAmount')
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->orderBy('createdAt', 'asc')
                 ->lockForUpdate()
                 ->get();
 
-            foreach ($partialSales as $pSale) {
+            $tenantId = session('tenant_id') ?? $customer->tenant_id ?? null;
+
+            foreach ($openSales as $pSale) {
                 if ($remainingPayment <= 0) break;
                 $unpaid = max(0, (float) $pSale->totalAmount - (float) $pSale->paidAmount);
                 $alloc = min($remainingPayment, $unpaid);
@@ -819,6 +813,19 @@ class StockService
                     $pSale->status = 'COMPLETED';
                 }
                 $pSale->save();
+
+                // Financial ledger entry linked to the specific sale invoice
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId ?? $pSale->tenant_id,
+                    'saleId' => $pSale->id,
+                    'amount' => $alloc,
+                    'method' => $cleanMethod,
+                    'timestamp' => now()->toIso8601String(),
+                    'recordedBy' => $userName,
+                    'createdAt' => now()->toIso8601String(),
+                ]);
+
                 $remainingPayment -= $alloc;
             }
 
@@ -827,16 +834,16 @@ class StockService
                 'type' => 'PAYMENT',
                 'amount' => $amount,
                 'balance_after' => $customer->total_debt,
-                'payment_method' => $paymentMethod,
+                'payment_method' => $cleanMethod,
                 'reference_no' => $refNo,
                 'recorded_by' => $userName,
-                'notes' => $notes ?? "Part-payment of ₦" . number_format($amount, 2) . " received. New balance: ₦" . number_format($customer->total_debt, 2),
+                'notes' => $notes ?? "Part-payment of ₦" . number_format($amount, 2) . " received via {$cleanMethod}. New balance: ₦" . number_format($customer->total_debt, 2),
             ]);
 
             Activity::create([
                 'id' => (string) Str::uuid(),
                 'type' => 'DEBT_PAYMENT',
-                'description' => "{$userName} recorded debt payment of ₦" . number_format($amount, 2) . " for {$customer->name}",
+                'description' => "{$userName} recorded debt payment of ₦" . number_format($amount, 2) . " via {$cleanMethod} for {$customer->name}",
                 'userId' => $userId,
                 'userName' => $userName,
                 'timestamp' => now()->toIso8601String(),
@@ -851,6 +858,9 @@ class StockService
      */
     public function recordStockAdjustment(string $productId, int $warehouseId, string $type, int $quantity, string $reason, string $userId, string $userName): \App\Models\StockAdjustment
     {
+        $this->assertUserCapability('stock.adjust');
+        $this->assertTenantWarehouse($warehouseId);
+
         return DB::transaction(function () use ($productId, $warehouseId, $type, $quantity, $reason, $userId, $userName) {
             if ($quantity <= 0) {
                 throw new \InvalidArgumentException("Write-off quantity must be at least 1 unit.");
@@ -858,14 +868,15 @@ class StockService
 
             $product = Product::findOrFail($productId);
             $stock = $this->getStockLevel($productId, $warehouseId, true);
+            $availableStock = (int) ($stock->physical_stock - $stock->allocated_stock);
 
-            if ($stock->physical_stock < $quantity) {
+            if ($availableStock < $quantity) {
                 throw new InsufficientStockException(
-                    "Cannot record stock write-off: Insufficient physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Available: {$stock->physical_stock}, Requested write-off: {$quantity}",
+                    "Cannot record stock write-off: Insufficient available unallocated stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Allocated: {$stock->allocated_stock}, Available: {$availableStock}, Requested write-off: {$quantity}",
                     $product->code,
                     $product->name,
                     $warehouseId,
-                    $stock->physical_stock,
+                    $availableStock,
                     $quantity
                 );
             }
@@ -920,6 +931,13 @@ class StockService
      */
     public function recordSaleReturn(string $saleId, array $returnItems, int $warehouseId, string $refundMethod, string $reason, string $userId, string $userName): \App\Models\SalesReturn
     {
+        $this->assertUserCapability('returns.process');
+        $this->assertTenantWarehouse($warehouseId);
+
+        if (!in_array($refundMethod, ['CASH_REFUND', 'DEBT_REDUCTION'], true)) {
+            throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: CASH_REFUND, DEBT_REDUCTION.");
+        }
+
         return DB::transaction(function () use ($saleId, $returnItems, $warehouseId, $refundMethod, $reason, $userId, $userName) {
             if (empty($returnItems)) {
                 throw new \InvalidArgumentException("No items specified for return.");
@@ -956,10 +974,9 @@ class StockService
                     throw new \InvalidArgumentException("Return quantity for '{$product->name}' must be at least 1 unit.");
                 }
 
-                // Check already returned quantity for this specific product in this sale
-                $previouslyReturnedQty = (int) \App\Models\InventoryLog::where('type', 'SALES_RETURN')
+                // Check already returned quantity for this specific product in this sale authoritatively
+                $previouslyReturnedQty = (int) \App\Models\SalesReturn::where('saleId', $saleId)
                     ->where('productId', $productId)
-                    ->where('description', 'like', "%Sale #{$saleId}%")
                     ->sum('quantity');
 
                 if (($previouslyReturnedQty + $qty) > $saleItem->quantity) {
@@ -1006,38 +1023,65 @@ class StockService
                 ]);
             }
 
+            $wasDelivered = ($sale->deliveryStatus === 'DELIVERED');
+
             // Financial integrity: Cash refund cannot exceed actual money customer paid!
             if ($refundMethod === 'CASH_REFUND') {
-                $maxCashRefundable = max(0, (float) $sale->paidAmount - $priorRefundedTotal);
+                $cashPaid = (float) Payment::where('saleId', $saleId)->where('method', 'CASH')->where('amount', '>', 0)->sum('amount');
+                if ($cashPaid <= 0 && (float) ($sale->cashAmount ?? 0) > 0) {
+                    $cashPaid = (float) $sale->cashAmount;
+                }
+                $priorCashRefunds = abs((float) Payment::where('saleId', $saleId)->where('method', 'REFUND_CASH')->sum('amount'));
+                $maxCashRefundable = max(0.0, round($cashPaid - $priorCashRefunds, 2));
+
                 if ($totalRefundAmount > $maxCashRefundable) {
                     throw new \InvalidArgumentException(
                         "Cannot issue cash refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable cash for Sale #{$saleId} based on actual payments made is ₦" . number_format($maxCashRefundable, 2) . ". Use DEBT_REDUCTION for unpaid/credit balance."
                     );
                 }
+
+                // Balance financial ledger: reduce sale paidAmount and create negative payment record
+                $sale->paidAmount = max(0, (float) $sale->paidAmount - $totalRefundAmount);
+                if ($sale->paidAmount < $sale->totalAmount) {
+                    $sale->status = ($sale->paidAmount <= 0) ? 'RETURNED' : 'PARTIAL';
+                }
+                $sale->save();
+
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'saleId' => $saleId,
+                    'amount' => -$totalRefundAmount,
+                    'method' => 'REFUND_CASH',
+                    'timestamp' => now()->toIso8601String(),
+                    'recordedBy' => $userName,
+                    'createdAt' => now()->toIso8601String(),
+                ]);
             }
 
-            $salesReturn = \App\Models\SalesReturn::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
-                'saleId' => $saleId,
-                'customerName' => $sale->customerName,
-                'code' => 'RET-' . strtoupper(Str::random(6)),
-                'productId' => $firstProduct ? $firstProduct->id : 'MULTI',
-                'productName' => $firstProduct ? $firstProduct->name : 'Returned Items',
-                'quantity' => array_sum(array_column($returnItems, 'quantity')),
-                'refundAmount' => $totalRefundAmount,
-                'reason' => $reason,
-                'createdAt' => now()->toIso8601String(),
-                'userId' => $userId,
-                'userName' => $userName,
-                'wasDelivered' => true,
-            ]);
+            // Financial integrity: Debt reduction reduces the invoice total and customer debt balance
+            if ($refundMethod === 'DEBT_REDUCTION') {
+                $invoiceOutstanding = max(0.0, (float) $sale->totalAmount - (float) $sale->paidAmount);
+                if ($totalRefundAmount > $invoiceOutstanding) {
+                    throw new \InvalidArgumentException(
+                        "Cannot apply debt reduction of ₦" . number_format($totalRefundAmount, 2) . ". Outstanding balance on Sale #{$saleId} is only ₦" . number_format($invoiceOutstanding, 2) . "."
+                    );
+                }
 
-            // Adjust Customer Debt Ledger if refund method is DEBT_REDUCTION
-            if ($refundMethod === 'DEBT_REDUCTION' && $sale->customerName) {
-                $customer = Customer::where('name', $sale->customerName)->lockForUpdate()->first();
+                $sale->totalAmount = max(0.0, round($sale->totalAmount - $totalRefundAmount, 2));
+                if ($sale->paidAmount >= $sale->totalAmount) {
+                    $sale->status = 'COMPLETED';
+                }
+                $sale->save();
+
+                $cId = $sale->customerId ?? $sale->customer_id ?? null;
+                $customer = $cId ? Customer::find($cId) : null;
+                if (!$customer && $sale->customerName) {
+                    $customer = Customer::where('name', $sale->customerName)->first();
+                }
+
                 if ($customer) {
-                    $customer->total_debt = max(0, $customer->total_debt - $totalRefundAmount);
+                    $customer->total_debt = max(0.0, round($customer->total_debt - $totalRefundAmount, 2));
                     $customer->save();
 
                     CustomerLedger::create([
@@ -1047,12 +1091,46 @@ class StockService
                         'amount' => $totalRefundAmount,
                         'balance_after' => $customer->total_debt,
                         'payment_method' => 'RETURN_CREDIT',
-                        'reference_no' => $salesReturn->code,
+                        'reference_no' => 'RET-' . strtoupper(Str::random(6)),
                         'recorded_by' => $userName,
-                        'notes' => "Debt reduced by ₦" . number_format($totalRefundAmount, 2) . " due to Sales Return #{$salesReturn->code}",
+                        'notes' => "Debt reduced by ₦" . number_format($totalRefundAmount, 2) . " due to Sales Return on Sale #{$saleId}",
                     ]);
                 }
             }
+
+            // Create individual SalesReturn record per returned SKU
+            $primaryReturn = null;
+            foreach ($returnItems as $rItem) {
+                $pId = $rItem['productId'] ?? $rItem['product_id'];
+                $pQty = (int) $rItem['quantity'];
+                $prod = Product::find($pId);
+                $uPrice = (float) $soldItemsByProduct[$pId]->unitPrice;
+                $lineRefund = round($pQty * $uPrice, 2);
+
+                $singleReturn = \App\Models\SalesReturn::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'saleId' => $saleId,
+                    'customerName' => $sale->customerName,
+                    'code' => 'RET-' . strtoupper(Str::random(6)),
+                    'productId' => $pId,
+                    'productName' => $prod ? $prod->name : 'Returned Item',
+                    'quantity' => $pQty,
+                    'refundAmount' => $lineRefund,
+                    'reason' => $reason,
+                    'createdAt' => now()->toIso8601String(),
+                    'userId' => $userId,
+                    'userName' => $userName,
+                    'wasDelivered' => $wasDelivered,
+                    'deliveryStatus' => $sale->deliveryStatus,
+                ]);
+
+                if (!$primaryReturn) {
+                    $primaryReturn = $singleReturn;
+                }
+            }
+
+            $salesReturn = $primaryReturn;
 
             Activity::create([
                 'id' => (string) Str::uuid(),
