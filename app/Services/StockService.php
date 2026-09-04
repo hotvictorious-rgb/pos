@@ -53,7 +53,7 @@ class StockService
     {
         if (Auth::check()) {
             $user = Auth::user();
-            if (!$user->isSuperAdmin() && !$user->hasCapability($capability)) {
+            if (!$user->hasCapability($capability)) {
                 throw new AuthorizationException(
                     "Unauthorized: User {$user->name} lacks the required '{$capability}' capability."
                 );

@@ -260,55 +260,36 @@ class PortalSessionLifecycleSecurityTest extends TestCase
     }
 
     /**
-     * TEST 3: Super admin -> impersonate tenant -> stop impersonation
-     * Clean state restoration verified.
+     * TEST 3: Impersonation routes permanently eliminated
      */
-    public function test_super_admin_impersonate_and_stop_lifecycle()
+    public function test_super_admin_cannot_impersonate_tenant_route_eliminated()
     {
         $this->post(route('portal.super_admin.login.post'), [
             'email' => 'superadmin@hysam.com',
             'password' => 'supersecret',
         ]);
 
-        // Start impersonation
-        $impRes = $this->post(route('saas.admin.impersonate', ['id' => $this->tenantA->id]));
-        $impRes->assertRedirect('/');
-        $this->assertEquals($this->tenantA->id, session('tenant_id'));
-        $this->assertTrue(session('is_impersonating'));
-        $this->assertEquals($this->superAdmin->id, session('impersonator_id'));
+        // Attempting to post to impersonate route results in 404
+        $impRes = $this->post('/saas/admin/impersonate/' . $this->tenantA->id);
+        $impRes->assertStatus(404);
 
-        // Stop impersonation
-        $stopRes = $this->post(route('saas.admin.stop_impersonate'));
-        $stopRes->assertRedirect(route('saas.admin.index'));
+        // Session tenant remains default platform tenant
         $this->assertEquals('default-tenant', session('tenant_id'));
         $this->assertFalse(session()->has('is_impersonating'));
-        $this->assertFalse(session()->has('impersonator_id'));
-        $this->assertAuthenticatedAs($this->superAdmin);
     }
 
     /**
-     * TEST 4: Impersonating admin -> logout
-     * Logging out during impersonation must cleanly purge all impersonation flags.
+     * TEST 4: Stop impersonation route permanently eliminated
      */
-    public function test_logout_during_active_impersonation_purges_all_keys()
+    public function test_stop_impersonation_route_eliminated()
     {
         $this->post(route('portal.super_admin.login.post'), [
             'email' => 'superadmin@hysam.com',
             'password' => 'supersecret',
         ]);
-        $this->post(route('saas.admin.impersonate', ['id' => $this->tenantA->id]));
 
-        $this->assertTrue(session('is_impersonating'));
-
-        // User logs out while impersonation is active
-        $logoutRes = $this->post(route('portal.tenant.logout'));
-        $logoutRes->assertRedirect(route('portal.tenant.login'));
-
-        $this->assertFalse(session()->has('is_impersonating'));
-        $this->assertFalse(session()->has('impersonator_id'));
-        $this->assertNull(session('user_id'));
-        $this->assertNull(session('tenant_id'));
-        $this->assertGuest();
+        $stopRes = $this->post('/saas/admin/stop-impersonate');
+        $stopRes->assertStatus(404);
     }
 
     /**

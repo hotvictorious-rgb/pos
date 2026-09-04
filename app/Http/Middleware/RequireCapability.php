@@ -42,9 +42,31 @@ class RequireCapability
             }
         }
 
-        // 3. Root Super Admin bypasses all capability restrictions
-        if ($user->isSuperAdmin()) {
-            return $next($request);
+        // 3. Strict Authority Boundary Enforcement
+        // Platform users can NEVER access tenant business capabilities
+        if ($user->isPlatformUser()) {
+            foreach ($required as $cap) {
+                if (!CapabilityService::isPlatformCapability($cap)) {
+                    $msg = 'Forbidden. Platform administrators cannot access tenant business records.';
+                    if ($request->ajax() || $request->wantsJson() || $request->is('api/*')) {
+                        return response()->json(['error' => $msg], 403);
+                    }
+                    abort(403, $msg);
+                }
+            }
+        }
+
+        // Tenant users can NEVER access platform capabilities
+        if ($user->isTenantUser()) {
+            foreach ($required as $cap) {
+                if (CapabilityService::isPlatformCapability($cap)) {
+                    $msg = 'Forbidden. Tenant users cannot access platform management.';
+                    if ($request->ajax() || $request->wantsJson() || $request->is('api/*')) {
+                        return response()->json(['error' => $msg], 403);
+                    }
+                    abort(403, $msg);
+                }
+            }
         }
 
         // 4. Check if user holds at least one required capability
@@ -67,6 +89,9 @@ class RequireCapability
             }
 
             if ($request->isMethod('GET')) {
+                if ($user->isPlatformUser()) {
+                    abort(403, $msg);
+                }
                 return redirect()->route('dashboard')->with('warning', "🔒 Access Restricted: You do not have permission to access that area.");
             }
 

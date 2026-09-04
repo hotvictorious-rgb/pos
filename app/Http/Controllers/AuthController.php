@@ -131,7 +131,7 @@ class AuthController extends Controller
 
     public function logout()
     {
-        session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);
+        session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id']);
         if (\Illuminate\Support\Facades\Auth::check()) {
             \Illuminate\Support\Facades\Auth::logout();
         }
@@ -140,7 +140,7 @@ class AuthController extends Controller
 
     public function webLogout(Request $request)
     {
-        session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);
+        session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id']);
         if (\Illuminate\Support\Facades\Auth::check()) {
             \Illuminate\Support\Facades\Auth::logout();
         }
@@ -371,7 +371,7 @@ class AuthController extends Controller
      */
     public function portalLogout(Request $request, string $portal)
     {
-        session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id', 'portal']);
+        session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'portal']);
         if (Auth::check()) {
             Auth::logout();
         }

@@ -67,7 +67,7 @@ class CheckWebAuth
         $user = $effectiveId ? User::findForAuthenticationById($effectiveId) : null;
 
         if (!$user || $user->disabled) {
-            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);
+            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id']);
             Auth::logout();
             if ($isApi) {
                 return response()->json(['error' => 'Your session has expired or your account is disabled.'], 401);
@@ -81,25 +81,47 @@ class CheckWebAuth
 
         // Validate and synchronize tenant_id context securely
         if (config('saas.enabled')) {
-            if (!session('is_impersonating')) {
-                // If a normal tenant user has no valid tenant, deny access rather than assigning them to the platform tenant
-                if (empty($user->tenant_id)) {
-                    session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);
-                    Auth::logout();
-                    if ($isApi) {
-                        return response()->json(['error' => 'Forbidden: Account is not associated with an active tenant.'], 403);
-                    }
-                    return redirect()->route('login')->with('error', 'Your account is not assigned to an active tenant.');
+            // If a normal tenant user has no valid tenant, deny access rather than assigning them to the platform tenant
+            if (empty($user->tenant_id)) {
+                session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id']);
+                Auth::logout();
+                if ($isApi) {
+                    return response()->json(['error' => 'Forbidden: Account is not associated with an active tenant.'], 403);
                 }
+                return redirect()->route('login')->with('error', 'Your account is not assigned to an active tenant.');
+            }
 
-                if (session('tenant_id') !== $user->tenant_id) {
-                    session(['tenant_id' => $user->tenant_id]);
-                }
+            if (session('tenant_id') !== $user->tenant_id) {
+                session(['tenant_id' => $user->tenant_id]);
             }
         } else {
             // Standalone mode: set default tenant context if not set
             if (!session()->has('tenant_id')) {
                 session(['tenant_id' => 'default-tenant']);
+            }
+        }
+
+        // Hard Boundary: Platform users can NEVER access tenant business web routes
+        if ($user->isPlatformUser()) {
+            $tenantWebPrefixes = [
+                'dashboard',
+                'pos', 'pos/*',
+                'products', 'products/*',
+                'stock', 'stock/*',
+                'reports', 'reports/*',
+                'auditor', 'auditor/*',
+                'debts', 'debts/*',
+                'transactions', 'transactions/*',
+                'users', 'users/*',
+                'settings', 'settings/*',
+            ];
+            foreach ($tenantWebPrefixes as $pattern) {
+                if ($request->is($pattern)) {
+                    if ($isApi) {
+                        return response()->json(['error' => 'Forbidden: Platform users cannot access tenant business operations.'], 403);
+                    }
+                    abort(403, 'Forbidden: Platform users cannot access tenant business operations.');
+                }
             }
         }
 

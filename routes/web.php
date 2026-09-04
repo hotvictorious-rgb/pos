@@ -77,14 +77,12 @@ Route::prefix('saas')->name('saas.')->group(function () {
 
     // Super Admin Master SaaS Control Panel
     Route::prefix('admin')->name('admin.')->middleware([\App\Http\Middleware\RequireSuperAdmin::class])->group(function () {
-        Route::get('/',                 [\App\Http\Controllers\SaaS\SaaSController::class, 'adminIndex'])->name('index');
-        Route::post('/settings',        [\App\Http\Controllers\SaaS\SaaSController::class, 'updateSettings'])->name('settings');
-        Route::post('/tenant',          [\App\Http\Controllers\SaaS\SaaSController::class, 'storeTenant'])->name('tenant.store');
-        Route::post('/toggle/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'toggleStatus'])->name('toggle');
-        Route::post('/limits/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'updateTenantLimits'])->name('limits');
-        Route::post('/impersonate/{id}', [\App\Http\Controllers\SaaS\SaaSController::class, 'impersonateTenant'])->name('impersonate');
-        Route::post('/stop-impersonate', [\App\Http\Controllers\SaaS\SaaSController::class, 'stopImpersonation'])->name('stop_impersonate');
-        Route::post('/delete/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'deleteTenant'])->name('delete');
+        Route::get('/',                 [\App\Http\Controllers\SaaS\SaaSController::class, 'adminIndex'])->middleware('capability:platform.health,platform.tenants,platform.settings')->name('index');
+        Route::post('/settings',        [\App\Http\Controllers\SaaS\SaaSController::class, 'updateSettings'])->middleware('capability:platform.settings')->name('settings');
+        Route::post('/tenant',          [\App\Http\Controllers\SaaS\SaaSController::class, 'storeTenant'])->middleware('capability:platform.tenants')->name('tenant.store');
+        Route::post('/toggle/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'toggleStatus'])->middleware('capability:platform.tenants')->name('toggle');
+        Route::post('/limits/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'updateTenantLimits'])->middleware('capability:platform.limits')->name('limits');
+        Route::post('/delete/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'deleteTenant'])->middleware('capability:platform.tenants')->name('delete');
     });
 });
 
@@ -96,18 +94,18 @@ Route::prefix('api')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me',      [AuthController::class, 'me']);
 
-    // Secured API endpoints: Data sync and reset require explicit administrative capabilities
-    Route::get('/data',   [DataController::class, 'get'])->middleware('capability:settings.manage,platform.settings');
-    Route::post('/data',  [DataController::class, 'post'])->middleware('capability:settings.manage,platform.settings');
-    Route::post('/reset', [DataController::class, 'reset'])->middleware('capability:platform.reset,settings.manage');
+    // Secured API endpoints: Data sync requires tenant settings.manage capability
+    Route::get('/data',   [DataController::class, 'get'])->middleware('capability:settings.manage');
+    Route::post('/data',  [DataController::class, 'post'])->middleware('capability:settings.manage');
+    Route::post('/reset', [DataController::class, 'reset'])->middleware('capability:platform.reset');
 
     // Backup & Restore
-    Route::get('/backups',               [BackupController::class, 'index'])->middleware('capability:platform.backup,settings.manage');
-    Route::post('/backups',              [BackupController::class, 'create'])->middleware('capability:platform.backup,settings.manage');
-    Route::get('/backups/{id}/download', [BackupController::class, 'download'])->middleware('capability:platform.backup,settings.manage');
-    Route::post('/backups/{id}/restore', [BackupController::class, 'restore'])->middleware('capability:platform.restore,settings.manage');
-    Route::post('/backups/upload',       [BackupController::class, 'upload'])->middleware('capability:platform.restore,settings.manage');
-    Route::delete('/backups/{id}',       [BackupController::class, 'destroy'])->middleware('capability:platform.backup,settings.manage');
+    Route::get('/backups',               [BackupController::class, 'index'])->middleware('capability:platform.backup');
+    Route::post('/backups',              [BackupController::class, 'create'])->middleware('capability:platform.backup');
+    Route::get('/backups/{id}/download', [BackupController::class, 'download'])->middleware('capability:platform.backup');
+    Route::post('/backups/{id}/restore', [BackupController::class, 'restore'])->middleware('capability:platform.restore');
+    Route::post('/backups/upload',       [BackupController::class, 'upload'])->middleware('capability:platform.restore');
+    Route::delete('/backups/{id}',       [BackupController::class, 'destroy'])->middleware('capability:platform.backup');
 });
 
 // ─────────────────────────────────────────────────────────
@@ -115,7 +113,7 @@ Route::prefix('api')->group(function () {
 // ─────────────────────────────────────────────────────────
 
 // 1. Executive Dashboard (Date Filterable)
-Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('capability:reports.view')->name('dashboard');
 
 // 2. Visual Point of Sale (POS)
 Route::prefix('pos')->name('pos.')->group(function () {

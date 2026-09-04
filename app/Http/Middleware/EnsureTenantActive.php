@@ -41,7 +41,7 @@ class EnsureTenantActive
 
         // Fail-closed: tenant does not exist in database
         if (!$tenant) {
-            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'is_impersonating', 'impersonator_id']);
+            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id']);
             if (\Illuminate\Support\Facades\Auth::check()) {
                 \Illuminate\Support\Facades\Auth::logout();
             }

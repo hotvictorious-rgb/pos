@@ -79,8 +79,8 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
-        if (Auth::check() && Auth::user()->role !== 'admin') {
-            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can create catalog products. Branch managers and staff can add stock quantities via Stock In.');
+        if (Auth::check() && !Auth::user()->hasCapability('products.write')) {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: You do not have permission to create catalog products.');
         }
 
         $tenantId = session('tenant_id') ?? 'default-tenant';
@@ -140,8 +140,8 @@ class ProductController extends Controller
      */
     public function update(Request $request, $id)
     {
-        if (Auth::check() && Auth::user()->role !== 'admin') {
-            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can edit product catalog details.');
+        if (Auth::check() && !Auth::user()->hasCapability('products.write')) {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: You do not have permission to edit catalog products.');
         }
 
         $request->validate([
@@ -170,8 +170,8 @@ class ProductController extends Controller
      */
     public function destroy($id)
     {
-        if (Auth::check() && Auth::user()->role !== 'admin') {
-            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: Only Auditor / Super Admin can delete or archive catalog products.');
+        if (Auth::check() && !Auth::user()->hasCapability('products.write')) {
+            return redirect()->route('products.index')->with('error', '⛔ Permission Denied: You do not have permission to delete or archive catalog products.');
         }
 
         $product = Product::findOrFail($id);

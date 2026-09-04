@@ -297,70 +297,7 @@ class SaaSController extends Controller
         return back()->with('success', "✓ Subscription plan & custom limits updated for '{$tenant->name}'!");
     }
 
-    /** 1-Click Tenant Impersonation */
-    /** 1-Click Tenant Impersonation */
-    public function impersonateTenant($id)
-    {
-        $caller = Auth::user();
-        if (!$caller || !$caller->isSuperAdmin()) {
-            abort(403, 'Forbidden. Only platform super-administrators can initiate impersonation.');
-        }
 
-        $tenant = Tenant::findOrFail($id);
-        $adminUser = User::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('role', 'admin')->first();
-
-        if (!$adminUser) {
-            return back()->with('error', "No admin user found for tenant '{$tenant->name}'.");
-        }
-
-        session([
-            'impersonator_id' => $caller->id,
-            'user_id'         => $adminUser->id,
-            'user_name'       => $adminUser->name,
-            'user_role'       => $adminUser->role,
-            'tenant_id'       => $tenant->id,
-            'is_impersonating' => true,
-        ]);
-        Auth::login($adminUser);
-
-        return redirect('/')->with('info', "👁️ You are now impersonating '{$tenant->name}'.");
-    }
-
-    /** Stop Impersonation & Return to Master Super Admin */
-    public function stopImpersonation(Request $request)
-    {
-        $isImpersonating = session('is_impersonating');
-        $impersonatorId = session('impersonator_id');
-
-        // Strictly verify active impersonation session
-        if (!$isImpersonating || empty($impersonatorId)) {
-            abort(403, 'Forbidden: No active impersonation session to stop.');
-        }
-
-        $masterAdmin = User::findForAuthenticationById($impersonatorId);
-
-        // Strictly verify that the recorded impersonator is genuinely a platform super-admin
-        if (!$masterAdmin || !$masterAdmin->isSuperAdmin()) {
-            Auth::logout();
-            session()->flush();
-            $request->session()->regenerate();
-            return redirect()->route('login')->with('error', 'Invalid impersonation state. Session cleared for security.');
-        }
-
-        // Cleanly wipe impersonation context and regenerate session
-        session()->forget(['is_impersonating', 'impersonator_id']);
-        $request->session()->regenerate();
-
-        session([
-            'user_id'   => $masterAdmin->id,
-            'user_name' => $masterAdmin->name,
-            'user_role' => $masterAdmin->role,
-            'tenant_id' => 'default-tenant',
-        ]);
-        Auth::login($masterAdmin);
-
-        return redirect()->route('saas.admin.index')->with('success', "✓ Stopped impersonation. Returned to SaaS Master Control Panel.");
-    }
 
     /** Delete Tenant Account and All Associated Business Data */
     public function deleteTenant($id)

@@ -52,32 +52,49 @@ class CapabilityService
         // Business Settings & Branches
         'settings.manage',
 
-        // SaaS Platform Management (Super Admin only)
+        // SaaS Platform Management (Platform Admin & Platform Employee)
         'platform.tenants',
         'platform.settings',
-        'platform.impersonate',
+        'platform.limits',
+        'platform.health',
         'platform.backup',
         'platform.restore',
         'platform.reset',
     ];
 
     /**
+     * Check if a capability is scoped to the SaaS platform.
+     */
+    public static function isPlatformCapability(string $capability): bool
+    {
+        return str_starts_with($capability, 'platform.');
+    }
+
+    /**
      * Role-to-Capabilities Matrix.
      * Unknown roles return an empty array (fail-closed).
      */
     protected static array $roleCapabilities = [
+        'platform_admin' => [
+            'platform.tenants',
+            'platform.settings',
+            'platform.limits',
+            'platform.health',
+            'platform.backup',
+            'platform.restore',
+            'platform.reset',
+        ],
         'super_admin' => [
-            'pos.view', 'pos.checkout',
-            'customer.read', 'customer.write',
-            'debt.view', 'debt.pay',
-            'returns.view', 'returns.process',
-            'products.view', 'products.write',
-            'stock.view', 'stock.in', 'stock.transfer', 'stock.receive', 'stock.recall', 'stock.adjust',
-            'reports.view', 'reports.export',
-            'transactions.view', 'transactions.export',
-            'users.manage',
-            'settings.manage',
-            'platform.tenants', 'platform.settings', 'platform.impersonate', 'platform.backup', 'platform.restore', 'platform.reset',
+            'platform.tenants',
+            'platform.settings',
+            'platform.limits',
+            'platform.health',
+            'platform.backup',
+            'platform.restore',
+            'platform.reset',
+        ],
+        'platform_employee' => [
+            // Platform employees perform ONLY explicitly assigned platform work
         ],
         'admin' => [
             'pos.view', 'pos.checkout',
@@ -90,7 +107,6 @@ class CapabilityService
             'transactions.view', 'transactions.export',
             'users.manage',
             'settings.manage',
-            'platform.backup', 'platform.restore',
         ],
         'branch_manager' => [
             'pos.view', 'pos.checkout',
@@ -160,6 +176,13 @@ class CapabilityService
             $role = 'admin'; // Normalized fallback if not root super admin identity
         }
 
+        // Map platform admin role
+        if ($user->isPlatformAdmin()) {
+            $role = 'platform_admin';
+        } elseif ($user->isPlatformEmployee() && empty(self::$roleCapabilities[$role])) {
+            $role = 'platform_employee';
+        }
+
         $capabilities = self::$roleCapabilities[$role] ?? [];
 
         // Apply explicit permission overrides from user record if present
@@ -178,6 +201,12 @@ class CapabilityService
             ];
 
             foreach ($user->permissions as $key => $allowed) {
+                // Support indexed string list: ['platform.health', 'platform.tenants']
+                if (is_int($key) && is_string($allowed) && in_array($allowed, self::CAPABILITIES, true)) {
+                    $capabilities[] = $allowed;
+                    continue;
+                }
+
                 if (isset($legacyMap[$key])) {
                     if ($allowed === false) {
                         $capabilities = array_diff($capabilities, $legacyMap[$key]);
@@ -194,6 +223,15 @@ class CapabilityService
             }
         }
 
+        // Hard boundary filtering:
+        // Platform accounts can ONLY hold platform.* capabilities
+        // Tenant accounts can NEVER hold platform.* capabilities
+        if ($user->isPlatformUser()) {
+            $capabilities = array_filter($capabilities, fn($c) => self::isPlatformCapability($c));
+        } elseif ($user->isTenantUser()) {
+            $capabilities = array_filter($capabilities, fn($c) => !self::isPlatformCapability($c));
+        }
+
         return array_values(array_unique($capabilities));
     }
 
@@ -202,13 +240,18 @@ class CapabilityService
      */
     public static function userHasCapability(?User $user, string $capability): bool
     {
-        if (!$user) {
+        if (!$user || $user->disabled) {
             return false;
         }
 
-        // Root super admin possesses all capabilities unconditionally
-        if ($user->isSuperAdmin()) {
-            return true;
+        // Hard Boundary: Platform users can never possess tenant business capabilities
+        if ($user->isPlatformUser() && !self::isPlatformCapability($capability)) {
+            return false;
+        }
+
+        // Hard Boundary: Tenant users can never possess platform capabilities
+        if ($user->isTenantUser() && self::isPlatformCapability($capability)) {
+            return false;
         }
 
         $userCapabilities = self::getCapabilitiesForUser($user);

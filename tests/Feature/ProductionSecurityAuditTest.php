@@ -253,7 +253,7 @@ class ProductionSecurityAuditTest extends TestCase
         ]);
 
         $response->assertStatus(403);
-        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
+        $response->assertJson(['error' => 'Forbidden. Tenant users cannot access platform management.']);
     }
 
     public function test_backup_upload_rejects_executable_or_non_json_files()

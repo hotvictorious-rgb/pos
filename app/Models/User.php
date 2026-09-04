@@ -49,10 +49,18 @@ class User extends Authenticatable
         });
     }
 
+    // ─────────────────────────────────────────────────────────
+    // FOUR PRIMARY AUTHORITY CATEGORIES
+    // ─────────────────────────────────────────────────────────
+    public const AUTH_PLATFORM_ADMIN    = 'platform_admin';
+    public const AUTH_PLATFORM_EMPLOYEE = 'platform_employee';
+    public const AUTH_TENANT_ADMIN      = 'tenant_admin';
+    public const AUTH_TENANT_EMPLOYEE   = 'tenant_employee';
+
     /**
      * Determine if user has platform-level SaaS super-administrator authority.
      */
-    public function isSuperAdmin(): bool
+    public function isPlatformAdmin(): bool
     {
         if ($this->tenant_id !== 'default-tenant') {
             return false;
@@ -65,45 +73,27 @@ class User extends Authenticatable
     }
 
     /**
-     * Check if user possesses a specific capability.
+     * Determine if user has platform-level SaaS super-administrator authority (alias for isPlatformAdmin).
      */
-    public function hasCapability(string $capability): bool
+    public function isSuperAdmin(): bool
     {
-        return \App\Services\Auth\CapabilityService::userHasCapability($this, $capability);
+        return $this->isPlatformAdmin();
     }
 
     /**
-     * Check if user possesses at least one capability from a list.
+     * Determine if user is a platform-level employee under default-tenant.
      */
-    public function hasAnyCapability(array $capabilities): bool
+    public function isPlatformEmployee(): bool
     {
-        if ($this->isSuperAdmin()) {
-            return true;
-        }
-        $userCaps = \App\Services\Auth\CapabilityService::getCapabilitiesForUser($this);
-        foreach ($capabilities as $cap) {
-            if (in_array($cap, $userCaps, true)) {
-                return true;
-            }
-        }
-        return false;
+        return ($this->tenant_id === 'default-tenant') && !$this->isPlatformAdmin();
     }
 
     /**
-     * Get all assigned capabilities for this user.
+     * Determine if user is any platform user (admin or employee).
      */
-    public function getCapabilities(): array
+    public function isPlatformUser(): bool
     {
-        return \App\Services\Auth\CapabilityService::getCapabilitiesForUser($this);
-    }
-
-    /**
-     * Determine if user is a platform-level employee/auditor/support under default-tenant.
-     */
-    public function isSuperAdminEmployee(): bool
-    {
-        $isMasterTenant = ($this->tenant_id === 'default-tenant');
-        return $isMasterTenant && !$this->isSuperAdmin();
+        return $this->tenant_id === 'default-tenant';
     }
 
     /**
@@ -126,6 +116,73 @@ class User extends Authenticatable
             return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant' && $this->role !== 'admin';
         }
         return $this->role !== 'admin';
+    }
+
+    /**
+     * Determine if user is any tenant user (admin or employee).
+     */
+    public function isTenantUser(): bool
+    {
+        if (config('saas.enabled')) {
+            return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant';
+        }
+        return true;
+    }
+
+    /**
+     * Get the canonical four-level authority category for this user.
+     */
+    public function getAuthorityCategory(): string
+    {
+        if ($this->isPlatformAdmin()) {
+            return self::AUTH_PLATFORM_ADMIN;
+        }
+        if ($this->isPlatformEmployee()) {
+            return self::AUTH_PLATFORM_EMPLOYEE;
+        }
+        if ($this->isTenantAdmin()) {
+            return self::AUTH_TENANT_ADMIN;
+        }
+        return self::AUTH_TENANT_EMPLOYEE;
+    }
+
+    /**
+     * Backward-compatible helper for platform employee.
+     */
+    public function isSuperAdminEmployee(): bool
+    {
+        return $this->isPlatformEmployee();
+    }
+
+    /**
+     * Check if user possesses a specific capability.
+     */
+    public function hasCapability(string $capability): bool
+    {
+        return \App\Services\Auth\CapabilityService::userHasCapability($this, $capability);
+    }
+
+    /**
+     * Check if user possesses at least one capability from a list.
+     * Note: Strictly checks actual user capabilities; no universal superadmin bypass.
+     */
+    public function hasAnyCapability(array $capabilities): bool
+    {
+        $userCaps = \App\Services\Auth\CapabilityService::getCapabilitiesForUser($this);
+        foreach ($capabilities as $cap) {
+            if (in_array($cap, $userCaps, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get all assigned capabilities for this user.
+     */
+    public function getCapabilities(): array
+    {
+        return \App\Services\Auth\CapabilityService::getCapabilitiesForUser($this);
     }
 
     public $incrementing = false;
@@ -163,10 +220,11 @@ class User extends Authenticatable
 
     /**
      * Determine if user has executive tenant-wide oversight (Auditor Admin / Executive Owner).
+     * Strictly applies to tenant administration within a tenant.
      */
     public function isExecutive(): bool
     {
-        return in_array($this->role, ['admin', 'super_admin']);
+        return $this->isTenantAdmin();
     }
 
     /**

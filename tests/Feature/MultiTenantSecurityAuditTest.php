@@ -354,7 +354,7 @@ class MultiTenantSecurityAuditTest extends TestCase
         ])->get('/api/backups');
 
         $response->assertStatus(403);
-        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
+        $response->assertJson(['error' => 'Forbidden. Tenant users cannot access platform management.']);
 
         // Super Admin CAN access backups
         $superResponse = $this->actingAs($this->superAdmin)->withSession([
@@ -382,7 +382,7 @@ class MultiTenantSecurityAuditTest extends TestCase
         ])->get("/api/backups/{$backupB->id}/download");
 
         $response->assertStatus(403);
-        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
+        $response->assertJson(['error' => 'Forbidden. Tenant users cannot access platform management.']);
     }
 
     public function test_tenant_a_cannot_restore_tenant_b_backup()
@@ -401,7 +401,7 @@ class MultiTenantSecurityAuditTest extends TestCase
         ])->post("/api/backups/{$backupB->id}/restore");
 
         $response->assertStatus(403);
-        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
+        $response->assertJson(['error' => 'Forbidden. Tenant users cannot access platform management.']);
     }
 
     public function test_tenant_a_cannot_delete_tenant_b_backup()
@@ -420,7 +420,7 @@ class MultiTenantSecurityAuditTest extends TestCase
         ])->delete("/api/backups/{$backupB->id}");
 
         $response->assertStatus(403);
-        $response->assertJson(['error' => 'Forbidden: Super-Administrator authority required.']);
+        $response->assertJson(['error' => 'Forbidden. Tenant users cannot access platform management.']);
         $this->assertNotNull(Backup::find('BK-BETA-DEL-1'));
     }
 
@@ -437,64 +437,37 @@ class MultiTenantSecurityAuditTest extends TestCase
         $response->assertSessionHas('error');
     }
 
-    public function test_normal_tenant_admin_cannot_impersonate_another_tenant()
+    public function test_tenant_impersonation_subsystem_is_permanently_eliminated()
     {
+        // 1. Tenant admin attempting to hit impersonate route gets 404 (route eliminated)
         $response = $this->actingAs($this->adminA)->withSession([
             'user_id' => $this->adminA->id,
             'user_name' => $this->adminA->name,
             'user_role' => 'admin',
             'tenant_id' => $this->tenantA->id,
-        ])->post(route('saas.admin.impersonate', ['id' => $this->tenantB->id]));
+        ])->post('/saas/admin/impersonate/' . $this->tenantB->id);
 
-        $response->assertRedirect(route('dashboard'));
-    }
+        $response->assertStatus(404);
 
-    public function test_platform_super_admin_can_start_and_stop_impersonation()
-    {
-        // 1. Super-admin starts impersonation
-        $response = $this->actingAs($this->superAdmin)->withSession([
+        // 2. Platform super admin attempting to hit impersonate route gets 404
+        $superResponse = $this->actingAs($this->superAdmin)->withSession([
             'user_id' => $this->superAdmin->id,
             'user_name' => $this->superAdmin->name,
             'user_role' => 'admin',
             'tenant_id' => 'default-tenant',
-        ])->post(route('saas.admin.impersonate', ['id' => $this->tenantA->id]));
+        ])->post('/saas/admin/impersonate/' . $this->tenantA->id);
 
-        $response->assertRedirect('/');
-        $this->assertEquals($this->tenantA->id, session('tenant_id'));
-        $this->assertTrue(session('is_impersonating'));
-        $this->assertEquals($this->superAdmin->id, session('impersonator_id'));
+        $superResponse->assertStatus(404);
 
-        // 2. Impersonated session executes stop-impersonate
-        $stopResponse = $this->actingAs($this->adminA)->withSession([
-            'user_id' => $this->adminA->id,
-            'user_name' => $this->adminA->name,
+        // 3. Stop impersonation route is also permanently gone
+        $stopResponse = $this->actingAs($this->superAdmin)->withSession([
+            'user_id' => $this->superAdmin->id,
+            'user_name' => $this->superAdmin->name,
             'user_role' => 'admin',
-            'tenant_id' => $this->tenantA->id,
-            'is_impersonating' => true,
-            'impersonator_id' => $this->superAdmin->id,
-        ])->post(route('saas.admin.stop_impersonate'));
+            'tenant_id' => 'default-tenant',
+        ])->post('/saas/admin/stop-impersonate');
 
-        $stopResponse->assertRedirect(route('saas.admin.index'));
-        $this->assertEquals('default-tenant', session('tenant_id'));
-        $this->assertFalse(session()->has('is_impersonating'));
-        $this->assertFalse(session()->has('impersonator_id'));
-        $this->assertAuthenticatedAs($this->superAdmin);
-    }
-
-    public function test_forged_impersonator_id_cannot_elevate_tenant_admin()
-    {
-        // Tenant A admin creates forged session with a non-existent or fake impersonator ID
-        $response = $this->actingAs($this->adminA)->withSession([
-            'user_id' => $this->adminA->id,
-            'user_role' => 'admin',
-            'tenant_id' => $this->tenantA->id,
-            'is_impersonating' => true,
-            'impersonator_id' => 'forged-fake-id',
-        ])->post(route('saas.admin.stop_impersonate'));
-
-        // RequireSuperAdmin middleware blocks it because 'forged-fake-id' is not a super-admin
-        $response->assertRedirect(route('dashboard'));
-        $this->assertEquals($this->tenantA->id, session('tenant_id'));
+        $stopResponse->assertStatus(404);
     }
 
     public function test_client_supplied_tenant_id_cannot_create_record_in_another_tenant()
@@ -634,7 +607,7 @@ class MultiTenantSecurityAuditTest extends TestCase
         ])->postJson('/api/reset');
 
         $response->assertStatus(403);
-        $response->assertJson(['error' => 'Forbidden. System data reset is restricted to platform super-administrators.']);
+        $response->assertJson(['error' => 'Forbidden. Tenant users cannot access platform management.']);
     }
 
     public function test_tenant_admin_cannot_assign_cross_tenant_warehouse_to_user()

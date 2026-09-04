@@ -23,30 +23,31 @@ class RequireSuperAdmin
             $user = User::findForAuthenticationById(session('user_id'));
         }
 
-        // Allow stop-impersonation route only if caller is currently in an active impersonation session
-        // initiated by a verified server-side platform super-administrator.
-        if ($request->is('saas/admin/stop-impersonate')) {
-            $isImpersonating = session('is_impersonating');
-            $impersonatorId = session('impersonator_id');
-            if ($isImpersonating && !empty($impersonatorId)) {
-                $impersonator = User::findForAuthenticationById($impersonatorId);
-                if ($impersonator && $impersonator->isSuperAdmin()) {
-                    return $next($request);
-                }
-            }
-        }
-
-        if (!$user || !$user->isSuperAdmin()) {
+        // Hard Boundary: Only platform users (Platform Admin & Platform Employee) can enter SaaS platform admin
+        if (!$user || !$user->isPlatformUser()) {
             if ($request->ajax() || $request->wantsJson() || $request->is('api/*')) {
                 return response()->json([
-                    'error' => 'Forbidden. Platform Super-Administrator privileges required.'
+                    'error' => 'Forbidden. Platform administrator privileges required.'
                 ], 403);
             }
 
             return redirect()->route('dashboard')->with(
                 'error',
-                '🔒 Access Restricted: Platform Super-Administrator privileges required.'
+                '🔒 Access Restricted: Platform administrator privileges required.'
             );
+        }
+
+        // If caller is Platform Employee, ensure they hold assigned platform capabilities
+        if ($user->isPlatformEmployee()) {
+            $platformCaps = $user->getCapabilities();
+            if (empty($platformCaps)) {
+                if ($request->ajax() || $request->wantsJson() || $request->is('api/*')) {
+                    return response()->json([
+                        'error' => 'Forbidden. You do not have any assigned platform capabilities.'
+                    ], 403);
+                }
+                abort(403, 'Forbidden. You do not have any assigned platform capabilities.');
+            }
         }
 
         return $next($request);
