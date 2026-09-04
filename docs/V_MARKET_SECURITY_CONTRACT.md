@@ -79,6 +79,48 @@ The VMarket Security Contract establishes non-negotiable architectural and domai
 
 ### VM-014: No Alternate Mutation Paths
 - No business fact can be created, updated, or bypassed through alternate endpoints.
-- `/api/data` bulk pushing is disabled.
+- `/api/data` bulk pushing and client-side split-brain storage syncing are disabled.
 - Sensitive endpoints require CSRF protection and explicit capability authorization.
 - Backup restore normalizes user privileges, preventing arbitrary escalation to platform super administrator.
+
+### VM-015: Four-Level Authority Boundaries & Zero Universal Bypasses
+- Authority is partitioned into exactly four categories:
+  1. `PLATFORM ADMIN` (SaaS administration; ZERO tenant business data access).
+  2. `PLATFORM EMPLOYEE` (assigned platform operational work; ZERO tenant business records).
+  3. `TENANT ADMIN` (controls single tenant's business; ZERO platform administration, ZERO other tenants).
+  4. `TENANT EMPLOYEE` (performs assigned operations in single tenant/branch; ZERO platform administration).
+- Universal super-admin shortcuts and tenant impersonation endpoints are permanently eliminated.
+- Platform owner internal business operations run as a standard registered tenant with no special bypass privileges.
+
+### VM-016: Two-Dimensional Decoupled Inventory Model
+- Physical stock on shelf (`physical_stock >= 0`) and customer reservations (`allocated_stock >= 0`) are decoupled.
+- Reservation shortfall (`max(0, allocated_stock - physical_stock)`) is a legitimate, supported business state.
+- Immediate walk-in POS sales require only `physical_stock >= quantity` and are never blocked by unsupplied reservations.
+- Unsupplied reservation fulfillment or pickup requires both `physical_stock >= quantity` and `allocated_stock >= quantity` under pessimistic locks.
+
+### VM-017: Closed Financial Event Model & Invariant Gross Invoices
+- Historical gross invoices (`Sale.totalAmount`) are strictly immutable and never decremented by returns.
+- Derived remaining invoice balance is governed by:
+  `Net Invoice = Gross Total - Sum(Returns)`
+  `Net Money Applied = Sum(Payments) - Sum(Cash Refunds)`
+  `Invoice Balance = max(0, Net Invoice - Net Money Applied)`
+- Returns are categorized strictly as `CASH_REFUND` (drawer cash outflow) or `DEBT_REDUCTION` (customer ledger credit).
+- POS checkout pricing and debt requirements are strictly server-authoritative; client `totalAmount` inputs are discarded.
+- Payment tenders are strictly `CASH` and `POS`. Electronic overpayment is rejected.
+
+### VM-018: The Permanent Engineering Quality Criterion
+> **No feature is considered complete merely because its happy path works. It is complete only when its authority, tenant isolation, branch isolation, ownership, concurrency, accounting/inventory effects, idempotency, auditability, and failure paths have been verified.**
+
+Every feature must pass through the **Twelve-Point Architectural Evaluation Pipeline**:
+1. `Authentication` → Who are you?
+2. `Authority Category` → Platform or Tenant?
+3. `Tenant Context` → Which tenant?
+4. `Branch Context` → Which branch?
+5. `Capability` → What are you allowed to do?
+6. `Ownership` → Does this record belong to your tenant/branch?
+7. `Server Validation` → Are the requested values legitimate?
+8. `Transaction + Locks` → Can the operation safely mutate state?
+9. `State Machine` → Is this transition legal?
+10. `Accounting / Inventory` → What authoritative business effects occurred?
+11. `Immutable Audit` → What happened and who did it?
+12. `Idempotency` → Can this request safely be retried?

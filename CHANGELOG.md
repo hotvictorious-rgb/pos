@@ -7,6 +7,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 
 ## [Unreleased]
 
+### Added
+- **Permanent Engineering Quality Criterion & Twelve-Point Evaluation Pipeline**:
+  - Formally enshrined VM-018 in `docs/V_MARKET_SECURITY_CONTRACT.md`: No feature is complete merely because its happy path works; it is complete only when its authority, tenant isolation, branch isolation, ownership, concurrency, accounting/inventory effects, idempotency, auditability, and failure paths have been verified.
+  - Standardized the 12-point pipeline across Authentication, Authority Category, Tenant Context, Branch Context, Capability, Ownership, Server Validation, Transactions + Locks, State Machine, Accounting/Inventory, Immutable Audit, and Idempotency.
+- **Four-Level Authority Architecture & Zero Universal Bypasses**:
+  - Segregated identity into four distinct categories: `PLATFORM ADMIN`, `PLATFORM EMPLOYEE`, `TENANT ADMIN`, and `TENANT EMPLOYEE`.
+  - Permanently removed universal super-admin bypasses from `RequireCapability`, `CapabilityService`, `User`, `BelongsToTenant`, and `StockService`.
+  - Permanently deleted tenant impersonation endpoints and session state (`/saas/admin/impersonate/{id}`, `/saas/admin/stop-impersonate`).
+  - Isolated platform owner internal retail business as a standard registered tenant (`tenant_id = victorious-retail`) without administrative bypass shortcuts.
+- **Closed Financial Event Model & Return Invariants**:
+  - Preserved gross invoice total immutability on returns (`Sale.totalAmount` is invariant).
+  - Derived remaining invoice balances strictly via `Net Invoice - Net Money Applied`, eliminating return debt reduction double-counting.
+  - Enforced server-authoritative POS checkout: client `totalAmount` is discarded, prices and debt evaluation are computed against catalog unit prices, and tenders are restricted strictly to `CASH` and `POS`.
+  - Upgraded `IdempotencyService` to execute mutation callbacks and transitions from `PROCESSING` to `COMPLETED` inside a single atomic database transaction.
+  - Canonicalized Product CSV imports to route stock additions exclusively through `StockService::recordStockIn()`.
+  - Decommissioned mock Express backend (`server.ts`) and deactivated frontend client (`storage.ts`) 15-second background auto-sync interval to prevent split-brain data corruption.
+  - Added line-item reservation fulfillment `StockService::fulfillStockReservation()` and allocation reconciliation `AccountingReportService::reconcileReservationAllocations()`.
+  - Reconciled full automated test suite to **204 passed tests (1,205 assertions, 0 errors, 0 failures)** across 26 test suites.
+
 ### Removed
 - **Credit Limits System**:
   - Removed credit limits and credit cap blocks completely across POS checkout, quick registration, customer profile badges, and debt ledgers, allowing flexible credit agreements based directly on customer identity and phone tracking.
