@@ -13,6 +13,7 @@ use App\Models\Sale;
 use App\Models\Payment;
 use App\Services\StockService;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Hash;
 
 class SaleBranchPricingAndTenderSecurityTest extends TestCase
 {
@@ -32,7 +33,10 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
     {
         parent::setUp();
 
-        config(['saas.enabled' => true]);
+        config([
+            'saas.enabled' => true,
+            'saas.super_admin_email' => 'superadmin@hysam.com',
+        ]);
 
         $this->stockService = app(StockService::class);
 
@@ -601,5 +605,406 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
         // CheckWebAuth must detect the mismatch between the authenticated user's DB tenant and session tenant,
         // and override it back to the user's authentic tenant!
         $this->assertEquals($this->tenant->id, session('tenant_id'), "CheckWebAuth must forcefully realign session tenant to user's DB tenant.");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 8. CROSS-TENANT TRANSFER BOUNDARY & QUANTITY HARDENING
+    // ─────────────────────────────────────────────────────────────
+
+    public function test_cross_tenant_transfer_destination_is_strictly_rejected()
+    {
+        // 1. Create a competing tenant and foreign warehouse
+        $tenantB = Tenant::create([
+            'id' => 'tenant-competing-logistics',
+            'name' => 'Competing Logistics Ltd',
+            'owner_email' => 'logistics@competing.ng',
+            'plan' => 'basic',
+            'status' => 'active',
+        ]);
+
+        $foreignWarehouse = Warehouse::create([
+            'tenant_id' => $tenantB->id,
+            'name' => 'Foreign Shop Branch',
+            'code' => 'WH-FOREIGN-01',
+            'is_active' => true,
+        ]);
+
+        // 2. Attempt to dispatch a transfer from Tenant A's branch to Tenant B's branch
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Cross-tenant stock transfers are strictly forbidden");
+
+        $this->stockService->initiateTransfer(
+            $this->branchA->id,
+            $foreignWarehouse->id, // FOREIGN TENANT WAREHOUSE!
+            [['productId' => $this->productA->id, 'quantity' => 1]],
+            'Speedy Courier',
+            $this->cashierA->id,
+            $this->cashierA->name
+        );
+    }
+
+    public function test_negative_and_zero_transfer_quantity_is_strictly_rejected()
+    {
+        $initialStock = StockLevel::where('product_id', $this->productA->id)
+            ->where('warehouse_id', $this->branchA->id)
+            ->value('physical_stock');
+
+        // 1. Attempt negative transfer quantity (-5)
+        try {
+            $this->stockService->initiateTransfer(
+                $this->branchA->id,
+                $this->branchB->id,
+                [['productId' => $this->productA->id, 'quantity' => -5]],
+                'Courier Co',
+                $this->cashierA->id,
+                $this->cashierA->name
+            );
+            $this->fail("Expected InvalidArgumentException for negative transfer quantity.");
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString("must be an integer greater than zero", $e->getMessage());
+        }
+
+        // Verify stock was NOT altered or manufactured!
+        $currentStock = StockLevel::where('product_id', $this->productA->id)
+            ->where('warehouse_id', $this->branchA->id)
+            ->value('physical_stock');
+        $this->assertEquals($initialStock, $currentStock, "Stock must not be altered by negative transfer attempts.");
+
+        // 2. Controller endpoint validation check for zero quantity
+        $response = $this->actingAs($this->adminUser)->withSession([
+            'user_id' => $this->adminUser->id,
+            'user_role' => 'admin',
+            'tenant_id' => $this->tenant->id,
+            'portal' => 'tenant',
+        ])->post(route('stock.transfer.out'), [
+            'source_warehouse_id' => $this->branchA->id,
+            'destination_warehouse_id' => $this->branchB->id,
+            'carrier_name' => 'Swift Logistics',
+            'items' => [
+                ['productId' => $this->productA->id, 'quantity' => 0],
+            ],
+        ]);
+
+        $response->assertSessionHasErrors(['items.0.quantity']);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 9. BACKUP RESTORE TENANT NORMALIZATION & PARENT VALIDATION
+    // ─────────────────────────────────────────────────────────────
+
+    public function test_backup_restore_normalizes_sale_items_and_rejects_foreign_sales()
+    {
+        // Setup Super Admin session
+        $superAdmin = User::withoutGlobalScope(TenantScope::class)->where('role', 'super_admin')->first();
+        if (!$superAdmin) {
+            $superAdmin = User::withoutGlobalScope(TenantScope::class)->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => 'default-tenant',
+                'name' => 'Master Super Admin',
+                'email' => 'superadmin@hysam.com',
+                'password' => Hash::make('secret123'),
+                'role' => 'super_admin',
+                'disabled' => false,
+            ]);
+        }
+
+        $validSaleId = (string) Str::uuid();
+        $spoofedForeignSaleId = (string) Str::uuid();
+
+        $backupPayload = [
+            'version' => '1.4.0',
+            'tenant_id' => $this->tenant->id,
+            'data' => [
+                'sales' => [
+                    [
+                        'id' => $validSaleId,
+                        'tenant_id' => $this->tenant->id,
+                        'warehouse_id' => $this->branchA->id,
+                        'userId' => $superAdmin->id,
+                        'userName' => $superAdmin->name,
+                        'customerName' => 'Backup Customer',
+                        'totalAmount' => 10000,
+                        'paidAmount' => 10000,
+                        'cashAmount' => 10000,
+                        'posAmount' => 0,
+                        'tenderedAmount' => 10000,
+                        'changeAmount' => 0,
+                        'transferAmount' => 0,
+                        'status' => 'COMPLETED',
+                        'deliveryStatus' => 'SUPPLIED',
+                        'createdAt' => now()->toIso8601String(),
+                    ]
+                ],
+                'sale_items' => [
+                    // Item 1: belongs to valid sale
+                    [
+                        'saleId' => $validSaleId,
+                        'tenant_id' => 'tenant-original-source',
+                        'productId' => (string) Str::uuid(),
+                        'productName' => 'Valid Restored Item',
+                        'quantity' => 1,
+                        'unitPrice' => 10000,
+                        'totalPrice' => 10000,
+                    ],
+                    // Item 2: forged item pointing to foreign sale
+                    [
+                        'saleId' => $spoofedForeignSaleId,
+                        'tenant_id' => 'tenant-victim-foreign',
+                        'productId' => (string) Str::uuid(),
+                        'productName' => 'Forged Foreign Item',
+                        'quantity' => 5,
+                        'unitPrice' => 50000,
+                        'totalPrice' => 250000,
+                    ]
+                ],
+            ]
+        ];
+
+        // Call internal restoration logic via upload
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent(
+            'backup.json',
+            json_encode($backupPayload)
+        );
+
+        $response = $this->actingAs($superAdmin)->withSession([
+            'user_id' => $superAdmin->id,
+            'user_role' => 'super_admin',
+            'tenant_id' => 'default-tenant',
+            'portal' => 'super_admin',
+        ])->post('/api/backups/upload', [
+            'backup_file' => $file,
+        ]);
+
+        $response->assertStatus(200);
+
+        // Assert that the valid item was normalized to the target tenant
+        $restoredItem = \App\Models\SaleItem::withoutGlobalScopes()
+            ->where('saleId', $validSaleId)
+            ->first();
+        $this->assertNotNull($restoredItem);
+        $this->assertEquals($this->tenant->id, $restoredItem->tenant_id, "SaleItem must be strictly normalized to target tenant.");
+
+        // Assert that the forged foreign item was dropped during restore
+        $forgedItem = \App\Models\SaleItem::withoutGlobalScopes()
+            ->where('saleId', $spoofedForeignSaleId)
+            ->first();
+        $this->assertNull($forgedItem, "Orphaned or foreign-referenced sale items must be dropped during backup restore.");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 10. SAAS TENANT PASSWORD RANDOMIZATION & CASCADING DELETION
+    // ─────────────────────────────────────────────────────────────
+
+    public function test_tenant_creation_generates_random_temporary_password()
+    {
+        config(['saas.super_admin_email' => 'superadmin@hysam.com']);
+
+        $superAdmin = User::withoutGlobalScope(TenantScope::class)->where('role', 'super_admin')->first();
+        if (!$superAdmin) {
+            $superAdmin = User::withoutGlobalScope(TenantScope::class)->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => 'default-tenant',
+                'name' => 'Master Super Admin',
+                'email' => 'superadmin@hysam.com',
+                'password' => Hash::make('secret123'),
+                'role' => 'super_admin',
+                'disabled' => false,
+            ]);
+        }
+
+        $response = $this->actingAs($superAdmin)->withSession([
+            'user_id' => $superAdmin->id,
+            'user_role' => 'super_admin',
+            'tenant_id' => 'default-tenant',
+            'portal' => 'super_admin',
+        ])->post(route('saas.admin.tenant.store'), [
+            'business_name' => 'Random Pass Mart',
+            'owner_name' => 'Musa Random',
+            'owner_email' => 'musa@randommart.ng',
+            'owner_phone' => '08099887766',
+            'plan' => 'basic',
+            'status' => 'active',
+        ]);
+
+        $response->assertSessionHas('success');
+        $successMsg = session('success');
+
+        // Verify known default 'password123' is NOT used
+        $this->assertStringNotContainsString('password123', $successMsg);
+        $this->assertStringContainsString('Generated one-time temporary password', $successMsg);
+
+        $createdUser = User::withoutGlobalScopes()->where('email', 'musa@randommart.ng')->first();
+        $this->assertNotNull($createdUser);
+        $this->assertFalse(Hash::check('password123', $createdUser->password), "Default password123 must NOT match user password hash.");
+    }
+
+    public function test_tenant_deletion_purges_all_business_and_financial_records()
+    {
+        config(['saas.super_admin_email' => 'superadmin@hysam.com']);
+
+        $superAdmin = User::withoutGlobalScope(TenantScope::class)->where('role', 'super_admin')->first();
+        if (!$superAdmin) {
+            $superAdmin = User::withoutGlobalScope(TenantScope::class)->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => 'default-tenant',
+                'name' => 'Master Super Admin',
+                'email' => 'superadmin@hysam.com',
+                'password' => Hash::make('secret123'),
+                'role' => 'super_admin',
+                'disabled' => false,
+            ]);
+        }
+
+        // Create a disposable tenant with full business data
+        $tenantId = 'tenant-disposable-' . Str::random(5);
+        $disposableTenant = Tenant::create([
+            'id' => $tenantId,
+            'name' => 'Disposable Retailers',
+            'owner_email' => 'disposable@mart.ng',
+            'plan' => 'basic',
+            'status' => 'active',
+        ]);
+
+        session(['tenant_id' => $tenantId]);
+
+        $wh = Warehouse::create(['tenant_id' => $tenantId, 'name' => 'Disp WH', 'code' => 'WH-DISP', 'is_active' => true]);
+        $prod = Product::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'name' => 'Disp Soap',
+            'code' => 'SOAP-DISP',
+            'category' => 'General',
+            'unitPrice' => 500,
+            'currentStock' => 20,
+            'updatedAt' => now()->toIso8601String(),
+        ]);
+        $sale = Sale::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'warehouse_id' => $wh->id,
+            'userId' => $superAdmin->id,
+            'userName' => $superAdmin->name,
+            'totalAmount' => 1000,
+            'paidAmount' => 1000,
+            'cashAmount' => 1000,
+            'posAmount' => 0,
+            'tenderedAmount' => 1000,
+            'changeAmount' => 0,
+            'transferAmount' => 0,
+            'status' => 'COMPLETED',
+            'deliveryStatus' => 'SUPPLIED',
+            'createdAt' => now()->toIso8601String(),
+        ]);
+        \App\Models\SaleItem::withoutGlobalScope(TenantScope::class)->create([
+            'tenant_id' => $tenantId,
+            'saleId' => $sale->id,
+            'productId' => $prod->id,
+            'productName' => $prod->name,
+            'quantity' => 2,
+            'unitPrice' => 500,
+            'totalPrice' => 1000,
+        ]);
+        \App\Models\Payment::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'saleId' => $sale->id,
+            'amount' => 1000,
+            'method' => 'CASH',
+            'timestamp' => now()->toIso8601String(),
+            'recordedBy' => 'Admin',
+        ]);
+
+        // Delete the tenant
+        $response = $this->actingAs($superAdmin)->withSession([
+            'user_id' => $superAdmin->id,
+            'user_role' => 'super_admin',
+            'tenant_id' => 'default-tenant',
+            'portal' => 'super_admin',
+        ])->post(route('saas.admin.delete', $tenantId));
+
+        $response->assertSessionHas('success');
+
+        // Verify that ALL associated tables were wiped clean with 0 orphaned records
+        $this->assertEquals(0, Tenant::where('id', $tenantId)->count());
+        $this->assertEquals(0, Warehouse::withoutGlobalScopes()->where('tenant_id', $tenantId)->count());
+        $this->assertEquals(0, Product::withoutGlobalScopes()->where('tenant_id', $tenantId)->count());
+        $this->assertEquals(0, Sale::withoutGlobalScopes()->where('tenant_id', $tenantId)->count());
+        $this->assertEquals(0, \App\Models\SaleItem::withoutGlobalScopes()->where('tenant_id', $tenantId)->count());
+        $this->assertEquals(0, \App\Models\Payment::withoutGlobalScopes()->where('tenant_id', $tenantId)->count());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 11. SUPER ADMIN ROOT UNIQUENESS & GRANULAR ROLE PERMISSIONS
+    // ─────────────────────────────────────────────────────────────
+
+    public function test_exactly_one_platform_super_admin_is_enforced()
+    {
+        // 1. Attempt to create a user with role=super_admin through UserController
+        $response = $this->actingAs($this->adminUser)->withSession([
+            'user_id' => $this->adminUser->id,
+            'user_role' => 'admin',
+            'tenant_id' => $this->tenant->id,
+            'portal' => 'tenant',
+        ])->post('/users', [
+            'name' => 'Illegal Super Admin',
+            'email' => 'hacker@superadmin.com',
+            'password' => 'secret123',
+            'role' => 'super_admin',
+        ]);
+
+        $response->assertSessionHasErrors(['role']);
+
+        // 2. Default-tenant admin user does NOT qualify as isSuperAdmin()
+        $defaultTenantAdmin = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'name' => 'Default Tenant Manager',
+            'email' => 'manager@hysam.com',
+            'password' => Hash::make('secret123'),
+            'role' => 'admin',
+        ]);
+
+        $this->assertFalse($defaultTenantAdmin->isSuperAdmin(), "Default-tenant admin role must NOT automatically grant platform super-admin rights.");
+    }
+
+    public function test_role_permissions_are_properly_scoped_for_cashier_and_storekeeper()
+    {
+        // Cashier permissions
+        $cashier = User::withoutGlobalScope(TenantScope::class)->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Test Cashier Role',
+            'email' => 'cashier_role@test.com',
+            'password' => Hash::make('secret123'),
+            'role' => 'cashier',
+            'warehouse_id' => $this->branchA->id,
+        ]);
+
+        // Use controller to create cashier
+        $this->actingAs($this->adminUser)->withSession([
+            'user_id' => $this->adminUser->id,
+            'user_role' => 'admin',
+            'tenant_id' => $this->tenant->id,
+            'portal' => 'tenant',
+        ])->post('/users', [
+            'name' => 'Scoped Cashier',
+            'email' => 'scoped_cashier@test.com',
+            'password' => 'secret123',
+            'role' => 'cashier',
+            'warehouse_id' => $this->branchA->id,
+        ]);
+
+        $createdCashier = User::withoutGlobalScope(TenantScope::class)->where('email', 'scoped_cashier@test.com')->first();
+        $this->assertNotNull($createdCashier);
+        $perms = $createdCashier->permissions;
+
+        $this->assertTrue($perms['pos'] ?? false);
+        $this->assertTrue($perms['debts'] ?? false);
+        $this->assertTrue($perms['returns'] ?? false);
+        $this->assertFalse($perms['products'] ?? true, "Cashier cannot edit products catalog.");
+        $this->assertFalse($perms['stockIn'] ?? true, "Cashier cannot record stock in.");
+        $this->assertFalse($perms['transfer'] ?? true, "Cashier cannot transfer goods.");
+        $this->assertFalse($perms['users'] ?? true, "Cashier cannot manage users.");
+        $this->assertFalse($perms['reports'] ?? true, "Cashier cannot view financial reports.");
     }
 }

@@ -80,6 +80,8 @@ class BackupController extends Controller
             'stock_levels' => \App\Models\StockLevel::all()->toArray(),
             'activities' => Activity::all()->toArray(),
             'settings' => Setting::all()->toArray(),
+            'transfers' => \App\Models\Transfer::all()->toArray(),
+            'transfer_items' => \App\Models\TransferItem::all()->toArray(),
             'custom_roles' => \App\Models\CustomRole::all()->toArray(),
         ];
 
@@ -299,12 +301,12 @@ class BackupController extends Controller
                 // Wipe existing business tables ONLY for this tenant
                 User::where('tenant_id', $targetTenantId)->where('id', '!=', $admin->id)->delete();
                 Product::where('tenant_id', $targetTenantId)->delete();
-                Sale::where('tenant_id', $targetTenantId)->delete();
-                SaleItem::whereHas('sale', function ($q) use ($targetTenantId) {
-                    $q->where('tenant_id', $targetTenantId);
-                })->delete();
+                SaleItem::where('tenant_id', $targetTenantId)->delete();
                 Payment::where('tenant_id', $targetTenantId)->delete();
                 SalesReturn::where('tenant_id', $targetTenantId)->delete();
+                Sale::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\TransferItem::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\Transfer::where('tenant_id', $targetTenantId)->delete();
                 InventoryLog::where('tenant_id', $targetTenantId)->delete();
                 \App\Models\Customer::where('tenant_id', $targetTenantId)->delete();
                 \App\Models\StockLevel::where('tenant_id', $targetTenantId)->delete();
@@ -334,33 +336,65 @@ class BackupController extends Controller
                 }
 
                 // Restore Sales (sanitized to targetTenantId)
+                $restoredSaleIds = [];
                 if (isset($data['sales']) && is_array($data['sales'])) {
                     foreach ($data['sales'] as $s) {
                         $s['tenant_id'] = $targetTenantId;
-                        Sale::create($s);
+                        $createdSale = Sale::create($s);
+                        $restoredSaleIds[$createdSale->id] = true;
                     }
                 }
 
-                // Restore Sale Items
+                // Restore Sale Items (strictly normalized to targetTenantId & validated parent sale)
                 if (isset($data['sale_items']) && is_array($data['sale_items'])) {
                     foreach ($data['sale_items'] as $item) {
+                        if (empty($item['saleId']) || !isset($restoredSaleIds[$item['saleId']])) {
+                            continue; // Prevent orphaned child items or foreign tenant injection
+                        }
+                        $item['tenant_id'] = $targetTenantId;
                         SaleItem::create($item);
                     }
                 }
 
-                // Restore Payments (sanitized to targetTenantId)
+                // Restore Payments (sanitized to targetTenantId & validated parent sale)
                 if (isset($data['payments']) && is_array($data['payments'])) {
                     foreach ($data['payments'] as $pay) {
+                        if (!empty($pay['saleId']) && !isset($restoredSaleIds[$pay['saleId']])) {
+                            continue; // Drop payments referencing foreign or nonexistent sales
+                        }
                         $pay['tenant_id'] = $targetTenantId;
                         Payment::create($pay);
                     }
                 }
 
-                // Restore Returns (sanitized to targetTenantId)
+                // Restore Returns (sanitized to targetTenantId & validated parent sale)
                 if (isset($data['sales_returns']) && is_array($data['sales_returns'])) {
                     foreach ($data['sales_returns'] as $ret) {
+                        if (!empty($ret['saleId']) && !isset($restoredSaleIds[$ret['saleId']])) {
+                            continue; // Drop returns referencing foreign or nonexistent sales
+                        }
                         $ret['tenant_id'] = $targetTenantId;
                         SalesReturn::create($ret);
+                    }
+                }
+
+                // Restore Transfers & Transfer Items (sanitized to targetTenantId)
+                $restoredTransferIds = [];
+                if (isset($data['transfers']) && is_array($data['transfers'])) {
+                    foreach ($data['transfers'] as $trf) {
+                        $trf['tenant_id'] = $targetTenantId;
+                        $createdTrf = \App\Models\Transfer::create($trf);
+                        $restoredTransferIds[$createdTrf->id] = true;
+                    }
+                }
+
+                if (isset($data['transfer_items']) && is_array($data['transfer_items'])) {
+                    foreach ($data['transfer_items'] as $tItem) {
+                        if (!empty($tItem['transfer_id']) && !isset($restoredTransferIds[$tItem['transfer_id']])) {
+                            continue;
+                        }
+                        $tItem['tenant_id'] = $targetTenantId;
+                        \App\Models\TransferItem::create($tItem);
                     }
                 }
 

@@ -21,5 +21,6 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="SAAS_ENABLED" value="false"/>
+        <env name="SUPER_ADMIN_EMAIL" value="superadmin@hysam.com"/>
     </php>
 </phpunit>

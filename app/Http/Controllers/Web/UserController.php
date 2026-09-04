@@ -63,8 +63,8 @@ class UserController extends Controller
         $creatorName = Auth::user()->name ?? 'Auditor / Admin';
 
         $role = $request->role;
-        if ($role === 'super_admin' && (!Auth::check() || !Auth::user()->isSuperAdmin())) {
-            return back()->withErrors(['role' => 'Forbidden: Super-Administrator role cannot be assigned.']);
+        if ($role === 'super_admin') {
+            return back()->withErrors(['role' => 'Forbidden: The platform Super-Administrator role cannot be assigned. There is exactly one platform root Super Admin defined by system environment.']);
         }
 
         $warehouseId = null;
@@ -77,8 +77,84 @@ class UserController extends Controller
         }
 
         $permissions = match($role) {
-            'viewer', 'executive_readonly' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
-            default => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true, 'adjustments' => true, 'users' => true],
+            'cashier' => [
+                'pos' => true,
+                'debts' => true,
+                'returns' => true,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'reports' => false,
+                'users' => false,
+            ],
+            'sales_officer' => [
+                'pos' => true,
+                'debts' => true,
+                'returns' => true,
+                'reports' => true,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'users' => false,
+            ],
+            'storekeeper' => [
+                'pos' => false,
+                'debts' => false,
+                'returns' => false,
+                'products' => true,
+                'stockIn' => true,
+                'transfer' => true,
+                'adjustments' => true,
+                'reports' => false,
+                'users' => false,
+            ],
+            'branch_manager' => [
+                'pos' => true,
+                'debts' => true,
+                'returns' => true,
+                'products' => true,
+                'stockIn' => true,
+                'transfer' => true,
+                'adjustments' => true,
+                'reports' => true,
+                'users' => false,
+            ],
+            'viewer', 'executive_readonly' => [
+                'pos' => false,
+                'debts' => false,
+                'returns' => false,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'view_only' => true,
+                'reports' => true,
+                'users' => false,
+            ],
+            'admin', 'super_admin' => [
+                'pos' => true,
+                'products' => true,
+                'stockIn' => true,
+                'transfer' => true,
+                'reports' => true,
+                'debts' => true,
+                'returns' => true,
+                'adjustments' => true,
+                'users' => true,
+            ],
+            default => [
+                'pos' => true,
+                'debts' => false,
+                'returns' => false,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'reports' => false,
+                'users' => false,
+            ],
         };
 
         $user = User::create([
@@ -145,8 +221,11 @@ class UserController extends Controller
         $oldRole = $user->role;
         $oldWarehouse = $user->warehouse->name ?? 'All Branches';
         $newRole = $request->role;
-        if ($newRole === 'super_admin' && (!Auth::check() || !Auth::user()->isSuperAdmin())) {
-            return back()->withErrors(['role' => 'Forbidden: Super-Administrator role cannot be assigned.']);
+        if ($newRole === 'super_admin' && $user->role !== 'super_admin') {
+            return back()->withErrors(['role' => 'Forbidden: The platform Super-Administrator role cannot be assigned. There is exactly one platform root Super Admin defined by system environment.']);
+        }
+        if ($user->isSuperAdmin() && $newRole !== 'super_admin') {
+            return back()->withErrors(['role' => 'Forbidden: The platform root Super-Administrator account cannot be demoted.']);
         }
 
         $newWarehouseId = null;
@@ -159,8 +238,84 @@ class UserController extends Controller
         }
 
         $permissions = match($newRole) {
-            'viewer', 'executive_readonly' => ['view_only' => true, 'reports' => true, 'products' => true, 'stock' => true, 'transactions' => true, 'debts' => true, 'auditor' => true],
-            default => ['pos' => true, 'products' => true, 'stockIn' => true, 'transfer' => true, 'reports' => true, 'debts' => true, 'returns' => true, 'adjustments' => true, 'users' => true],
+            'cashier' => [
+                'pos' => true,
+                'debts' => true,
+                'returns' => true,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'reports' => false,
+                'users' => false,
+            ],
+            'sales_officer' => [
+                'pos' => true,
+                'debts' => true,
+                'returns' => true,
+                'reports' => true,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'users' => false,
+            ],
+            'storekeeper' => [
+                'pos' => false,
+                'debts' => false,
+                'returns' => false,
+                'products' => true,
+                'stockIn' => true,
+                'transfer' => true,
+                'adjustments' => true,
+                'reports' => false,
+                'users' => false,
+            ],
+            'branch_manager' => [
+                'pos' => true,
+                'debts' => true,
+                'returns' => true,
+                'products' => true,
+                'stockIn' => true,
+                'transfer' => true,
+                'adjustments' => true,
+                'reports' => true,
+                'users' => false,
+            ],
+            'viewer', 'executive_readonly' => [
+                'pos' => false,
+                'debts' => false,
+                'returns' => false,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'view_only' => true,
+                'reports' => true,
+                'users' => false,
+            ],
+            'admin', 'super_admin' => [
+                'pos' => true,
+                'products' => true,
+                'stockIn' => true,
+                'transfer' => true,
+                'reports' => true,
+                'debts' => true,
+                'returns' => true,
+                'adjustments' => true,
+                'users' => true,
+            ],
+            default => [
+                'pos' => true,
+                'debts' => false,
+                'returns' => false,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
+                'reports' => false,
+                'users' => false,
+            ],
         };
 
         $user->name = $request->name;

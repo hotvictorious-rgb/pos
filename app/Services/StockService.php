@@ -496,35 +496,56 @@ class StockService
     public function initiateTransfer(int $sourceWarehouseId, int $destWarehouseId, array $items, ?string $carrierName, string $userId, string $userName, ?string $notes = null): Transfer
     {
         return DB::transaction(function () use ($sourceWarehouseId, $destWarehouseId, $items, $carrierName, $userId, $userName, $notes) {
-            $transferNo = 'TRF-' . strtoupper(Str::random(6)) . '-' . date('ymd');
+            // 1. Validate branch identity and distinctness
+            if ($sourceWarehouseId === $destWarehouseId) {
+                throw new \InvalidArgumentException("Origin and destination branch locations cannot be identical (#{$sourceWarehouseId}).");
+            }
 
-            $transfer = Transfer::create([
-                'transfer_no' => $transferNo,
-                'source_warehouse_id' => $sourceWarehouseId,
-                'destination_warehouse_id' => $destWarehouseId,
-                'status' => 'DISPATCHED',
-                'carrier_name' => $carrierName,
-                'dispatched_by' => $userName,
-                'dispatched_at' => now(),
-                'notes' => $notes,
-            ]);
+            // 2. Authoritative Tenant Boundary Verification for Both Source & Destination
+            $sourceWh = Warehouse::withoutGlobalScopes()->find($sourceWarehouseId);
+            $destWh   = Warehouse::withoutGlobalScopes()->find($destWarehouseId);
 
-            foreach ($items as $item) {
+            if (!$sourceWh) {
+                throw new \InvalidArgumentException("Source branch #{$sourceWarehouseId} does not exist.");
+            }
+            if (!$destWh) {
+                throw new \InvalidArgumentException("Destination branch #{$destWarehouseId} does not exist.");
+            }
+
+            if (config('saas.enabled')) {
+                $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null) ?? $sourceWh->tenant_id;
+
+                if ($sourceWh->tenant_id !== $currentTenantId) {
+                    throw new \InvalidArgumentException("Security Violation: Source branch #{$sourceWarehouseId} does not belong to active tenant '{$currentTenantId}'.");
+                }
+                if ($destWh->tenant_id !== $currentTenantId) {
+                    throw new \InvalidArgumentException("Security Violation: Destination branch #{$destWarehouseId} belongs to a different tenant ('{$destWh->tenant_id}'). Cross-tenant stock transfers are strictly forbidden.");
+                }
+            }
+
+            // 3. Pre-validate ALL items and lock stock before creating the Transfer record
+            if (empty($items)) {
+                throw new \InvalidArgumentException("Cannot dispatch transfer: Must specify at least one product item.");
+            }
+
+            $validatedItems = [];
+            foreach ($items as $index => $item) {
                 $productId = $item['productId'] ?? $item['product_id'] ?? null;
-                $product = Product::findOrFail($productId);
-                $qty = (int) $item['quantity'];
+                if (!$productId) {
+                    throw new \InvalidArgumentException("Transfer item at index {$index} is missing a valid product ID.");
+                }
 
-                TransferItem::create([
-                    'transfer_id' => $transfer->id,
-                    'product_id' => $product->id,
-                    'product_name' => $product->name,
-                    'product_code' => $product->code,
-                    'dispatched_qty' => $qty,
-                    'received_qty' => 0,
-                    'discrepancy_qty' => 0,
-                ]);
+                $product = Product::find($productId);
+                if (!$product) {
+                    throw new \InvalidArgumentException("Product #{$productId} does not exist in catalog.");
+                }
 
-                // Deduct from source physical stock with row-level lock
+                $qty = (int) ($item['quantity'] ?? 0);
+                if ($qty <= 0) {
+                    throw new \InvalidArgumentException("Transfer quantity for product '{$product->name}' ({$product->code}) must be an integer greater than zero (received: {$qty}). Negative quantities are strictly prohibited.");
+                }
+
+                // Row-level lock on source physical stock to prevent race-condition overdraft
                 $stock = $this->getStockLevel($product->id, $sourceWarehouseId, true);
                 if ($stock->physical_stock < $qty) {
                     throw new InsufficientStockException(
@@ -536,6 +557,48 @@ class StockService
                         $qty
                     );
                 }
+
+                $validatedItems[] = [
+                    'product' => $product,
+                    'quantity' => $qty,
+                    'stock' => $stock,
+                ];
+            }
+
+            // 4. Invariants satisfied: Safely create Transfer record
+            $transferNo = 'TRF-' . strtoupper(Str::random(6)) . '-' . date('ymd');
+            $tenantId = session('tenant_id') ?? $sourceWh->tenant_id ?? 'default-tenant';
+
+            $transfer = Transfer::create([
+                'tenant_id' => $tenantId,
+                'transfer_no' => $transferNo,
+                'source_warehouse_id' => $sourceWarehouseId,
+                'destination_warehouse_id' => $destWarehouseId,
+                'status' => 'DISPATCHED',
+                'carrier_name' => $carrierName,
+                'dispatched_by' => $userName,
+                'dispatched_at' => now(),
+                'notes' => $notes,
+            ]);
+
+            // 5. Create Transfer Items and deduct inventory
+            foreach ($validatedItems as $vItem) {
+                $product = $vItem['product'];
+                $qty = $vItem['quantity'];
+                $stock = $vItem['stock'];
+
+                TransferItem::create([
+                    'tenant_id' => $tenantId,
+                    'transfer_id' => $transfer->id,
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'product_code' => $product->code,
+                    'dispatched_qty' => $qty,
+                    'received_qty' => 0,
+                    'discrepancy_qty' => 0,
+                ]);
+
+                // Deduct from source physical stock
                 $stock->physical_stock = $stock->physical_stock - $qty;
                 $stock->save();
 
@@ -544,6 +607,7 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
                     'productId' => $product->id,
                     'type' => 'TRANSFER_OUT',
                     'quantity' => -$qty,
@@ -558,6 +622,7 @@ class StockService
 
             Activity::create([
                 'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
                 'type' => 'TRANSFER_DISPATCHED',
                 'description' => "Transfer #{$transferNo} dispatched from Shop #{$sourceWarehouseId} to Shop #{$destWarehouseId} by {$userName}",
                 'userId' => $userId,

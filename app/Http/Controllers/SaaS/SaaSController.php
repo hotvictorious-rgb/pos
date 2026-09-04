@@ -13,6 +13,7 @@ use App\Models\SaaSSetting;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class SaaSController extends Controller
 {
@@ -243,19 +244,21 @@ class SaaSController extends Controller
             'is_active'    => true,
         ]);
 
+        $temporaryPassword = Str::random(12);
+
         User::create([
             'id'           => (string) Str::uuid(),
             'tenant_id'    => $tenantId,
             'name'         => $request->owner_name,
             'email'        => strtolower(trim($request->owner_email)),
-            'password'     => Hash::make('password123'),
+            'password'     => Hash::make($temporaryPassword),
             'role'         => 'admin',
             'warehouse_id' => $mainWarehouse->id,
             'disabled'     => false,
             'permissions'  => ['all' => true],
         ]);
 
-        return back()->with('success', "✓ New Business Tenant '{$tenant->name}' created successfully with default password 'password123'!");
+        return back()->with('success', "✓ New Business Tenant '{$tenant->name}' created successfully! Generated one-time temporary password: {$temporaryPassword} (Provide this to the business owner).");
     }
 
     /** Toggle Tenant Status */
@@ -359,7 +362,7 @@ class SaaSController extends Controller
         return redirect()->route('saas.admin.index')->with('success', "✓ Stopped impersonation. Returned to SaaS Master Control Panel.");
     }
 
-    /** Delete Tenant Account */
+    /** Delete Tenant Account and All Associated Business Data */
     public function deleteTenant($id)
     {
         if ($id === 'default-tenant') {
@@ -368,9 +371,31 @@ class SaaSController extends Controller
 
         $tenant = Tenant::findOrFail($id);
         $name = $tenant->name;
-        $tenant->delete();
 
-        return back()->with('success', "✓ Business Tenant '{$name}' has been deleted.");
+        DB::transaction(function () use ($id) {
+            \App\Models\SaleItem::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\Payment::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\SalesReturn::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\Sale::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\TransferItem::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\Transfer::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\InventoryLog::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\StockAdjustment::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\StockLevel::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\Product::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\CustomerLedger::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\Customer::withoutGlobalScopes()->where('tenant_id', $id)->forceDelete();
+            \App\Models\Supplier::withoutGlobalScopes()->where('tenant_id', $id)->forceDelete();
+            \App\Models\CashierShift::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\Warehouse::withoutGlobalScopes()->where('tenant_id', $id)->forceDelete();
+            \App\Models\Activity::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\Setting::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\IdempotencyRecord::where('tenant_id', $id)->delete();
+            \App\Models\User::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            Tenant::where('id', $id)->delete();
+        });
+
+        return back()->with('success', "✓ Business Tenant '{$name}' and all associated data have been permanently purged.");
     }
 
     /** Show Suspended Account Notice */

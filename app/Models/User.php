@@ -41,9 +41,17 @@ class User extends Authenticatable
      */
     public function isSuperAdmin(): bool
     {
-        $isMasterTenant = ($this->tenant_id === 'default-tenant');
-        $isAdminRole = in_array($this->role, ['super_admin', 'admin']);
-        return $isMasterTenant && $isAdminRole;
+        if ($this->tenant_id !== 'default-tenant') {
+            return false;
+        }
+
+        if ($this->role === 'super_admin') {
+            return true;
+        }
+
+        $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
+
+        return ($this->role === 'admin') && (strtolower(trim($this->email)) === $superAdminEmail);
     }
 
     /**

@@ -212,7 +212,10 @@ class StockController extends Controller
         $request->validate([
             'destination_warehouse_id' => 'required',
             'items' => 'required|array|min:1',
-            'carrier_name' => 'required|string',
+            'items.*.productId' => 'nullable',
+            'items.*.product_id' => 'nullable',
+            'items.*.quantity' => 'required|integer|min:1',
+            'carrier_name' => 'required|string|max:100',
         ]);
 
         $userId = Auth::id() ?? 'USER-1';
