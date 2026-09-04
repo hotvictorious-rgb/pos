@@ -202,13 +202,13 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
             'productCode' => $this->product->code,
         ]);
 
-        // 2. Attempt to re-price already completed wholesale order
+        // 2. Attempt to hit former wholesale price endpoint must return 404 (Wholesale completely removed)
         $payload = [
             'items' => [
                 ['id' => $item->id, 'unit_price' => 50000.00],
             ],
             'payment_status' => 'PAID',
-            'payment_method' => 'TRANSFER',
+            'payment_method' => 'CASH',
         ];
 
         $response = $this->actingAs($this->admin)->withSession([
@@ -218,60 +218,21 @@ class TransactionStateMachineConcurrencyAuditTest extends TestCase
             'portal' => 'tenant',
         ])->post("/wholesale/price/{$sale->id}", $payload);
 
-        $response->assertSessionHasErrors(['error']);
+        $response->assertNotFound();
         $this->assertEquals('COMPLETED', $sale->fresh()->status);
         $this->assertEquals(200000.00, $sale->fresh()->totalAmount);
     }
 
-    public function test_ordinary_retail_pos_sale_cannot_be_modified_via_wholesale_pricing_route()
+    public function test_wholesale_routes_are_completely_inaccessible_and_return_404()
     {
-        // 1. Create ordinary retail sale
-        $sale = Sale::create([
-            'id' => 'RETAIL-SALE-999',
-            'tenant_id' => $this->tenant->id,
-            'customerName' => 'Walk-in Customer',
-            'totalAmount' => 40000.00,
-            'paidAmount' => 40000.00,
-            'cashAmount' => 40000.00,
-            'posAmount' => 0,
-            'status' => 'COMPLETED',
-            'sale_type' => 'RETAIL', // Ordinary retail!
-            'deliveryStatus' => 'DELIVERED',
-            'userId' => $this->cashier->id,
-            'userName' => $this->cashier->name,
-            'createdAt' => now()->toIso8601String(),
-        ]);
-
-        $item = SaleItem::create([
-            'saleId' => $sale->id,
-            'productId' => $this->product->id,
-            'productName' => $this->product->name,
-            'quantity' => 1,
-            'unitPrice' => 40000.00,
-            'totalPrice' => 40000.00,
-            'code' => $this->product->code,
-            'productCode' => $this->product->code,
-        ]);
-
-        // 2. Attacker attempts to hijack retail sale through wholesale price endpoint
-        $payload = [
-            'items' => [
-                ['id' => $item->id, 'unit_price' => 10.00],
-            ],
-            'payment_status' => 'PAID',
-            'payment_method' => 'TRANSFER',
-        ];
-
         $response = $this->actingAs($this->admin)->withSession([
             'user_id' => $this->admin->id,
             'user_role' => 'admin',
             'tenant_id' => $this->tenant->id,
             'portal' => 'tenant',
-        ])->post("/wholesale/price/{$sale->id}", $payload);
+        ])->get('/wholesale');
 
-        $response->assertSessionHasErrors(['error']);
-        $this->assertEquals('RETAIL', $sale->fresh()->sale_type);
-        $this->assertEquals(40000.00, $sale->fresh()->totalAmount);
+        $response->assertNotFound();
     }
 
     // ─────────────────────────────────────────────────────────

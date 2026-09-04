@@ -17,6 +17,7 @@ class InventoryLog extends Model
         'id',
         'tenant_id',
         'productId',
+        'warehouse_id',
         'type',
         'quantity',
         'userId',
@@ -30,5 +31,6 @@ class InventoryLog extends Model
 
     protected $casts = [
         'quantity' => 'integer',
+        'warehouse_id' => 'integer',
     ];
 }

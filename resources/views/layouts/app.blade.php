@@ -402,11 +402,6 @@
                 </a>
             @endif
 
-            @if(in_array($currentRole, ['admin', 'viewer']))
-                <a href="{{ route('wholesale.index') }}" class="nav-item {{ request()->routeIs('wholesale.*') ? 'active' : '' }}">
-                    <span>📦</span> <span>Wholesale Hub</span>
-                </a>
-            @endif
 
             @if(in_array($currentRole, ['admin', 'manager', 'viewer']))
                 <div class="menu-category">Management & Reports</div>

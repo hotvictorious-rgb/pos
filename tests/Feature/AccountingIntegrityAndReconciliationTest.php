@@ -391,25 +391,26 @@ class AccountingIntegrityAndReconciliationTest extends TestCase
         $this->assertEquals('COMPLETED', $sale->status);
     }
 
-    public function test_scenario_13_wholesale_negotiated_pricing_supported()
+    public function test_scenario_13_canonical_pos_large_quantity_sale_supported()
     {
-        // Scenario 13: Wholesale sale where worker negotiated price from ₦40,000 to ₦38,000
+        // Scenario 13: Large quantity sale handled natively through standard POS checkout
         $sale = $this->stockService->recordSale(
             [
-                'sale_type' => 'WHOLESALE',
-                'cashAmount' => 38000.00,
+                'sale_type' => 'RETAIL',
+                'cashAmount' => 200000.00,
                 'posAmount' => 0.00,
             ],
-            [['productId' => $this->prodRice->id, 'quantity' => 1, 'unitPrice' => 38000.00]],
+            [['productId' => $this->prodRice->id, 'quantity' => 5]],
             $this->warehouseMain->id,
             true,
             $this->cashier->id,
             $this->cashier->name
         );
 
-        $this->assertEquals(38000.00, $sale->totalAmount);
-        $this->assertEquals(38000.00, $sale->paidAmount);
-        $this->assertEquals(38000.00, $sale->items->first()->unitPrice);
+        $this->assertEquals(200000.00, $sale->totalAmount);
+        $this->assertEquals(200000.00, $sale->paidAmount);
+        $this->assertEquals(40000.00, $sale->items->first()->unitPrice);
+        $this->assertEquals(5, $sale->items->first()->quantity);
     }
 
     public function test_scenario_14_to_20_kobo_cents_precision_and_tender_conservation()

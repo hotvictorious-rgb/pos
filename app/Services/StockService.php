@@ -124,7 +124,9 @@ class StockService
 
             InventoryLog::create([
                 'id' => (string) Str::uuid(),
+                'tenant_id' => session('tenant_id') ?? $product->tenant_id ?? null,
                 'productId' => $productId,
+                'warehouse_id' => $warehouseId,
                 'type' => 'STOCK_IN',
                 'quantity' => $quantity,
                 'userId' => $userId,
@@ -228,7 +230,7 @@ class StockService
                 $unitPrice = $vItem['unitPrice'];
                 $lineTotal = $vItem['totalPrice'];
 
-                SaleItem::create([
+                $saleItem = SaleItem::create([
                     'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                     'saleId' => $saleId,
                     'productId' => $product->id,
@@ -241,66 +243,77 @@ class StockService
                 ]);
 
                 $stock = $this->getStockLevel($product->id, $warehouseId, true);
-                $availableStock = (int) ($stock->physical_stock - $stock->allocated_stock);
 
                 if ($isSuppliedNow) {
-                    if ($availableStock < $qty) {
+                    // Core Invariant: Physical sale requires physical_stock >= Q ONLY.
+                    // Allocated stock is decoupled and represents customer reservations.
+                    if ($stock->physical_stock < $qty) {
                         throw new InsufficientStockException(
-                            "Cannot complete sale: Insufficient available physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Allocated: {$stock->allocated_stock}, Available: {$availableStock}, Requested: {$qty}",
+                            "Cannot complete sale: Insufficient physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Allocated: {$stock->allocated_stock}, Requested: {$qty}",
                             $product->code,
                             $product->name,
                             $warehouseId,
-                            $availableStock,
+                            $stock->physical_stock,
                             $qty
                         );
                     }
-                    // Item leaves the physical shop immediately
+                    // Item leaves the physical shop immediately; allocated_stock is unchanged
                     $stock->physical_stock = $stock->physical_stock - $qty;
                     $stock->save();
 
                     $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
                     $product->save();
 
-                    $logPrefix = ($saleType === 'WHOLESALE_DISPATCH') ? 'Wholesale Dispatch' : 'Sale';
                     InventoryLog::create([
                         'id' => (string) Str::uuid(),
+                        'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                         'productId' => $product->id,
+                        'warehouse_id' => $warehouseId,
                         'type' => 'SALE',
                         'quantity' => -$qty,
                         'userId' => $userId,
                         'userName' => $userName,
                         'productCode' => $product->code,
                         'productName' => $product->name,
-                        'description' => "{$logPrefix} #{$saleId} (Supplied to {$customerName})",
+                        'description' => "Sale #{$saleId} (Supplied to {$customerName})",
                         'timestamp' => now()->toIso8601String(),
                     ]);
                 } else {
-                    // Unsupplied sale: Physical stock stays on ground; allocated stock is reserved
-                    // Invariant: allocated_stock <= physical_stock (cannot reserve more than available unallocated stock)
-                    if ($availableStock < $qty) {
-                        throw new InsufficientStockException(
-                            "Cannot reserve unsupplied sale: Insufficient available physical stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Already Allocated: {$stock->allocated_stock}, Available to reserve: {$availableStock}, Requested: {$qty}",
-                            $product->code,
-                            $product->name,
-                            $warehouseId,
-                            $availableStock,
-                            $qty
-                        );
-                    }
-
+                    // Unsupplied sale: Customer purchased buffer goods for future collection.
+                    // Increments allocated_stock (can validly exceed physical_stock if shortfall exists).
+                    // Physical stock on ground does not leave the warehouse yet.
                     $stock->allocated_stock += $qty;
                     $stock->save();
 
+                    // Create authoritative line-item reservation
+                    \App\Models\StockReservation::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                        'sale_id' => $saleId,
+                        'sale_item_id' => $saleItem->id,
+                        'product_id' => $product->id,
+                        'warehouse_id' => $warehouseId,
+                        'reserved_qty' => $qty,
+                        'fulfilled_qty' => 0,
+                        'cancelled_qty' => 0,
+                        'status' => 'ACTIVE',
+                        'customer_id' => $customerId ? (string) $customerId : null,
+                        'customer_name' => $customerName,
+                        'notes' => "Sale #{$saleId} unsupplied buffer reservation",
+                    ]);
+
                     InventoryLog::create([
                         'id' => (string) Str::uuid(),
+                        'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                         'productId' => $product->id,
+                        'warehouse_id' => $warehouseId,
                         'type' => 'SALE_RESERVED',
-                        'quantity' => 0, // Physical stock hasn't changed yet
+                        'quantity' => 0, // Physical stock unchanged; customer reservation recorded
                         'userId' => $userId,
                         'userName' => $userName,
                         'productCode' => $product->code,
                         'productName' => $product->name,
-                        'description' => "Sale #{$saleId} (Unsupplied - Goods on ground reserved for {$customerName})",
+                        'description' => "Sale #{$saleId} (Unsupplied - Goods reserved for {$customerName})",
                         'timestamp' => now()->toIso8601String(),
                     ]);
                 }
@@ -433,9 +446,28 @@ class StockService
                     $product->save();
                 }
 
+                // Update authoritative line-item reservation record
+                $reservation = \App\Models\StockReservation::where('sale_id', $saleId)
+                    ->where('product_id', $item->productId)
+                    ->where('warehouse_id', $warehouseId)
+                    ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED'])
+                    ->first();
+
+                if ($reservation) {
+                    $reservation->fulfilled_qty += $qty;
+                    if ($reservation->fulfilled_qty >= $reservation->reserved_qty) {
+                        $reservation->status = 'FULFILLED';
+                    } else {
+                        $reservation->status = 'PARTIALLY_FULFILLED';
+                    }
+                    $reservation->save();
+                }
+
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
+                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                     'productId' => $item->productId,
+                    'warehouse_id' => $warehouseId,
                     'type' => 'DISPATCH_FULFILLED',
                     'quantity' => -$qty,
                     'userId' => $userId,
@@ -589,6 +621,7 @@ class StockService
                     'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
                     'productId' => $product->id,
+                    'warehouse_id' => $sourceWarehouseId,
                     'type' => 'TRANSFER_OUT',
                     'quantity' => -$qty,
                     'userId' => $userId,
@@ -667,7 +700,9 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
+                    'tenant_id' => session('tenant_id') ?? $transfer->tenant_id ?? null,
                     'productId' => $transferItem->product_id,
+                    'warehouse_id' => $transfer->destination_warehouse_id,
                     'type' => 'TRANSFER_IN',
                     'quantity' => $countedQty,
                     'userId' => $userId,
@@ -736,7 +771,9 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
+                    'tenant_id' => session('tenant_id') ?? $transfer->tenant_id ?? null,
                     'productId' => $item->product_id,
+                    'warehouse_id' => $transfer->source_warehouse_id,
                     'type' => 'TRANSFER_CANCELLED',
                     'quantity' => $qty,
                     'userId' => $userId,
@@ -868,15 +905,15 @@ class StockService
 
             $product = Product::findOrFail($productId);
             $stock = $this->getStockLevel($productId, $warehouseId, true);
-            $availableStock = (int) ($stock->physical_stock - $stock->allocated_stock);
 
-            if ($availableStock < $quantity) {
+            $available = (int) ($stock->physical_stock - $stock->allocated_stock);
+            if ($available < $quantity) {
                 throw new InsufficientStockException(
-                    "Cannot record stock write-off: Insufficient available unallocated stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Allocated: {$stock->allocated_stock}, Available: {$availableStock}, Requested write-off: {$quantity}",
+                    "Cannot record stock write-off: Insufficient available stock for '{$product->name}' ({$product->code}) at branch #{$warehouseId}. Physical: {$stock->physical_stock}, Allocated: {$stock->allocated_stock}, Available: {$available}, Requested write-off: {$quantity}",
                     $product->code,
                     $product->name,
                     $warehouseId,
-                    $availableStock,
+                    $available,
                     $quantity
                 );
             }
@@ -902,7 +939,9 @@ class StockService
 
             InventoryLog::create([
                 'id' => (string) Str::uuid(),
+                'tenant_id' => session('tenant_id') ?? $product->tenant_id ?? null,
                 'productId' => $productId,
+                'warehouse_id' => $warehouseId,
                 'type' => 'STOCK_ADJUSTMENT_' . strtoupper($type),
                 'quantity' => -$quantity,
                 'userId' => $userId,
@@ -1000,6 +1039,21 @@ class StockService
                     // Goods were reserved on ground but never physically taken; release allocation
                     $stock->allocated_stock = max(0, $stock->allocated_stock - $qty);
                     $stock->save();
+
+                    // Update StockReservation to record cancellation
+                    $reservation = \App\Models\StockReservation::where('sale_id', $saleId)
+                        ->where('product_id', $product->id)
+                        ->where('warehouse_id', $warehouseId)
+                        ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED'])
+                        ->first();
+
+                    if ($reservation) {
+                        $reservation->cancelled_qty += $qty;
+                        if ($reservation->outstanding_qty <= 0) {
+                            $reservation->status = ($reservation->fulfilled_qty > 0) ? 'FULFILLED' : 'CANCELLED';
+                        }
+                        $reservation->save();
+                    }
                 } else {
                     // Goods were physically delivered; restore physical stock to shelves
                     $stock->physical_stock += $qty;
@@ -1011,14 +1065,16 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
+                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                     'productId' => $product->id,
+                    'warehouse_id' => $warehouseId,
                     'type' => 'SALES_RETURN',
-                    'quantity' => $qty,
+                    'quantity' => ($sale->deliveryStatus === 'UNSUPPLIED') ? 0 : $qty,
                     'userId' => $userId,
                     'userName' => $userName,
                     'productCode' => $product->code,
                     'productName' => $product->name,
-                    'description' => "Customer Return for Sale #{$saleId} ({$qty} units restored to shelf count). Reason: {$reason}",
+                    'description' => "Customer Return for Sale #{$saleId} ({$qty} units " . ($sale->deliveryStatus === 'UNSUPPLIED' ? 'reservation released' : 'restored to shelf count') . "). Reason: {$reason}",
                     'timestamp' => now()->toIso8601String(),
                 ]);
             }

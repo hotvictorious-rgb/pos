@@ -64,7 +64,10 @@ class PosController extends Controller
 
             $product->physical_stock = $stock ? $stock->physical_stock : 0;
             $product->allocated_stock = $stock ? $stock->allocated_stock : 0;
-            $product->available_stock = max(0, $product->physical_stock - $product->allocated_stock);
+            $product->reservation_shortfall = max(0, $product->allocated_stock - $product->physical_stock);
+            $product->net_position = $product->physical_stock - $product->allocated_stock;
+            // Physical stock is the authoritative capacity available for immediate walk-in / supplied sale
+            $product->available_stock = $product->physical_stock;
             return $product;
         });
 

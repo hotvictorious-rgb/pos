@@ -289,13 +289,23 @@
                     </div>
                     <div class="p-price">₦{{ number_format($product->unitPrice, 0) }}</div>
                 </div>
-                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem;">
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
                     @if($product->physical_stock > 0)
-                        <span class="p-stock-badge badge-success">✓ {{ $product->physical_stock }} In Stock</span>
+                        <span class="p-stock-badge badge-success">✓ {{ $product->physical_stock }} Shelf Stock</span>
                     @else
-                        <span class="p-stock-badge badge-danger">0 (Out of Stock)</span>
+                        <span class="p-stock-badge badge-danger">0 Shelf Stock</span>
                     @endif
-                    <span style="font-size: 0.75rem; font-weight: 800; color: #3b82f6; background: rgba(59,130,246,0.15); padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid rgba(59,130,246,0.3);">
+                    @if($product->allocated_stock > 0)
+                        <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1; background: rgba(148,163,184,0.15); padding: 0.15rem 0.4rem; border-radius: 4px; border: 1px solid rgba(148,163,184,0.3);" title="Reserved for pending customer collections">
+                            🔒 {{ $product->allocated_stock }} Reserved
+                        </span>
+                    @endif
+                    @if($product->reservation_shortfall > 0)
+                        <span style="font-size: 0.68rem; font-weight: 800; color: #f87171; background: rgba(239,68,68,0.15); padding: 0.15rem 0.4rem; border-radius: 4px; border: 1px solid rgba(239,68,68,0.3);" title="Reservation Shortfall: outstanding customer buffer awaiting supplier stock-in">
+                            ⚠️ Shortfall: {{ $product->reservation_shortfall }}
+                        </span>
+                    @endif
+                    <span style="font-size: 0.75rem; font-weight: 800; color: #3b82f6; background: rgba(59,130,246,0.15); padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid rgba(59,130,246,0.3); margin-top: 0.15rem;">
                         + Add
                     </span>
                 </div>
@@ -319,16 +329,6 @@
             </button>
         </div>
 
-        <!-- Sale Type Mode Selector (Retail vs Confidential Wholesale Dispatch) -->
-        <div style="display: flex; gap: 0.4rem; margin-bottom: 0.85rem; background: rgba(15,23,42,0.8); padding: 0.35rem; border-radius: 12px; border: 1px solid var(--border);">
-            <button type="button" class="btn btn-primary" id="btnModeRetail" style="flex: 1; padding: 0.45rem 0.5rem; font-size: 0.8rem; font-weight: 800; border-radius: 8px;" onclick="setSaleMode('RETAIL')">
-                🛒 Retail Sale
-            </button>
-            <button type="button" class="btn btn-secondary" id="btnModeWholesale" style="flex: 1.25; padding: 0.45rem 0.5rem; font-size: 0.8rem; font-weight: 800; border-radius: 8px; border-color: rgba(139,92,246,0.4); color: #c084fc;" onclick="setSaleMode('WHOLESALE_DISPATCH')">
-                📦 Wholesale Dispatch
-            </button>
-        </div>
-
         <form id="checkoutForm" method="POST" action="{{ route('pos.checkout') }}">
             @csrf
             <input type="hidden" name="warehouse_id" value="{{ $activeWarehouse->id }}">
@@ -349,7 +349,7 @@
             <div style="background: rgba(30,41,59,0.5); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
                     <label style="font-size: 0.78rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; margin-bottom: 0;">
-                        👤 Customer Account <span id="wholesaleCustReqBadge" style="color: #c084fc; font-size: 0.7rem; display: none;">(Wholesaler Required)</span>
+                        👤 Customer Account
                     </label>
                     <button type="button" class="btn btn-secondary" onclick="openQuickCustomerModal()" style="padding: 0.2rem 0.55rem; font-size: 0.72rem; border-color: #3b82f6; color: #93c5fd;">
                         ➕ Quick Add
@@ -440,17 +440,6 @@
                         <strong style="color: #f87171;" id="remainingDebtDisplay">₦0</strong>
                     </div>
                 </div>
-            </div>
-
-            <!-- Wholesale Dispatch Note Notice Box (Wholesale Mode) -->
-            <div id="wholesaleNoticeBox" style="display: none; background: rgba(139,92,246,0.12); border: 1.5px solid rgba(168,85,247,0.4); border-radius: 14px; padding: 1rem; margin-bottom: 1rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
-                    <span style="font-size: 1.25rem;">🔒</span>
-                    <strong style="color: #c084fc; font-size: 0.9rem;">Wholesale Dispatch Note</strong>
-                </div>
-                <p style="font-size: 0.78rem; color: #cbd5e1; margin-bottom: 0; line-height: 1.4;">
-                    Physical goods will be deducted from shop shelves immediately. Pricing, invoicing, and payment collection are handled privately by Madam in the office.
-                </p>
             </div>
 
             <!-- Complete Sale Button -->
@@ -557,58 +546,6 @@
 <script>
 let cart = [];
 let paymentMode = 'CASH';
-let saleMode = 'RETAIL'; // 'RETAIL' or 'WHOLESALE_DISPATCH'
-
-function setSaleMode(mode) {
-    saleMode = mode;
-    document.getElementById('saleTypeInput').value = mode;
-    const btnRetail = document.getElementById('btnModeRetail');
-    const btnWholesale = document.getElementById('btnModeWholesale');
-    const retailPaySec = document.getElementById('retailPaymentSection');
-    const wholesaleBox = document.getElementById('wholesaleNoticeBox');
-    const wholesaleBadge = document.getElementById('wholesaleCustReqBadge');
-    const manualCustFields = document.getElementById('manualCustomerFields');
-    const handoverSec = document.getElementById('handoverSection');
-
-    if (mode === 'WHOLESALE_DISPATCH') {
-        btnWholesale.className = 'btn btn-primary';
-        btnWholesale.style.background = '#8b5cf6';
-        btnWholesale.style.borderColor = '#7c3aed';
-        btnWholesale.style.color = '#fff';
-        btnRetail.className = 'btn btn-secondary';
-        btnRetail.style.background = '';
-        btnRetail.style.color = '';
-
-        // Hide unneeded controls in Wholesale mode
-        if (manualCustFields) manualCustFields.style.display = 'none';
-        if (handoverSec) handoverSec.style.display = 'none';
-        selectHandover('yes'); // Always supplied on wholesale pickup
-
-        retailPaySec.style.display = 'none';
-        wholesaleBox.style.display = 'block';
-        wholesaleBadge.style.display = 'inline';
-        document.getElementById('totalBillLabel').textContent = 'Wholesale Units:';
-    } else {
-        btnRetail.className = 'btn btn-primary';
-        btnRetail.style.background = '';
-        btnRetail.style.color = '';
-        btnWholesale.className = 'btn btn-secondary';
-        btnWholesale.style.background = '';
-        btnWholesale.style.color = '#c084fc';
-        btnWholesale.style.borderColor = 'rgba(139,92,246,0.4)';
-
-        // Restore standard Retail controls
-        if (manualCustFields) manualCustFields.style.display = 'grid';
-        if (handoverSec) handoverSec.style.display = 'block';
-
-        retailPaySec.style.display = 'block';
-        wholesaleBox.style.display = 'none';
-        wholesaleBadge.style.display = 'none';
-        document.getElementById('totalBillLabel').textContent = 'Total Bill:';
-        updateCustomerRequirements();
-    }
-    renderCart();
-}
 
 function addToCart(id, name, price, stock) {
     const existing = cart.find(i => i.id === id);
@@ -661,10 +598,7 @@ function renderCart() {
         total += itemTotal;
         totalUnitsCount += item.qty;
 
-        const isWholesale = (saleMode === 'WHOLESALE_DISPATCH');
-        const priceDisplay = isWholesale
-            ? `<div style="font-size:0.75rem;color:#c084fc;font-weight:700;margin-top:0.25rem;">🔒 Price: Negotiated by Madam</div>`
-            : `<div style="font-size:0.75rem;color:#94a3b8;display:flex;align-items:center;gap:0.35rem;margin-top:0.25rem;">
+        const priceDisplay = `<div style="font-size:0.75rem;color:#94a3b8;display:flex;align-items:center;gap:0.35rem;margin-top:0.25rem;">
                     <span>Price (₦):</span>
                     <input type="number" step="any" min="0" value="${item.price}" 
                            style="width:90px;padding:0.2rem 0.4rem;font-size:0.8rem;background:#0b0f19;border:1px solid #475569;border-radius:6px;color:#4ade80;font-weight:700;" 
@@ -677,7 +611,7 @@ function renderCart() {
             <div>
                 <input type="hidden" name="items[${index}][productId]" value="${item.id}">
                 <input type="hidden" name="items[${index}][quantity]" value="${item.qty}">
-                <input type="hidden" name="items[${index}][unitPrice]" value="${isWholesale ? 0 : item.price}">
+                <input type="hidden" name="items[${index}][unitPrice]" value="${item.price}">
                 <div style="font-weight:700;font-size:0.9rem;">${item.name}</div>
                 ${priceDisplay}
             </div>
@@ -691,17 +625,9 @@ function renderCart() {
     });
 
     list.innerHTML = html;
-    if (saleMode === 'WHOLESALE_DISPATCH') {
-        document.getElementById('displayTotal').textContent = totalUnitsCount + ' units (Confidential Price)';
-        document.getElementById('hiddenTotal').value = 0;
-        document.getElementById('hiddenPaid').value = 0;
-        document.getElementById('hiddenCash').value = 0;
-        document.getElementById('hiddenPos').value = 0;
-    } else {
-        document.getElementById('displayTotal').textContent = '₦' + Math.round(total).toLocaleString('en-US');
-        document.getElementById('hiddenTotal').value = total;
-        updateDebtCalculation();
-    }
+    document.getElementById('displayTotal').textContent = '₦' + Math.round(total).toLocaleString('en-US');
+    document.getElementById('hiddenTotal').value = total;
+    updateDebtCalculation();
 
     btn.disabled = false;
     btn.style.opacity = 1;
@@ -961,10 +887,9 @@ function submitSale() {
     const totalUnits = cart.reduce((sum, item) => sum + item.qty, 0);
 
     const errors = [];
-    const isWholesale = (saleMode === 'WHOLESALE_DISPATCH');
 
     // 1. Empty Cart Check
-    if (cart.length === 0 || (!isWholesale && total <= 0)) {
+    if (cart.length === 0 || total <= 0) {
         errors.push({
             title: 'Cart is Empty',
             desc: 'Please select at least one product from the catalog on the left to begin a sale.',
@@ -972,26 +897,13 @@ function submitSale() {
         });
     }
 
-    // 2. Customer Validation (Mandatory for Wholesale Dispatch)
-    if (isWholesale) {
-        const selCust = document.getElementById('customerSelect');
-        const selVal = selCust ? selCust.value : '';
-        if (!selVal || !custName || custName.toLowerCase() === 'walk-in customer') {
-            errors.push({
-                title: 'Wholesaler Account Required',
-                desc: 'Please select a registered wholesaler from the dropdown list (or tap "➕ Quick Add" to register a new one).',
-                focus: 'customerSelect'
-            });
-        }
-    } else {
-        // Optional phone validation if typed for a regular cash sale
-        if (rawCustPhone && !phoneCheck.valid) {
-            errors.push({
-                title: 'Invalid Nigerian Phone Number',
-                desc: 'Customer phone number must be exactly 11 digits starting with 0 (e.g. 08031234567, 09012345678).',
-                focus: 'customerPhoneInput'
-            });
-        }
+    // Optional phone validation if typed for a regular cash sale
+    if (rawCustPhone && !phoneCheck.valid) {
+        errors.push({
+            title: 'Invalid Nigerian Phone Number',
+            desc: 'Customer phone number must be exactly 11 digits starting with 0 (e.g. 08031234567, 09012345678).',
+            focus: 'customerPhoneInput'
+        });
     }
 
     // 3. Physical Stock Handover Validation (The Golden Law)
@@ -1015,7 +927,7 @@ function submitSale() {
     }
 
     // 4. Retail Payment Mode & Debt Validation
-    if (!isWholesale && paymentMode === 'DEBT') {
+    if (paymentMode === 'DEBT') {
         const partPayRaw = document.getElementById('partPayInput').value;
         const partPayInput = parseFloat(partPayRaw);
 
@@ -1072,7 +984,7 @@ function submitSale() {
     // ⛔ IF ANY BUSINESS RULE IS VIOLATED: BLOCK SUBMISSION AND SHOW REASON POPUP MODAL!
     if (errors.length > 0) {
         showActionBlockedModal({
-            title: isWholesale ? 'Wholesale Dispatch Cannot Be Completed' : 'Sale Cannot Be Completed',
+            title: 'Sale Cannot Be Completed',
             subtitle: 'Please resolve the following business rule requirements:',
             errors: errors
         });
@@ -1093,12 +1005,8 @@ function submitSale() {
         row.style.paddingBottom = '0.35rem';
 
         const subtotal = item.qty * item.price;
-        const priceInfo = isWholesale
-            ? `<div style="font-size: 0.75rem; color: #c084fc; font-weight: 700;">🔒 Price: Negotiated by Madam</div>`
-            : `<div style="font-size: 0.75rem; color: #94a3b8;">₦${Math.round(item.price).toLocaleString('en-US')} per unit</div>`;
-        const totalInfo = isWholesale
-            ? `<strong style="color: #c084fc; font-size: 0.85rem;">🔒 Confidential</strong>`
-            : `<strong style="color: #4ade80; font-size: 0.9rem;">₦${Math.round(subtotal).toLocaleString('en-US')}</strong>`;
+        const priceInfo = `<div style="font-size: 0.75rem; color: #94a3b8;">₦${Math.round(item.price).toLocaleString('en-US')} per unit</div>`;
+        const totalInfo = `<strong style="color: #4ade80; font-size: 0.9rem;">₦${Math.round(subtotal).toLocaleString('en-US')}</strong>`;
 
         row.innerHTML = `
             <div style="flex: 1; padding-right: 0.5rem;">
@@ -1117,24 +1025,16 @@ function submitSale() {
 
     document.getElementById('confirmCustName').innerHTML = `<strong>${custName}</strong> ${custPhone ? '<span style="color:#93c5fd;font-size:0.78rem;">(' + custPhone + ')</span>' : ''}`;
     
-    if (isWholesale) {
-        document.getElementById('confirmTotalBill').textContent = totalUnits + ' units (Confidential Price)';
-        document.getElementById('confirmPayingNow').textContent = '🔒 Negotiated & Billed in Office by Madam';
-        document.getElementById('confirmPayingNow').style.color = '#c084fc';
-        document.getElementById('confirmDebtLedger').textContent = '📦 Handover Recorded in Wholesale Hub';
-        document.getElementById('confirmDebtLedger').style.color = '#60a5fa';
+    document.getElementById('confirmTotalBill').textContent = '₦' + Math.round(total).toLocaleString('en-US');
+    document.getElementById('confirmPayingNow').textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : 'Paid ' + paymentMode) + ')';
+    document.getElementById('confirmPayingNow').style.color = '#60a5fa';
+    
+    if (remaining > 0) {
+        document.getElementById('confirmDebtLedger').textContent = '+ ₦' + Math.round(remaining).toLocaleString('en-US') + ' Added to Debtor Ledger';
+        document.getElementById('confirmDebtLedger').style.color = '#f87171';
     } else {
-        document.getElementById('confirmTotalBill').textContent = '₦' + Math.round(total).toLocaleString('en-US');
-        document.getElementById('confirmPayingNow').textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : 'Paid ' + paymentMode) + ')';
-        document.getElementById('confirmPayingNow').style.color = '#60a5fa';
-        
-        if (remaining > 0) {
-            document.getElementById('confirmDebtLedger').textContent = '+ ₦' + Math.round(remaining).toLocaleString('en-US') + ' Added to Debtor Ledger';
-            document.getElementById('confirmDebtLedger').style.color = '#f87171';
-        } else {
-            document.getElementById('confirmDebtLedger').textContent = '₦0 (Fully Settled)';
-            document.getElementById('confirmDebtLedger').style.color = '#4ade80';
-        }
+        document.getElementById('confirmDebtLedger').textContent = '₦0 (Fully Settled)';
+        document.getElementById('confirmDebtLedger').style.color = '#4ade80';
     }
 
     const impactEl = document.getElementById('confirmStockImpact');

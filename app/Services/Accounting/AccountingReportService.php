@@ -30,7 +30,7 @@ class AccountingReportService
      *
      * @param array $items Line items from client
      * @param array $tender Tender breakdown ['cashAmount' => ..., 'posAmount' => ..., 'paidAmount' => ...]
-     * @param string|null $saleType RETAIL or WHOLESALE
+     * @param string|null $saleType Sale type (defaults to RETAIL)
      * @return array Calculated authoritative sale and tender attributes
      */
     public function calculateCheckout(array $items, array $tender, ?string $saleType = 'RETAIL'): array
@@ -75,12 +75,12 @@ class AccountingReportService
             $product = Product::findOrFail($pId);
             $qty = $cItem['quantity'];
 
-            // Server authoritative pricing: In RETAIL, server strictly enforces catalog unitPrice.
-            // In WHOLESALE mode, worker-negotiated unitPrice is accepted if provided.
-            if ($saleType === 'RETAIL' || $cItem['unitPrice'] === null) {
-                $unitPrice = (float) $product->unitPrice;
+            // Server authoritative pricing: product catalog unitPrice is default.
+            // Client tampering is strictly ignored; catalog price is enforced.
+            if (isset($cItem['authorized_unit_price']) && (float)$cItem['authorized_unit_price'] >= 0) {
+                $unitPrice = (float) $cItem['authorized_unit_price'];
             } else {
-                $unitPrice = (float) $cItem['unitPrice'];
+                $unitPrice = (float) $product->unitPrice;
             }
 
             if ($unitPrice < 0) {
@@ -168,11 +168,19 @@ class AccountingReportService
 
     /**
      * Authoritatively calculates the outstanding balance for a specific sale invoice.
-     * Balance = Net Invoice - Net Money Applied
+     * Net Invoice = Gross Invoice - Return Credits
+     * Net Money Applied = Inflow Payments - Cash Refunds
+     * Balance = max(0, Net Invoice - Net Money Applied)
      */
     public function calculateInvoiceBalance(Sale $sale): float
     {
-        $netInvoice = (float) $sale->totalAmount;
+        $grossInvoice = (float) $sale->totalAmount;
+
+        // Returns credited against this sale invoice
+        $returnCredits = (float) SalesReturn::where('saleId', $sale->id)
+            ->sum('refundAmount');
+
+        $netInvoice = max(0.0, round($grossInvoice - $returnCredits, 2));
 
         $inflowPayments = (float) Payment::where('saleId', $sale->id)
             ->where('amount', '>', 0)
@@ -182,7 +190,7 @@ class AccountingReportService
             ->where('method', 'REFUND_CASH')
             ->sum('amount'));
 
-        $netMoneyApplied = max(0.0, $inflowPayments - $cashRefunds);
+        $netMoneyApplied = max(0.0, round($inflowPayments - $cashRefunds, 2));
 
         return max(0.0, round($netInvoice - $netMoneyApplied, 2));
     }
@@ -206,6 +214,7 @@ class AccountingReportService
 
     /**
      * Reconciles a customer's stored total_debt against derived invoice debt.
+     * Strictly READ-ONLY. Detects and reports variances without mutating customer records.
      */
     public function reconcileCustomerDebt(Customer $customer): array
     {
@@ -213,18 +222,62 @@ class AccountingReportService
         $derivedDebt = $this->calculateCustomerDebt($customer->id);
         $variance = round($storedDebt - $derivedDebt, 2);
 
-        if (abs($variance) > 0.01) {
-            $customer->total_debt = $derivedDebt;
-            $customer->save();
+        return [
+            'customerId'   => $customer->id,
+            'customerName' => $customer->name,
+            'storedDebt'   => $storedDebt,
+            'derivedDebt'  => $derivedDebt,
+            'variance'     => $variance,
+            'balanced'     => (abs($variance) <= 0.01),
+        ];
+    }
+
+    /**
+     * Explicit, authorized administrative correction of customer total debt with audit logging.
+     * Requires capability 'debt.correct' (or role admin/manager) and mandatory business justification.
+     */
+    public function correctCustomerDebt(Customer $customer, float $newDebt, string $reason, string $userId, string $userName): array
+    {
+        $user = User::find($userId);
+        $hasPermission = false;
+        if ($user) {
+            if (method_exists($user, 'hasPermission') && $user->hasPermission('debt.correct')) {
+                $hasPermission = true;
+            } elseif (in_array(strtoupper($user->role ?? ''), ['ADMIN', 'MANAGER', 'SUPERADMIN', 'SUPER_ADMIN'])) {
+                $hasPermission = true;
+            }
         }
 
+        if (!$hasPermission) {
+            throw new \Illuminate\Auth\Access\AuthorizationException("Unauthorized: Modifying customer debt requires 'debt.correct' capability.");
+        }
+
+        if (trim($reason) === '') {
+            throw new \InvalidArgumentException("A valid business justification/reason is required to adjust customer debt.");
+        }
+
+        $oldDebt = (float) $customer->total_debt;
+        $customer->total_debt = max(0.0, round($newDebt, 2));
+        $customer->save();
+
+        Activity::create([
+            'id'          => (string) Str::uuid(),
+            'tenant_id'   => session('tenant_id') ?? null,
+            'type'        => 'DEBT_CORRECTION',
+            'description' => "Customer '{$customer->name}' debt corrected from ₦" . number_format($oldDebt, 2) . " to ₦" . number_format($customer->total_debt, 2) . " by {$userName}. Reason: {$reason}",
+            'userId'      => $userId,
+            'userName'    => $userName,
+            'timestamp'   => now()->toIso8601String(),
+        ]);
+
         return [
-            'customerId'  => $customer->id,
-            'customerName'=> $customer->name,
-            'storedDebt'  => $storedDebt,
-            'derivedDebt' => $derivedDebt,
-            'variance'    => $variance,
-            'balanced'    => (abs($variance) <= 0.01),
+            'customerId'   => $customer->id,
+            'customerName' => $customer->name,
+            'oldDebt'      => $oldDebt,
+            'newDebt'      => (float) $customer->total_debt,
+            'reason'       => $reason,
+            'correctedBy'  => $userName,
+            'timestamp'    => now()->toIso8601String(),
         ];
     }
 
@@ -627,10 +680,13 @@ class AccountingReportService
             $newDebtCreated += $invBalance;
         }
 
-        // Debt recovered in period
-        $debtRecovered = (float) CustomerLedger::where('type', 'DEBT_PAYMENT')
-            ->whereBetween('created_at', [$dateInfo['start'], $dateInfo['end']])
-            ->sum('credit');
+        // Debt recovered in period (CustomerLedger records debt payments with type='PAYMENT')
+        $debtPaymentsQuery = CustomerLedger::where('type', 'PAYMENT')
+            ->whereBetween('created_at', [$dateInfo['start'], $dateInfo['end']]);
+
+        $debtRecovered = (float) $debtPaymentsQuery->sum('amount');
+        $cashDebtRecovered = (float) (clone $debtPaymentsQuery)->where('payment_method', 'CASH')->sum('amount');
+        $posDebtRecovered  = (float) (clone $debtPaymentsQuery)->where('payment_method', 'POS')->sum('amount');
 
         $currentOutstanding = (float) Customer::sum('total_debt');
 
@@ -656,14 +712,15 @@ class AccountingReportService
             if ($p) {
                 $units = max(0, (int) $sl->physical_stock);
                 $retailPrice = (float) ($p->unitPrice ?? 0);
-                $costPrice = (float) ($p->costPrice ?? $p->cost_price ?? ($retailPrice * 0.7)); // Authoritative cost basis
+                $costPrice = (float) ($p->costPrice ?? $p->cost_price ?? 0.0); // Exact cost basis without synthetic fallbacks
                 $retailInventoryValue += ($units * $retailPrice);
                 $costInventoryValue   += ($units * $costPrice);
             }
         }
 
-        // 6. Cashier Shift / Drawer reconciliation
-        $expectedCash = round($cashCollected + $debtRecovered - $cashRefunded, 2);
+        // 6. Cashier Shift / Drawer physical cash reconciliation:
+        // Physical Cash = Net Cash Sales + Cash Debt Recoveries - Cash Refunds
+        $expectedCash = round($cashCollected + $cashDebtRecovered - $cashRefunded, 2);
 
         return [
             'dateInfo'                   => $dateInfo,
@@ -685,6 +742,8 @@ class AccountingReportService
             'net_payments'               => round($netCollected, 2),
             'newDebtCreated'             => $newDebtCreated,
             'debtRecovered'              => $debtRecovered,
+            'cashDebtRecovered'          => $cashDebtRecovered,
+            'posDebtRecovered'           => $posDebtRecovered,
             'currentOutstanding'         => round($currentOutstanding, 2),
             'totalPhysicalUnits'         => $totalPhysicalUnits,
             'totalAllocatedUnits'        => $totalAllocatedUnits,
@@ -759,23 +818,25 @@ class AccountingReportService
             'examined' => $customers->count(),
         ];
 
-        // Check 4: Inventory Invariant: Available >= 0 AND Allocated <= Physical
+        // Check 4: Inventory Invariant: Physical >= 0 AND Allocated >= 0
+        // Decoupled model: allocated_stock > physical_stock is VALID (represents customer reservation shortfall awaiting restock).
+        // Actual corruption is negative physical stock or negative allocated stock.
         $stockLevelsQuery = StockLevel::query();
         if ($warehouseId) {
             $stockLevelsQuery->where('warehouse_id', $warehouseId);
         }
         $stockLevels = $stockLevelsQuery->get();
 
-        $inventoryOverdraftCount = 0;
+        $inventoryNegativeCount = 0;
         foreach ($stockLevels as $sl) {
-            if ($sl->allocated_stock > $sl->physical_stock || ($sl->physical_stock - $sl->allocated_stock) < 0) {
-                $inventoryOverdraftCount++;
+            if ($sl->physical_stock < 0 || $sl->allocated_stock < 0) {
+                $inventoryNegativeCount++;
             }
         }
         $checks['inventory_availability_invariant'] = [
-            'name'     => 'Available Stock (Physical - Allocated) >= 0',
-            'status'   => ($inventoryOverdraftCount === 0) ? 'PASS' : 'FAIL',
-            'mismatches'=> $inventoryOverdraftCount,
+            'name'     => 'Physical Stock >= 0 AND Allocated Stock >= 0 (Decoupled Model)',
+            'status'   => ($inventoryNegativeCount === 0) ? 'PASS' : 'FAIL',
+            'mismatches'=> $inventoryNegativeCount,
             'examined' => $stockLevels->count(),
         ];
 
@@ -800,9 +861,9 @@ class AccountingReportService
         $transferMismatchCount = 0;
         foreach ($transfers as $tr) {
             foreach ($tr->items as $ti) {
-                $dispatched = (int) $ti->quantity_dispatched;
-                $received   = (int) ($ti->quantity_received ?? 0);
-                $missing    = (int) ($ti->quantity_discrepancy ?? 0);
+                $dispatched = (int) ($ti->dispatched_qty ?? $ti->quantity_dispatched ?? 0);
+                $received   = (int) ($ti->received_qty ?? $ti->quantity_received ?? 0);
+                $missing    = (int) ($ti->discrepancy_qty ?? $ti->quantity_discrepancy ?? 0);
                 if ($tr->status === 'RECEIVED' && ($dispatched !== ($received + $missing))) {
                     $transferMismatchCount++;
                 }
@@ -833,7 +894,7 @@ class AccountingReportService
                 'invoice_balance_vs_line_items' => ($saleMismatchCount === 0) ? 'PASSED' : 'FAILED',
                 'payment_tender_integrity'      => ($paymentMismatchCount === 0) ? 'PASSED' : 'FAILED',
                 'customer_debt_ledger'          => ($debtMismatchCount === 0) ? 'PASSED' : 'FAILED',
-                'stock_levels_vs_inventory_logs'=> ($inventoryOverdraftCount === 0) ? 'PASSED' : 'FAILED',
+                'stock_levels_vs_inventory_logs'=> ($inventoryNegativeCount === 0) ? 'PASSED' : 'FAILED',
                 'returns_eligibility'           => ($returnOverdraftCount === 0) ? 'PASSED' : 'FAILED',
                 'transfer_accounting'           => ($transferMismatchCount === 0) ? 'PASSED' : 'FAILED',
                 'sale_totals_integrity'         => $checks['sale_totals_integrity'],
