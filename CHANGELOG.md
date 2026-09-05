@@ -8,6 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 18 (Operational Scale, Constant-Query Financial Batching, Client Idempotency Lifecycle, Scale Composite Indexes, Legacy Storage Purge, and Full-Stack CI)**:
+  - **Client POS Idempotency Lifecycle & Double-Submit Protection**:
+    - Embedded deterministic UUID key generation into POS checkout (`posIdempotencyKey`) and returns (`returnIdempotencyKey`).
+    - Retained keys across modal open/close, tender adjustments, and network retries while disabling submit controls (`btnFinalProceedSale`) with loading spinners on click.
+    - Explicitly flushed and regenerated keys on cart reset (`clearCart()`) and post-sale completion to prevent cross-transaction key leakage.
+  - **Constant-Query Financial Batching (N+1 Elimination)**:
+    - Implemented `AccountingReportService::calculateInvoiceBalancesForSales(iterable $sales)` performing integer-kobo balance calculations in exactly **2 aggregate database queries** (`SUM(refundAmount) GROUP BY saleId` and `SUM(CASE WHEN amount > 0... GROUP BY saleId)`).
+    - Updated `calculateCustomerDebt()` and `DebtController::index()` to use batch aggregation, eliminating all O(N) query loops across debtor invoices and branch debtor filtering.
+  - **High-Volume Composite Database Indexes**:
+    - Added dedicated database composite indexes: `payments(saleId, method)`, `payments(tenant_id, created_at)`, `sales_returns(saleId)`, `sales_returns(tenant_id, created_at)`, `sales(customerId, warehouse_id)`, `sales(tenant_id, customerId)`, and `customer_ledgers(customer_id, type)`.
+  - **Legacy Storage Mock Purge (`resources/js/lib/storage.ts`)**:
+    - Stripped dead mock calculations (`getStockBreakdown`, `calculateClosingStock`) and unused state properties while strictly preserving runtime deprecation invariants.
+  - **Full-Stack CI Hardening (`.github/workflows/ci.yml`)**:
+    - Configured dual parallel CI jobs: `laravel-tests` (executing 371 PHP tests under PHP 8.3) and `frontend-build` (Node 20, `npm ci`, `npm run lint` for TypeScript type-checking, and `npm run build` for Vite asset compilation).
+    - Published distinct GitHub commit statuses `ci/laravel-tests` and `ci/frontend-build` for granular branch protection enforcement.
+  - **Pass 18 Hardening Test Suite (`ProductionHardeningPass18Test`)**:
+    - Added 6 comprehensive feature tests covering batch balance equivalence down to the kobo, constant O(1) query count assertion, client-side idempotency replay on checkout and returns, scale composite index presence, and DebtController index route verification.
+    - Test suite expanded to **371 passed tests (2,146 assertions, 0 errors, 0 failures)** across 37 test files.
+
 - **Production Hardening Pass 17 (Financial Mutation Closure, Universal Mandatory Idempotency, Atomic Tenant Quota Locking, and Password Policy Unification)**:
   - **Universal Mandatory Idempotency Closure (Zero Bypass Branches)**:
     - Permanently eradicated direct mutation bypass branches (`else { $this->stockService->... }`) across all controllers (`PosController`, `DebtController`, `StockController`).

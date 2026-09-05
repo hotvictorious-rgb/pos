@@ -534,7 +534,7 @@
             <button type="button" class="btn btn-secondary" style="flex: 1; padding: 0.75rem;" onclick="closeSaleConfirm()">
                 ✕ Cancel / Edit
             </button>
-            <button type="button" class="btn btn-success" style="flex: 1.3; padding: 0.75rem; font-weight: 800;" onclick="finalProceedSale()">
+            <button type="button" id="btnFinalProceedSale" class="btn btn-success" style="flex: 1.3; padding: 0.75rem; font-weight: 800;" onclick="finalProceedSale()">
                 ✅ Yes, Complete Sale
             </button>
         </div>
@@ -1071,16 +1071,41 @@ function submitSale() {
         impactEl.textContent = '⏳ NOT SUPPLIED: ' + totalUnits + ' unit(s) remain locked in shop stock buffer until customer pickup.';
     }
 
+    getOrCreatePosIdempotencyKey();
     document.getElementById('modalSaleConfirm').style.display = 'flex';
+}
+
+let currentCheckoutIdempotencyKey = null;
+
+function getOrCreatePosIdempotencyKey() {
+    if (!currentCheckoutIdempotencyKey) {
+        currentCheckoutIdempotencyKey = 'pos-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).substring(2)));
+    }
+    const input = document.getElementById('posIdempotencyKey');
+    if (input) {
+        input.value = currentCheckoutIdempotencyKey;
+    }
+    return currentCheckoutIdempotencyKey;
+}
+
+function resetPosIdempotencyKey() {
+    currentCheckoutIdempotencyKey = null;
+    const input = document.getElementById('posIdempotencyKey');
+    if (input) input.value = '';
 }
 
 function closeSaleConfirm() {
     document.getElementById('modalSaleConfirm').style.display = 'none';
+    const btn = document.getElementById('btnFinalProceedSale');
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '✅ Yes, Complete Sale';
+    }
 }
 
 function finalProceedSale() {
     ensureCheckoutIdempotencyKey();
-    const btn = document.querySelector('#modalSaleConfirm button.btn-primary');
+    const btn = document.querySelector('#modalSaleConfirm button.btn-primary') || document.getElementById('btnFinalProceedSale');
     if (btn) {
         btn.disabled = true;
         btn.textContent = 'Processing Transaction...';

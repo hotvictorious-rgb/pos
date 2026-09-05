@@ -279,99 +279,12 @@ export const storage = {
     // Disarmed: All activity audit trails are generated authoritatively by the Laravel backend
   },
 
-  calculateClosingStock: (productId: string, startDate?: Date, endDate?: Date) => {
-    return storage.getStockBreakdown(productId, startDate, endDate).closingStock;
+  calculateClosingStock: (_productId: string, _startDate?: Date, _endDate?: Date) => {
+    return 0;
   },
 
-  getStockBreakdown: (productId: string, startDate?: Date, endDate?: Date) => {
-    const product = storage.getProducts().find(p => p.id === productId);
-    if (!product) {
-      return { openingStock: 0, stockIn: 0, stockReturn: 0, stockOut: 0, delivered: 0, closingStock: 0 };
-    }
-
-    const logs = storage.getLogs().filter(l => l.productId === productId);
-    const allSales = storage.getSales();
-    const productSales = allSales.filter(s => s.items.some(i => i.productId === productId));
-    const allReturns = storage.getReturns().filter(r => r.productId === productId);
-
-    const getStockReturnForRecord = (r: SalesReturn) => {
-      const linkedSale = allSales.find(s => s.id === r.saleId);
-      if (linkedSale) {
-        if (linkedSale.deliveryStatus !== 'delivered') return 0;
-        const item = linkedSale.items.find(i => i.productId === productId);
-        return Math.min(r.quantity, item ? item.quantity : r.quantity);
-      }
-      return r.wasDelivered === true ? r.quantity : 0;
-    };
-
-    let openingStock = 0;
-    let stockIn = 0;
-    let stockOut = 0;
-    let delivered = 0;
-    let stockReturn = 0;
-
-    if (startDate) {
-      const logsBefore = logs.filter(l => new Date(l.timestamp) < startDate);
-      const salesBefore = productSales.filter(s => new Date(s.deliveredAt || s.createdAt) < startDate && s.deliveryStatus === 'delivered');
-      const returnsBefore = allReturns.filter(r => {
-        if (new Date(r.createdAt || r.timestamp) >= startDate) return false;
-        return getStockReturnForRecord(r) > 0;
-      });
-
-      const inBefore = logsBefore.filter(l => l.type === 'stock-in').reduce((acc, l) => acc + l.quantity, 0);
-      const outBefore = logsBefore.filter(l => l.type === 'stock-out').reduce((acc, l) => acc + l.quantity, 0);
-      const deliveredBefore = salesBefore.reduce((acc, s) => {
-        const item = s.items.find(i => i.productId === productId);
-        return acc + (item?.quantity || 0);
-      }, 0);
-      const stockReturnBefore = returnsBefore.reduce((acc, r) => acc + getStockReturnForRecord(r), 0);
-
-      openingStock = (inBefore + stockReturnBefore) - (outBefore + deliveredBefore);
-
-      const inDateRange = (dateStr?: string) => {
-        if (!dateStr) return false;
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
-        if (d < startDate) return false;
-        if (endDate && d > endDate) return false;
-        return true;
-      };
-
-      const logsPeriod = logs.filter(l => inDateRange(l.timestamp));
-      const salesPeriod = productSales.filter(s => s.deliveryStatus === 'delivered' && inDateRange(s.deliveredAt || s.createdAt));
-      const returnsPeriod = allReturns.filter(r => inDateRange(r.createdAt || r.timestamp));
-
-      stockIn = logsPeriod.filter(l => l.type === 'stock-in').reduce((acc, l) => acc + l.quantity, 0);
-      stockOut = logsPeriod.filter(l => l.type === 'stock-out').reduce((acc, l) => acc + l.quantity, 0);
-      delivered = salesPeriod.reduce((acc, s) => {
-        const item = s.items.find(i => i.productId === productId);
-        return acc + (item?.quantity || 0);
-      }, 0);
-      stockReturn = returnsPeriod.reduce((acc, r) => acc + getStockReturnForRecord(r), 0);
-    } else {
-      openingStock = 0;
-      stockIn = logs.filter(l => l.type === 'stock-in').reduce((acc, l) => acc + l.quantity, 0);
-      stockOut = logs.filter(l => l.type === 'stock-out').reduce((acc, l) => acc + l.quantity, 0);
-      delivered = productSales
-        .filter(s => s.deliveryStatus === 'delivered')
-        .reduce((acc, s) => {
-          const item = s.items.find(i => i.productId === productId);
-          return acc + (item?.quantity || 0);
-        }, 0);
-
-      stockReturn = allReturns.reduce((acc, r) => acc + getStockReturnForRecord(r), 0);
-    }
-
-    const closingStock = (openingStock + stockIn + stockReturn) - (stockOut + delivered);
-
-    return {
-      openingStock,
-      stockIn,
-      stockReturn,
-      stockOut,
-      delivered,
-      closingStock
-    };
+  getStockBreakdown: (_productId: string, _startDate?: Date, _endDate?: Date) => {
+    return { openingStock: 0, stockIn: 0, stockReturn: 0, stockOut: 0, delivered: 0, closingStock: 0 };
   },
 
   getAuth: (): User | null => {

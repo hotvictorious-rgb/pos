@@ -354,8 +354,29 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
     - SaaS platform tenant provisioning (`SaaSController::storeTenant`).
     - System initial installation admin creation (`InstallerController::step2Post`).
 
-
-
-
-
-
+### VM-033: Operational Scale, Constant-Query Financial Batching, and Client Idempotency Lifecycle
+- **Client-Side POS Idempotency Lifecycle & Double-Submit Protection**:
+  - Deterministic client-side idempotency key generation (`crypto.randomUUID()`) is embedded into POS checkout and returns forms via dedicated hidden inputs (`posIdempotencyKey` and `returnIdempotencyKey`).
+  - Keys are generated once when the cart transaction starts or review modal opens, and persist across tender adjustments and network retry clicks.
+  - Submitting POS forms immediately disables submission controls (`btnFinalProceedSale`) and renders spinner micro-interactions to prevent physical double-clicks.
+  - Keys are explicitly flushed and regenerated upon successful sale completion or when cart is cleared (`clearCart()`), guaranteeing that subsequent distinct transactions never reuse stale keys.
+- **Constant-Query Financial Batching (N+1 Elimination)**:
+  - `AccountingReportService::calculateInvoiceBalancesForSales(iterable $sales)` batch-calculates balances across arbitrary sale collections in exactly **2 aggregate database queries**:
+    1. Aggregates all return refund credits by sale ID in a single query (`SUM(refundAmount) GROUP BY saleId`).
+    2. Aggregates all cash inflows and cash refunds by sale ID in a single query (`SUM(CASE WHEN amount > 0 AND method != 'REFUND_CASH'...) GROUP BY saleId`).
+  - Balance math executes entirely in memory using pure integer arithmetic in kobo, eliminating all O(N) database query loops in `calculateCustomerDebt()` and `DebtController::index()`.
+- **Enterprise High-Volume Composite Financial Indexes**:
+  - Added dedicated database composite indexes for production merchant scalability:
+    - `payments(saleId, method)` (`idx_payments_sale_method`)
+    - `payments(tenant_id, created_at)` (`idx_payments_tenant_created`)
+    - `sales_returns(saleId)` (`idx_sales_returns_sale_id`)
+    - `sales_returns(tenant_id, created_at)` (`idx_returns_tenant_created`)
+    - `sales(customerId, warehouse_id)` (`idx_sales_customer_warehouse`)
+    - `sales(tenant_id, customerId)` (`idx_sales_tenant_customer`)
+    - `customer_ledgers(customer_id, type)` (`idx_ledgers_customer_type`)
+- **Legacy Storage Mock Purge**:
+  - Dead mock calculations (`getStockBreakdown`, `calculateClosingStock`) and mock data structures in `resources/js/lib/storage.ts` have been cleanly excised while strictly preserving the runtime architectural deprecation invariants verified by `ProductionArchitectureRetirementPass16Test`.
+- **Full-Stack Continuous Integration & Automated Checks**:
+  - GitHub CI workflow (`.github/workflows/ci.yml`) is upgraded to dual parallel jobs:
+    - `laravel-tests`: Executes 371 automated tests, runs under PHP 8.3, and emits commit status `ci/laravel-tests`.
+    - `frontend-build`: Installs Node dependencies (`npm ci`), validates TypeScript types (`npm run lint`), compiles production assets with Vite (`npm run build`), and emits commit status `ci/frontend-build`.

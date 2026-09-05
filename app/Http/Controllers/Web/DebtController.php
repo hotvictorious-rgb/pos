@@ -39,10 +39,12 @@ class DebtController extends Controller
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->get();
 
+            $saleBalances = $accountingService->calculateInvoiceBalancesForSales($branchSales);
+
             $customerBranchDebts = [];
             foreach ($branchSales as $bs) {
                 $cId = $bs->customerId;
-                $bal = $accountingService->calculateInvoiceBalance($bs);
+                $bal = $saleBalances[$bs->id] ?? 0.0;
                 if ($bal > 0) {
                     $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
                 }

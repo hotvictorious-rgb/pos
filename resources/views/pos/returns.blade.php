@@ -225,6 +225,7 @@
 
             <form id="returnForm" method="POST" action="{{ route('pos.returns.process') }}">
                 @csrf
+                <input type="hidden" name="idempotency_key" id="returnIdempotencyKey" value="">
 
                 <div class="form-group">
                     <label>Select Original Sale Invoice</label>
@@ -292,8 +293,35 @@ function filterTableRows(tableId, query) {
     });
 }
 
-function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+let currentReturnIdempotencyKey = null;
+
+function getOrCreateReturnIdempotencyKey() {
+    if (!currentReturnIdempotencyKey) {
+        currentReturnIdempotencyKey = 'ret-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).substring(2)));
+    }
+    const input = document.getElementById('returnIdempotencyKey');
+    if (input) {
+        input.value = currentReturnIdempotencyKey;
+    }
+    return currentReturnIdempotencyKey;
+}
+
+function resetReturnIdempotencyKey() {
+    currentReturnIdempotencyKey = null;
+    const input = document.getElementById('returnIdempotencyKey');
+    if (input) input.value = '';
+}
+
+function openModal(id) { 
+    if (id === 'modalProcessReturn') {
+        getOrCreateReturnIdempotencyKey();
+    }
+    document.getElementById(id).style.display = 'flex'; 
+}
+
+function closeModal(id) { 
+    document.getElementById(id).style.display = 'none'; 
+}
 
 function loadSaleItems(select) {
     const container = document.getElementById('returnItemsContainer');

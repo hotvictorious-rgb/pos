@@ -288,7 +288,67 @@ class AccountingReportService
     }
 
     /**
+     * High-throughput batch invoice balance calculator.
+     * Eliminates N+1 query loops across large collections of sales.
+     * Executes in exactly 2 aggregate queries and derives all balances in pure integer kobo.
+     *
+     * @param iterable|\Illuminate\Support\Collection $sales
+     * @return array<string, float> Map of [sale_id => remaining_balance_naira]
+     */
+    public function calculateInvoiceBalancesForSales(iterable $sales): array
+    {
+        $salesCollection = $sales instanceof \Illuminate\Support\Collection ? $sales : collect($sales);
+        if ($salesCollection->isEmpty()) {
+            return [];
+        }
+
+        $saleIds = $salesCollection->pluck('id')->filter()->unique()->values()->all();
+        if (empty($saleIds)) {
+            return [];
+        }
+
+        // 1. Bulk aggregate return credits per sale in 1 query
+        $returnCredits = SalesReturn::whereIn('saleId', $saleIds)
+            ->groupBy('saleId')
+            ->selectRaw('saleId, SUM(refundAmount) as total_refund')
+            ->pluck('total_refund', 'saleId')
+            ->all();
+
+        // 2. Bulk aggregate payments (inflows vs refunds) per sale in 1 query
+        $paymentAggregates = Payment::whereIn('saleId', $saleIds)
+            ->groupBy('saleId')
+            ->selectRaw('
+                saleId,
+                SUM(CASE WHEN amount > 0 AND method != "REFUND_CASH" THEN amount ELSE 0 END) as total_inflow,
+                SUM(CASE WHEN method = "REFUND_CASH" THEN amount ELSE 0 END) as total_cash_refund
+            ')
+            ->get()
+            ->keyBy('saleId');
+
+        $balances = [];
+        foreach ($salesCollection as $sale) {
+            $saleId = $sale->id;
+            $grossKobo = self::toKobo($sale->totalAmount);
+
+            $returnCreditsKobo = self::toKobo($returnCredits[$saleId] ?? 0);
+            $netInvoiceKobo = max(0, $grossKobo - $returnCreditsKobo);
+
+            $payRow = $paymentAggregates->get($saleId);
+            $inflowKobo = $payRow ? self::toKobo($payRow->total_inflow) : 0;
+            $cashRefundsKobo = $payRow ? abs(self::toKobo($payRow->total_cash_refund)) : 0;
+
+            $netMoneyAppliedKobo = max(0, $inflowKobo - $cashRefundsKobo);
+
+            $balanceKobo = max(0, $netInvoiceKobo - $netMoneyAppliedKobo);
+            $balances[$saleId] = self::toNaira($balanceKobo);
+        }
+
+        return $balances;
+    }
+
+    /**
      * Authoritatively derives customer total outstanding debt from all open invoices.
+     * Utilizes batch balance calculation to eliminate O(N) query loops.
      */
     public function calculateCustomerDebt(int|string $customerId): float
     {
@@ -296,9 +356,14 @@ class AccountingReportService
             ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
             ->get();
 
+        if ($openSales->isEmpty()) {
+            return 0.0;
+        }
+
+        $balances = $this->calculateInvoiceBalancesForSales($openSales);
         $derivedDebtKobo = 0;
-        foreach ($openSales as $sale) {
-            $derivedDebtKobo += self::toKobo($this->calculateInvoiceBalance($sale));
+        foreach ($balances as $bal) {
+            $derivedDebtKobo += self::toKobo($bal);
         }
 
         return self::toNaira($derivedDebtKobo);
