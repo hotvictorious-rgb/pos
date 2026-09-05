@@ -105,12 +105,9 @@ export default function App() {
         lastSync: new Date().toLocaleTimeString()
       });
 
-      // If we just connected or user explicitly refreshed, trigger a sync to ensure data is fresh
+      // Online-only architecture: Laravel backend database is authoritative
       if (isConnected) {
-        setIsSyncing(true);
-        await storage.sync(); // This will push local changes, then pull server updates
-        setIsSyncing(false);
-        setDbStatus(prev => ({ ...prev, synced: !storage.isSyncPending() }));
+        setDbStatus(prev => ({ ...prev, synced: true }));
       }
     } catch (e) {
       setDbStatus(prev => ({ ...prev, connected: false, checking: false }));
@@ -619,18 +616,10 @@ export default function App() {
             {/* Interactive Calculator dropdown */}
             <CalculatorDropdown />
 
-            <button 
-              onClick={() => storage.sync()}
-              disabled={isSyncing}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-tight transition-all shadow-sm border ${
-                isSyncing 
-                  ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' 
-                  : 'bg-indigo-600 text-white border-indigo-500 hover:bg-indigo-700 active:scale-95 cursor-pointer'
-              }`}
-            >
-              <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
-              {isSyncing ? 'Syncing...' : 'Sync Now'}
-            </button>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-tight bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Authoritative Backend
+            </div>
 
             {/* User Profile Mini */}
             <div className="hidden sm:flex items-center gap-3 pl-2 border-l border-slate-200">

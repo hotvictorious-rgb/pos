@@ -19,7 +19,7 @@ class DataController extends Controller
 {
     private function checkAuth()
     {
-        $userId = session('user_id');
+        $userId = session('user_id') ?? \Illuminate\Support\Facades\Auth::id();
         if (!$userId) {
             return null;
         }

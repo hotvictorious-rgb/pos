@@ -1,3 +1,11 @@
+/**
+ * ARCHITECTURAL INVARIANT (Pass 16 Retirement):
+ * VMarket POS is strictly 100% online and authoritative through Laravel PHP.
+ * Client-side shadow ledgers, localStorage mutation, and background offline sync
+ * are permanently retired to prevent financial desynchronization and double-spending.
+ * All mutations MUST be submitted directly to authoritative Laravel endpoints.
+ */
+
 import { Product, Sale, Payment, User, InventoryLog, SalesReturn, Activity, SyncVerificationResult, TableVerification } from '../types';
 
 const STORAGE_KEYS = {
@@ -220,32 +228,44 @@ export const storage = {
   },
 
   getProducts: () => storage.getData<Product>(STORAGE_KEYS.PRODUCTS),
-  saveProducts: (products: Product[]) => storage.saveData(STORAGE_KEYS.PRODUCTS, products),
+  saveProducts: (_products: Product[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side shadow inventory mutation is disabled. Submit all stock changes via authoritative Laravel backend endpoints.");
+  },
 
   getSales: () => storage.getData<Sale>(STORAGE_KEYS.SALES),
-  saveSales: (sales: Sale[]) => storage.saveData(STORAGE_KEYS.SALES, sales),
+  saveSales: (_sales: Sale[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side shadow sales creation is disabled. Submit all POS transactions via authoritative /pos/checkout.");
+  },
 
   getPayments: () => storage.getData<Payment>(STORAGE_KEYS.PAYMENTS),
-  savePayments: (payments: Payment[]) => storage.saveData(STORAGE_KEYS.PAYMENTS, payments),
+  savePayments: (_payments: Payment[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side shadow payment creation is disabled. Record customer debt recoveries via authoritative /debts endpoints.");
+  },
 
   getUsers: () => storage.getData<User>(STORAGE_KEYS.USERS),
-  saveUsers: (users: User[]) => storage.saveData(STORAGE_KEYS.USERS, users),
+  saveUsers: (_users: User[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side user management is disabled. Manage accounts through authoritative /users endpoints.");
+  },
 
   getCustomRoles: (): import('../types').RoleConfig[] => {
     return storage.getData<import('../types').RoleConfig>(STORAGE_KEYS.CUSTOM_ROLES);
   },
-  saveCustomRoles: (roles: import('../types').RoleConfig[]) => {
-    storage.saveData(STORAGE_KEYS.CUSTOM_ROLES, roles);
+  saveCustomRoles: (_roles: import('../types').RoleConfig[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side role modifications are disabled.");
   },
   
   getLogs: () => storage.getData<InventoryLog>(STORAGE_KEYS.LOGS),
-  saveLogs: (logs: InventoryLog[]) => storage.saveData(STORAGE_KEYS.LOGS, logs),
+  saveLogs: (_logs: InventoryLog[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side inventory log creation is disabled.");
+  },
 
   getActivities: () => storage.getData<Activity>(STORAGE_KEYS.ACTIVITIES),
   saveActivities: (activities: Activity[]) => storage.saveData(STORAGE_KEYS.ACTIVITIES, activities),
 
   getReturns: () => storage.getData<SalesReturn>(STORAGE_KEYS.RETURNS),
-  saveReturns: (returns: SalesReturn[]) => storage.saveData(STORAGE_KEYS.RETURNS, returns),
+  saveReturns: (_returns: SalesReturn[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side return processing is disabled. Submit returns via authoritative /pos/returns endpoint.");
+  },
 
   getSettings: (): import('../types').AppSettings => {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
