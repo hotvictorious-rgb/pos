@@ -133,164 +133,138 @@ class PosController extends Controller
      */
     public function checkout(Request $request)
     {
+        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
+        $userId = Auth::id() ?? 'POS-USER-1';
+        $warehouseId = null;
+
         try {
             $request->validate([
-            'warehouse_id' => 'required',
-            'items' => 'required|array|min:1',
-            'items.*.productId' => 'required',
-            'items.*.quantity' => 'required|integer|min:1',
-            'cashAmount' => 'nullable|numeric|min:0',
-            'posAmount' => 'nullable|numeric|min:0',
-            'paidAmount' => 'nullable|numeric|min:0',
-            'is_supplied' => 'required', // 'yes' or 'no'
-        ]);
+                'warehouse_id' => 'required',
+                'items' => 'required|array|min:1',
+                'items.*.productId' => 'required',
+                'items.*.quantity' => 'required|integer|min:1',
+                'cashAmount' => 'nullable|numeric|min:0',
+                'posAmount' => 'nullable|numeric|min:0',
+                'paidAmount' => 'nullable|numeric|min:0',
+                'is_supplied' => 'required', // 'yes' or 'no'
+            ]);
 
-        $cashAmount = max(0.0, (float) ($request->cashAmount ?? 0));
-        $posAmount = max(0.0, (float) ($request->posAmount ?? 0));
-        $transferAmount = 0.0; // Strictly retired
+            $cashAmount = max(0.0, (float) ($request->cashAmount ?? 0));
+            $posAmount = max(0.0, (float) ($request->posAmount ?? 0));
+            $transferAmount = 0.0; // Strictly retired
 
-        $declaredPaid = (float) ($request->paidAmount ?? 0);
-        if ($declaredPaid > 0 && ($cashAmount + $posAmount) < $declaredPaid) {
-            $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$declaredPaid}).";
-            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
-            return back()->withErrors(['error' => $errorMsg])->withInput();
-        }
-
-        // 🔒 Server-Authoritative Financial Evaluation: Calculate catalog pricing & tender FIRST
-        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-        $calc = $accountingService->calculateCheckout(
-            $request->items,
-            [
-                'cashAmount' => $cashAmount,
-                'posAmount' => $posAmount,
-            ],
-            'RETAIL'
-        );
-
-        $grossTotal = $calc['grossTotal'];
-        $paidAmount = $calc['paidAmount'];
-        $outstandingDebt = $calc['outstandingDebt'];
-        $hasDebt = ($outstandingDebt > 0.01);
-
-        $authUser = Auth::user();
-        if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
-            $errorMsg = '🔒 Unauthorized: You are not assigned to any branch location and cannot process sales.';
-            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
-            return back()->withErrors(['error' => $errorMsg])->withInput();
-        }
-
-        if ($authUser && $authUser->isBranchScoped()) {
-            $warehouseId = (int) $authUser->warehouse_id;
-        } else {
-            $warehouseId = (int) $request->warehouse_id;
-            if ($authUser && !$authUser->canAccessWarehouse($warehouseId)) {
-                $errorMsg = '🔒 Unauthorized: You cannot process checkout for an unassigned branch!';
-                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
-                return back()->withErrors(['error' => $errorMsg])->withInput();
-            }
-        }
-        $isSuppliedNow = in_array(strtolower($request->is_supplied), ['1', 'yes', 'true', 'on']);
-        $userId = Auth::id() ?? 'POS-USER-1';
-        $userName = Auth::user()->name ?? 'Sales Officer';
-
-        $totalAmount = $grossTotal; // Authoritative catalog pricing replaces any client input
-        $isNotSupplied = !$isSuppliedNow;
-
-        $customerId = $request->customerId ? (int) $request->customerId : null;
-        $customerPhone = preg_replace('/[\s\-\(\)\+]/', '', trim($request->customerPhone ?? ''));
-        if (str_starts_with($customerPhone, '234') && strlen($customerPhone) === 13) {
-            $customerPhone = '0' . substr($customerPhone, 3);
-        }
-        $request->merge(['customerPhone' => $customerPhone]);
-
-        if (!empty($customerPhone) && !preg_match('/^0\d{10}$/', $customerPhone)) {
-            $errorMsg = "Customer phone number must be exactly 11 digits (e.g. 08031234567).";
-            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
-            return back()->withErrors(['error' => $errorMsg])->withInput();
-        }
-
-        $customerName = trim($request->customerName ?? '');
-
-        // 🔒 ZERO BYPASS RULE FOR DEBT & PICKUP ORDERS (Evaluated using authoritative server debt)
-        if ($hasDebt || $isNotSupplied) {
-            $reason = $hasDebt ? 'Credit / Part-Payment' : 'Delayed Pickup (Not Supplied)';
-
-            if ((empty($customerPhone) || !preg_match('/^0\d{10}$/', $customerPhone)) && empty($customerId)) {
-                $errorMsg = "🔒 Exactly 11-digit Phone Number (e.g. 08031234567) & Registered Customer required for {$reason}! Walk-in Customer cannot take credit or delayed pickup.";
+            $declaredPaid = (float) ($request->paidAmount ?? 0);
+            if ($declaredPaid > 0 && ($cashAmount + $posAmount) < $declaredPaid) {
+                $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$declaredPaid}).";
                 if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
                 return back()->withErrors(['error' => $errorMsg])->withInput();
             }
 
-            if (empty($customerName) || strtolower($customerName) === 'walk-in customer') {
-                if (!empty($customerPhone)) {
-                    $existing = Customer::where('phone', $customerPhone)->first();
-                    if ($existing) {
-                        $customerName = $existing->name;
-                        $customerId = $existing->id;
+            // 🔒 Server-Authoritative Financial Evaluation: Calculate catalog pricing & tender FIRST
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            $calc = $accountingService->calculateCheckout(
+                $request->items,
+                [
+                    'cashAmount' => $cashAmount,
+                    'posAmount' => $posAmount,
+                ],
+                'RETAIL'
+            );
+
+            $grossTotal = $calc['grossTotal'];
+            $paidAmount = $calc['paidAmount'];
+            $outstandingDebt = $calc['outstandingDebt'];
+            $hasDebt = ($outstandingDebt > 0.01);
+
+            $authUser = Auth::user();
+            if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
+                $errorMsg = '🔒 Unauthorized: You are not assigned to any branch location and cannot process sales.';
+                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
+                return back()->withErrors(['error' => $errorMsg])->withInput();
+            }
+
+            if ($authUser && $authUser->isBranchScoped()) {
+                $warehouseId = (int) $authUser->warehouse_id;
+            } else {
+                $warehouseId = (int) $request->warehouse_id;
+                if ($authUser && !$authUser->canAccessWarehouse($warehouseId)) {
+                    $errorMsg = '🔒 Unauthorized: You cannot process checkout for an unassigned branch!';
+                    if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 403);
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+            }
+            $isSuppliedNow = in_array(strtolower($request->is_supplied), ['1', 'yes', 'true', 'on']);
+            $userId = Auth::id() ?? 'POS-USER-1';
+            $userName = Auth::user()->name ?? 'Sales Officer';
+
+            $totalAmount = $grossTotal; // Authoritative catalog pricing replaces any client input
+            $isNotSupplied = !$isSuppliedNow;
+
+            $customerId = $request->customerId ? (int) $request->customerId : null;
+            $customerPhone = preg_replace('/[\s\-\(\)\+]/', '', trim($request->customerPhone ?? ''));
+            if (str_starts_with($customerPhone, '234') && strlen($customerPhone) === 13) {
+                $customerPhone = '0' . substr($customerPhone, 3);
+            }
+            $request->merge(['customerPhone' => $customerPhone]);
+
+            if (!empty($customerPhone) && !preg_match('/^0\d{10}$/', $customerPhone)) {
+                $errorMsg = "Customer phone number must be exactly 11 digits (e.g. 08031234567).";
+                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                return back()->withErrors(['error' => $errorMsg])->withInput();
+            }
+
+            $customerName = trim($request->customerName ?? '');
+
+            // 🔒 ZERO BYPASS RULE FOR DEBT & PICKUP ORDERS (Evaluated using authoritative server debt)
+            if ($hasDebt || $isNotSupplied) {
+                $reason = $hasDebt ? 'Credit / Part-Payment' : 'Delayed Pickup (Not Supplied)';
+
+                if ((empty($customerPhone) || !preg_match('/^0\d{10}$/', $customerPhone)) && empty($customerId)) {
+                    $errorMsg = "🔒 Exactly 11-digit Phone Number (e.g. 08031234567) & Registered Customer required for {$reason}! Walk-in Customer cannot take credit or delayed pickup.";
+                    if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+
+                if (empty($customerName) || strtolower($customerName) === 'walk-in customer') {
+                    if (!empty($customerPhone)) {
+                        $existing = Customer::where('phone', $customerPhone)->first();
+                        if ($existing) {
+                            $customerName = $existing->name;
+                            $customerId = $existing->id;
+                        } else {
+                            $errorMsg = "🔒 Customer Name and Phone Number are required for {$reason}.";
+                            if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                            return back()->withErrors(['error' => $errorMsg])->withInput();
+                        }
                     } else {
                         $errorMsg = "🔒 Customer Name and Phone Number are required for {$reason}.";
                         if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
                         return back()->withErrors(['error' => $errorMsg])->withInput();
                     }
-                } else {
-                    $errorMsg = "🔒 Customer Name and Phone Number are required for {$reason}.";
-                    if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
-                    return back()->withErrors(['error' => $errorMsg])->withInput();
                 }
             }
-        }
 
-        // Resolve or create customer record
-        $customer = null;
-        if ($customerId) {
-            $customer = Customer::find($customerId);
-        }
-        if (!$customer && !empty($customerPhone)) {
-            $customer = Customer::where('phone', $customerPhone)->first();
-        }
-        if (!$customer && !empty($customerName) && strtolower($customerName) !== 'walk-in customer' && !empty($customerPhone)) {
-            $customer = Customer::create([
-                'name' => $customerName,
-                'phone' => $customerPhone,
-                'address' => $request->customerAddress ?? null,
-                'total_debt' => 0,
-            ]);
-        }
+            $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('sale_id');
 
-        if ($customer) {
-            $customerId = $customer->id;
-            $customerName = $customer->name;
-            $customerPhone = $customer->phone;
-        }
+            if (empty($idempotencyKey)) {
+                if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                    return response()->json(['success' => false, 'error' => 'Idempotency key is required for POS checkout.'], 422);
+                }
+                $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+            }
 
-        $saleData = [
-            'totalAmount' => $grossTotal,
-            'paidAmount' => $paidAmount,
-            'cashAmount' => $cashAmount,
-            'posAmount' => $posAmount,
-            'transferAmount' => 0.0,
-            'customerName' => $customerName ?: 'Walk-in Customer',
-            'customerPhone' => $customerPhone ?: null,
-            'customerId' => $customerId,
-            'sale_type' => 'RETAIL', // Strictly forced: Client cannot select privileged wholesale mode at retail checkout
-            'note' => $request->note,
-        ];
+            $idempotencyPayload = [
+                'warehouse_id' => $warehouseId,
+                'items' => $request->items,
+                'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
+                'cashAmount' => (float) ($request->cashAmount ?? 0),
+                'posAmount' => (float) ($request->posAmount ?? 0),
+                'transferAmount' => (float) ($request->transferAmount ?? 0),
+                'customerId' => $customerId,
+                'customerPhone' => $customerPhone,
+                'is_supplied' => $isSuppliedNow,
+            ];
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('sale_id');
-        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
-
-        $idempotencyPayload = [
-            'warehouse_id' => $warehouseId,
-            'items' => $request->items,
-            'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
-            'cashAmount' => (float) ($request->cashAmount ?? 0),
-            'posAmount' => (float) ($request->posAmount ?? 0),
-            'transferAmount' => (float) ($request->transferAmount ?? 0),
-            'customerId' => $customerId,
-            'is_supplied' => $isSuppliedNow,
-        ];
-
-        if (!empty($idempotencyKey)) {
             $idempotencyService = app(\App\Services\IdempotencyService::class);
             $sale = $idempotencyService->execute(
                 'pos_checkout',
@@ -298,13 +272,50 @@ class PosController extends Controller
                 (string) $tenantId,
                 (string) $userId,
                 $idempotencyPayload,
-                function () use ($saleData, $request, $warehouseId, $isSuppliedNow, $userId, $userName) {
+                function () use ($customerId, $customerPhone, $customerName, $grossTotal, $paidAmount, $cashAmount, $posAmount, $request, $warehouseId, $isSuppliedNow, $userId, $userName) {
+                    // Resolve or create customer record strictly INSIDE transactional idempotency boundary
+                    $resolvedCustomerId = $customerId;
+                    $resolvedCustomerName = $customerName;
+                    $resolvedCustomerPhone = $customerPhone;
+
+                    $customer = null;
+                    if ($resolvedCustomerId) {
+                        $customer = Customer::find($resolvedCustomerId);
+                    }
+                    if (!$customer && !empty($resolvedCustomerPhone)) {
+                        $customer = Customer::where('phone', $resolvedCustomerPhone)->first();
+                    }
+                    if (!$customer && !empty($resolvedCustomerName) && strtolower($resolvedCustomerName) !== 'walk-in customer' && !empty($resolvedCustomerPhone)) {
+                        $customer = Customer::create([
+                            'name' => $resolvedCustomerName,
+                            'phone' => $resolvedCustomerPhone,
+                            'address' => $request->customerAddress ?? null,
+                            'total_debt' => 0,
+                        ]);
+                    }
+
+                    if ($customer) {
+                        $resolvedCustomerId = $customer->id;
+                        $resolvedCustomerName = $customer->name;
+                        $resolvedCustomerPhone = $customer->phone;
+                    }
+
+                    $saleData = [
+                        'totalAmount' => $grossTotal,
+                        'paidAmount' => $paidAmount,
+                        'cashAmount' => $cashAmount,
+                        'posAmount' => $posAmount,
+                        'transferAmount' => 0.0,
+                        'customerName' => $resolvedCustomerName ?: 'Walk-in Customer',
+                        'customerPhone' => $resolvedCustomerPhone ?: null,
+                        'customerId' => $resolvedCustomerId,
+                        'sale_type' => 'RETAIL', // Strictly forced: Client cannot select privileged wholesale mode at retail checkout
+                        'note' => $request->note,
+                    ];
+
                     return $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
                 }
             );
-        } else {
-            $sale = $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
-        }
 
             if ($request->wantsJson()) {
                 return response()->json([
@@ -316,11 +327,23 @@ class PosController extends Controller
             }
 
             return redirect()->route('pos.receipt', $sale->id)->with('success', 'Sale recorded successfully!');
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
             if ($request->wantsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
             }
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("POS Checkout failed: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'warehouse_id' => $warehouseId,
+            ]);
+            $msg = $e->getMessage() ?: 'Unable to complete sale transaction. Please check product stock or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         }
     }
 
@@ -473,42 +496,61 @@ class PosController extends Controller
             'refund_method' => $request->refund_method,
         ];
 
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                return response()->json(['success' => false, 'error' => 'Idempotency key is required for processing returns.'], 422);
+            }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
         try {
-            if (!empty($idempotencyKey)) {
-                $idempotencyService = app(\App\Services\IdempotencyService::class);
-                $salesReturn = $idempotencyService->execute(
-                    'pos_return',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    $idempotencyPayload,
-                    function () use ($request, $warehouseId, $userId, $userName) {
-                        return $this->stockService->recordSaleReturn(
-                            $request->sale_id,
-                            $request->items,
-                            $warehouseId,
-                            $request->refund_method,
-                            $request->reason,
-                            $userId,
-                            $userName
-                        );
-                    }
-                );
-            } else {
-                $salesReturn = $this->stockService->recordSaleReturn(
-                    $request->sale_id,
-                    $request->items,
-                    $warehouseId,
-                    $request->refund_method,
-                    $request->reason,
-                    $userId,
-                    $userName
-                );
+            $idempotencyService = app(\App\Services\IdempotencyService::class);
+            $salesReturn = $idempotencyService->execute(
+                'pos_return',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $idempotencyPayload,
+                function () use ($request, $warehouseId, $userId, $userName) {
+                    return $this->stockService->recordSaleReturn(
+                        $request->sale_id,
+                        $request->items,
+                        $warehouseId,
+                        $request->refund_method,
+                        $request->reason,
+                        $userId,
+                        $userName
+                    );
+                }
+            );
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Return #{$salesReturn->code} processed successfully!",
+                    'returnId' => $salesReturn->id,
+                    'code' => $salesReturn->code,
+                ]);
             }
 
             return redirect()->route('pos.returns')->with('success', "✓ Return #{$salesReturn->code} processed! Items restored to physical closing stock.");
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("POS Return failed for sale {$request->sale_id}: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'warehouse_id' => $warehouseId,
+            ]);
+            $msg = 'Unable to process sales return. Please verify item quantities or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg]);
         }
     }
 }

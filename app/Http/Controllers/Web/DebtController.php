@@ -174,6 +174,7 @@ class DebtController extends Controller
 
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Cashier';
+        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         $idempotencyPayload = [
             'customerId' => (int) $customerId,
@@ -186,44 +187,62 @@ class DebtController extends Controller
             ?? $request->input('idempotency_key')
             ?? $request->input('reference_no');
 
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                return response()->json(['success' => false, 'error' => 'Idempotency key is required for debt payment.'], 422);
+            }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
         try {
-            if (!empty($idempotencyKey)) {
-                $idempotencyService = app(\App\Services\IdempotencyService::class);
-                $ledger = $idempotencyService->execute(
-                    'debt_payment',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    $idempotencyPayload,
-                    function () use ($customerId, $request, $userId, $userName, $warehouseId) {
-                        return $this->stockService->recordCustomerPayment(
-                            (int) $customerId,
-                            (float) $request->amount,
-                            $request->payment_method,
-                            $request->reference_no,
-                            $userId,
-                            $userName,
-                            $request->notes,
-                            $warehouseId
-                        );
-                    }
-                );
-            } else {
-                $ledger = $this->stockService->recordCustomerPayment(
-                    (int) $customerId,
-                    (float) $request->amount,
-                    $request->payment_method,
-                    $request->reference_no,
-                    $userId,
-                    $userName,
-                    $request->notes,
-                    $warehouseId
-                );
+            $idempotencyService = app(\App\Services\IdempotencyService::class);
+            $ledger = $idempotencyService->execute(
+                'debt_payment',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $idempotencyPayload,
+                function () use ($customerId, $request, $userId, $userName, $warehouseId) {
+                    return $this->stockService->recordCustomerPayment(
+                        (int) $customerId,
+                        (float) $request->amount,
+                        $request->payment_method,
+                        $request->reference_no,
+                        $userId,
+                        $userName,
+                        $request->notes,
+                        $warehouseId
+                    );
+                }
+            );
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Payment successfully credited to customer ledger!',
+                    'ledgerId' => $ledger->id ?? null,
+                    'balance_after' => $ledger->balance_after ?? null,
+                ]);
             }
 
             return redirect()->route('debts.index')->with('success', "✓ Payment of ₦" . number_format($request->amount, 2) . " successfully credited to customer ledger!");
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Debt payment failed for customer {$customerId}: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'customer_id' => $customerId,
+            ]);
+            $msg = 'Unable to process debt payment. Please check your network or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         }
     }
 }

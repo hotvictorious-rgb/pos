@@ -260,7 +260,9 @@ export const storage = {
   },
 
   getActivities: () => storage.getData<Activity>(STORAGE_KEYS.ACTIVITIES),
-  saveActivities: (activities: Activity[]) => storage.saveData(STORAGE_KEYS.ACTIVITIES, activities),
+  saveActivities: (_activities: Activity[]) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side activity writes are disabled. All audit events are generated authoritatively on the backend.");
+  },
 
   getReturns: () => storage.getData<SalesReturn>(STORAGE_KEYS.RETURNS),
   saveReturns: (_returns: SalesReturn[]) => {
@@ -271,13 +273,8 @@ export const storage = {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     return data ? JSON.parse(data) : INITIAL_SETTINGS;
   },
-  saveSettings: (settings: import('../types').AppSettings) => {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-    storage.setSyncPending(true);
-    triggerDebouncedSync();
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('hysam-settings-updated', { detail: settings }));
-    }
+  saveSettings: (_settings: import('../types').AppSettings) => {
+    throw new Error("DEPRECATED & DISABLED: Client-side settings modifications are disabled. Update business settings via authoritative /settings endpoints.");
   },
 
   logActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => {

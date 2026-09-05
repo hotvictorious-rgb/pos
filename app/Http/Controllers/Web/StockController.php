@@ -187,42 +187,56 @@ class StockController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                return response()->json(['success' => false, 'error' => 'Idempotency key is required for stock in.'], 422);
+            }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
         try {
-            if (!empty($idempotencyKey)) {
-                $idempotencyService = app(IdempotencyService::class);
-                $idempotencyService->execute(
-                    'stock_in',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    $request->all(),
-                    function () use ($request, $warehouseId, $userId, $userName) {
-                        return $this->stockService->recordStockIn(
-                            $request->product_id,
-                            $warehouseId,
-                            (int) $request->quantity,
-                            $request->supplier_name,
-                            $userId,
-                            $userName,
-                            $request->notes
-                        );
-                    }
-                );
-            } else {
-                $this->stockService->recordStockIn(
-                    $request->product_id,
-                    $warehouseId,
-                    (int) $request->quantity,
-                    $request->supplier_name,
-                    $userId,
-                    $userName,
-                    $request->notes
-                );
+            $idempotencyService = app(IdempotencyService::class);
+            $idempotencyService->execute(
+                'stock_in',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $request->all(),
+                function () use ($request, $warehouseId, $userId, $userName) {
+                    return $this->stockService->recordStockIn(
+                        $request->product_id,
+                        $warehouseId,
+                        (int) $request->quantity,
+                        $request->supplier_name,
+                        $userId,
+                        $userName,
+                        $request->notes
+                    );
+                }
+            );
+
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => 'Stock In recorded successfully! Physical count increased.']);
             }
 
             return redirect()->route('stock.index')->with('success', '✓ Stock In recorded successfully! Physical count increased.');
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Stock In failed: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'warehouse_id' => $warehouseId,
+            ]);
+            $msg = 'Unable to record stock arrival. Please check details or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         }
     }
 
@@ -267,42 +281,61 @@ class StockController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                return response()->json(['success' => false, 'error' => 'Idempotency key is required for transfer dispatch.'], 422);
+            }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
         try {
-            if (!empty($idempotencyKey)) {
-                $idempotencyService = app(IdempotencyService::class);
-                $transfer = $idempotencyService->execute(
-                    'transfer_out',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    $request->all(),
-                    function () use ($sourceWarehouseId, $destWarehouseId, $request, $userId, $userName) {
-                        return $this->stockService->initiateTransfer(
-                            $sourceWarehouseId,
-                            $destWarehouseId,
-                            $request->items,
-                            $request->carrier_name,
-                            $userId,
-                            $userName,
-                            $request->notes
-                        );
-                    }
-                );
-            } else {
-                $transfer = $this->stockService->initiateTransfer(
-                    $sourceWarehouseId,
-                    $destWarehouseId,
-                    $request->items,
-                    $request->carrier_name,
-                    $userId,
-                    $userName,
-                    $request->notes
-                );
+            $idempotencyService = app(IdempotencyService::class);
+            $transfer = $idempotencyService->execute(
+                'transfer_out',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $request->all(),
+                function () use ($sourceWarehouseId, $destWarehouseId, $request, $userId, $userName) {
+                    return $this->stockService->initiateTransfer(
+                        $sourceWarehouseId,
+                        $destWarehouseId,
+                        $request->items,
+                        $request->carrier_name,
+                        $userId,
+                        $userName,
+                        $request->notes
+                    );
+                }
+            );
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Transfer #{$transfer->transfer_no} dispatched successfully!",
+                    'transferId' => $transfer->id,
+                    'transfer_no' => $transfer->transfer_no,
+                ]);
             }
 
             return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Transfer Out failed: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'source_warehouse_id' => $sourceWarehouseId,
+            ]);
+            $msg = 'Unable to dispatch transfer. Please verify inventory levels or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         }
     }
 
@@ -329,42 +362,61 @@ class StockController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
-        try {
-            if (!empty($idempotencyKey)) {
-                $idempotencyService = app(IdempotencyService::class);
-                $transfer = $idempotencyService->execute(
-                    'transfer_in',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    $request->all(),
-                    function () use ($id, $request, $userId, $userName) {
-                        return $this->stockService->receiveTransfer(
-                            (int) $id,
-                            $request->counted_items,
-                            $userId,
-                            $userName,
-                            $request->discrepancy_notes
-                        );
-                    }
-                );
-            } else {
-                $transfer = $this->stockService->receiveTransfer(
-                    (int) $id,
-                    $request->counted_items,
-                    $userId,
-                    $userName,
-                    $request->discrepancy_notes
-                );
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                return response()->json(['success' => false, 'error' => 'Idempotency key is required for receiving transfers.'], 422);
             }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
+        try {
+            $idempotencyService = app(IdempotencyService::class);
+            $transfer = $idempotencyService->execute(
+                'transfer_in',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $request->all(),
+                function () use ($id, $request, $userId, $userName) {
+                    return $this->stockService->receiveTransfer(
+                        (int) $id,
+                        $request->counted_items,
+                        $userId,
+                        $userName,
+                        $request->discrepancy_notes
+                    );
+                }
+            );
 
             if ($transfer->status === 'DISCREPANCY') {
+                if ($request->wantsJson()) {
+                    return response()->json(['success' => true, 'warning' => 'Transfer Received with DISCREPANCY! Missing items flagged to Auditor.']);
+                }
                 return redirect()->route('stock.transfers')->with('warning', "⚠️ Transfer Received with DISCREPANCY! Missing items flagged to Auditor.");
             }
 
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => "Transfer #{$transfer->transfer_no} successfully verified and added to shop physical count!"]);
+            }
+
             return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} successfully verified and added to shop physical count!");
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Transfer In failed for transfer {$id}: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'transfer_id' => $id,
+            ]);
+            $msg = 'Unable to receive transfer. Please check physical counts or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg]);
         }
     }
 
@@ -387,36 +439,53 @@ class StockController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                return response()->json(['success' => false, 'error' => 'Idempotency key is required for recalling transfers.'], 422);
+            }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
         try {
-            if (!empty($idempotencyKey)) {
-                $idempotencyService = app(IdempotencyService::class);
-                $transfer = $idempotencyService->execute(
-                    'transfer_recall',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    $request->all(),
-                    function () use ($id, $userId, $userName, $request) {
-                        return $this->stockService->recallTransfer(
-                            (int) $id,
-                            $userId,
-                            $userName,
-                            $request->reason ?? 'Cancelled by source branch'
-                        );
-                    }
-                );
-            } else {
-                $transfer = $this->stockService->recallTransfer(
-                    (int) $id,
-                    $userId,
-                    $userName,
-                    $request->reason ?? 'Cancelled by source branch'
-                );
+            $idempotencyService = app(IdempotencyService::class);
+            $transfer = $idempotencyService->execute(
+                'transfer_recall',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $request->all(),
+                function () use ($id, $userId, $userName, $request) {
+                    return $this->stockService->recallTransfer(
+                        (int) $id,
+                        $userId,
+                        $userName,
+                        $request->reason ?? 'Cancelled by source branch'
+                    );
+                }
+            );
+
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => "Transfer #{$transfer->transfer_no} has been cancelled!"]);
             }
 
             return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} has been cancelled! All items have been restored to your shop physical inventory.");
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Recall Transfer failed for transfer {$id}: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'transfer_id' => $id,
+            ]);
+            $msg = 'Unable to recall transfer. Please verify transfer status or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg]);
         }
     }
 
@@ -600,26 +669,52 @@ class StockController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                return response()->json(['success' => false, 'error' => 'Idempotency key is required for confirming goods dispatch.'], 422);
+            }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
         try {
-            if (!empty($idempotencyKey)) {
-                $idempotencyService = app(IdempotencyService::class);
-                $idempotencyService->execute(
-                    'stock_dispatch',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    $request->all(),
-                    function () use ($saleId, $warehouseId, $userId, $userName) {
-                        return $this->stockService->dispatchUnsuppliedSale($saleId, $warehouseId, $userId, $userName);
-                    }
-                );
-            } else {
-                $this->stockService->dispatchUnsuppliedSale($saleId, $warehouseId, $userId, $userName);
+            $idempotencyService = app(IdempotencyService::class);
+            $dispatchedSale = $idempotencyService->execute(
+                'stock_dispatch',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $request->all(),
+                function () use ($saleId, $warehouseId, $userId, $userName) {
+                    return $this->stockService->dispatchUnsuppliedSale($saleId, $warehouseId, $userId, $userName);
+                }
+            );
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Goods officially handed over to customer! Physical closing stock updated.',
+                    'saleId' => $saleId,
+                ]);
             }
 
             return back()->with('success', '✓ Goods officially handed over to customer! Physical closing stock updated.');
-        } catch (\Throwable $e) {
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Goods dispatch failed for sale {$saleId}: " . $e->getMessage(), [
+                'exception' => $e,
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
+                'sale_id' => $saleId,
+            ]);
+            $msg = 'Unable to confirm goods handover. Please check order status or contact support.';
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg]);
         }
     }
 

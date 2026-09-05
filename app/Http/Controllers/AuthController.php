@@ -43,9 +43,23 @@ class AuthController extends Controller
         }
 
         $tenantId = $user->tenant_id;
-        if (config('saas.enabled') && empty($tenantId)) {
-            $this->hitRateLimit($request, $email);
-            return response()->json(['error' => 'Account is not assigned to an active business tenant.'], 403);
+        if (config('saas.enabled')) {
+            if (empty($tenantId)) {
+                $this->hitRateLimit($request, $email);
+                return response()->json(['error' => 'Account is not assigned to an active business tenant.'], 403);
+            }
+
+            if ($tenantId !== 'default-tenant') {
+                $tenant = Tenant::find($tenantId);
+                if (!$tenant) {
+                    $this->hitRateLimit($request, $email);
+                    return response()->json(['error' => 'Your business account was not found. Please contact support.'], 403);
+                }
+                if (!$tenant->isActive()) {
+                    $this->hitRateLimit($request, $email);
+                    return response()->json(['error' => 'Your business subscription has expired or been suspended.'], 403);
+                }
+            }
         }
 
         $this->clearRateLimit($request, $email);
@@ -104,9 +118,23 @@ class AuthController extends Controller
         }
 
         $tenantId = $user->tenant_id;
-        if (config('saas.enabled') && empty($tenantId)) {
-            $this->hitRateLimit($request, $email);
-            return back()->withInput()->with('error', 'Account is not assigned to an active business tenant. Please contact support.');
+        if (config('saas.enabled')) {
+            if (empty($tenantId)) {
+                $this->hitRateLimit($request, $email);
+                return back()->withInput()->with('error', 'Account is not assigned to an active business tenant. Please contact support.');
+            }
+
+            if ($tenantId !== 'default-tenant') {
+                $tenant = Tenant::find($tenantId);
+                if (!$tenant) {
+                    $this->hitRateLimit($request, $email);
+                    return back()->withInput()->with('error', 'Your business account was not found. Please contact support.');
+                }
+                if (!$tenant->isActive()) {
+                    $this->hitRateLimit($request, $email);
+                    return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
+                }
+            }
         }
 
         $this->clearRateLimit($request, $email);

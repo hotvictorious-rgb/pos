@@ -107,6 +107,12 @@ class BackupController extends Controller
                 return response()->json(['error' => 'Forbidden: platform.backup capability required.'], 403);
             }
             $backup = self::generatePlatformBackup($user->name, $user);
+            Activity::recordSecurityEvent('BACKUP_CREATED', "Platform administrator {$user->name} created infrastructure backup #{$backup->id}", [
+                'backup_id' => $backup->id,
+                'type' => $backup->type,
+                'checksum' => $backup->checksum,
+                'size' => $backup->size,
+            ], $user);
             return response()->json($backup);
         }
 
@@ -116,6 +122,13 @@ class BackupController extends Controller
             }
             $tenantId = session('tenant_id') ?? $user->tenant_id;
             $backup = self::generateTenantBackup($user->name, $user, $tenantId);
+            Activity::recordSecurityEvent('BACKUP_CREATED', "Tenant user {$user->name} created business backup #{$backup->id}", [
+                'backup_id' => $backup->id,
+                'tenant_id' => $tenantId,
+                'type' => $backup->type,
+                'checksum' => $backup->checksum,
+                'size' => $backup->size,
+            ], $user);
             return response()->json($backup);
         }
 
@@ -167,6 +180,14 @@ class BackupController extends Controller
             return response()->json(['error' => 'Backup file missing from storage.'], 404);
         }
 
+        Activity::recordSecurityEvent('BACKUP_DOWNLOADED', "User {$user->name} downloaded backup snapshot #{$backup->id} ({$backup->filename})", [
+            'backup_id' => $backup->id,
+            'filename' => $backup->filename,
+            'type' => $backup->type,
+            'checksum' => $backup->checksum,
+            'tenant_id' => $backup->tenant_id,
+        ], $user);
+
         return Storage::disk('local')->download($path);
     }
 
@@ -203,6 +224,14 @@ class BackupController extends Controller
         } else {
             return response()->json(['error' => 'Forbidden.'], 403);
         }
+
+        Activity::recordSecurityEvent('BACKUP_DELETED', "User {$user->name} deleted backup snapshot #{$backup->id} ({$backup->filename})", [
+            'backup_id' => $backup->id,
+            'filename' => $backup->filename,
+            'type' => $backup->type,
+            'checksum' => $backup->checksum,
+            'tenant_id' => $backup->tenant_id,
+        ], $user);
 
         $path = 'backups/' . $backup->filename;
         if (Storage::disk('local')->exists($path)) {
@@ -272,6 +301,15 @@ class BackupController extends Controller
         if (isset($result['error'])) {
             return response()->json($result, 400);
         }
+
+        Activity::recordSecurityEvent('BACKUP_RESTORED', "User {$user->name} executed database restoration from backup #{$backup->id} ({$backup->filename})", [
+            'backup_id' => $backup->id,
+            'filename' => $backup->filename,
+            'type' => $backup->type,
+            'checksum' => $backup->checksum,
+            'tenant_id' => $backup->tenant_id,
+            'result' => $result,
+        ], $user);
 
         return response()->json(['status' => 'ok', 'message' => 'System successfully restored to backup point.']);
     }

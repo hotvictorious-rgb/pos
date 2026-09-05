@@ -10,6 +10,7 @@ use App\Models\Backup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class SettingController extends Controller
@@ -131,21 +132,6 @@ class SettingController extends Controller
 
         $tenantId = session('tenant_id') ?? 'default-tenant';
 
-        // Enforce SaaS Subscription Branch Limit
-        if (config('saas.enabled')) {
-            $tenant = \App\Models\Tenant::find($tenantId);
-            if ($tenant && $tenant->max_branches !== null) {
-                $currentBranches = Warehouse::count();
-                if ($currentBranches >= $tenant->max_branches) {
-                    $errorMsg = "🔒 Subscription Limit Reached: Your current plan allows a maximum of {$tenant->max_branches} branch location(s). Please upgrade your subscription to add more branches.";
-                    if ($request->wantsJson()) {
-                        return response()->json(['success' => false, 'error' => $errorMsg], 422);
-                    }
-                    return back()->withErrors(['error' => $errorMsg])->withInput();
-                }
-            }
-        }
-
         $request->validate([
             'name' => 'required|string|max:100',
             'code' => ['required', 'string', \Illuminate\Validation\Rule::unique('warehouses', 'code')->where('tenant_id', $tenantId)],
@@ -154,17 +140,45 @@ class SettingController extends Controller
             'manager_name' => 'nullable|string',
         ]);
 
-        Warehouse::create([
-            'tenant_id' => $tenantId,
-            'name' => $request->name,
-            'code' => strtoupper($request->code),
-            'address' => $request->address,
-            'phone' => $request->phone,
-            'manager_name' => $request->manager_name,
-            'is_active' => true,
-        ]);
+        try {
+            $warehouse = DB::transaction(function () use ($tenantId, $request) {
+                // Enforce SaaS Subscription Branch Limit with pessimistic row locking
+                if (config('saas.enabled')) {
+                    $tenant = \App\Models\Tenant::where('id', $tenantId)->lockForUpdate()->first();
+                    if ($tenant && $tenant->max_branches !== null) {
+                        $currentBranches = Warehouse::count();
+                        if ($currentBranches >= $tenant->max_branches) {
+                            throw new \DomainException("🔒 Subscription Limit Reached: Your current plan allows a maximum of {$tenant->max_branches} branch location(s). Please upgrade your subscription to add more branches.");
+                        }
+                    }
+                }
 
-        return redirect()->route('settings.index')->with('success', "✓ Branch shop '{$request->name}' added successfully!");
+                return Warehouse::create([
+                    'tenant_id' => $tenantId,
+                    'name' => $request->name,
+                    'code' => strtoupper($request->code),
+                    'address' => $request->address,
+                    'phone' => $request->phone,
+                    'manager_name' => $request->manager_name,
+                    'is_active' => true,
+                ]);
+            });
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Branch shop '{$warehouse->name}' added successfully!",
+                    'warehouseId' => $warehouse->id,
+                ]);
+            }
+
+            return redirect()->route('settings.index')->with('success', "✓ Branch shop '{$warehouse->name}' added successfully!");
+        } catch (\DomainException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
+            return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        }
     }
 
     /**

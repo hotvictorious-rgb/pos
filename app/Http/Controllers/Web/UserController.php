@@ -9,6 +9,7 @@ use App\Models\Activity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class UserController extends Controller
@@ -35,23 +36,6 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        $tenantId = session('tenant_id') ?? 'default-tenant';
-
-        // Enforce SaaS Subscription Worker Account Limit
-        if (config('saas.enabled')) {
-            $tenant = \App\Models\Tenant::find($tenantId);
-            if ($tenant && $tenant->max_users !== null) {
-                $currentUsers = User::count();
-                if ($currentUsers >= $tenant->max_users) {
-                    $errorMsg = "🔒 Subscription Limit Reached: Your current plan allows a maximum of {$tenant->max_users} worker account(s). Please upgrade your subscription to add more staff.";
-                    if ($request->wantsJson()) {
-                        return response()->json(['success' => false, 'error' => $errorMsg], 422);
-                    }
-                    return back()->withErrors(['error' => $errorMsg])->withInput();
-                }
-            }
-        }
-
         $request->validate([
             'name' => 'required|string|max:100',
             'email' => 'required|email|unique:users,email',
@@ -170,27 +154,59 @@ class UserController extends Controller
             ],
         };
 
-        $user = User::create([
-            'id' => $userId,
-            'name' => $request->name,
-            'email' => strtolower(trim($request->email)),
-            'password' => Hash::make($request->password),
-            'role' => $role,
-            'warehouse_id' => $warehouseId,
-            'disabled' => false,
-            'permissions' => $permissions,
-        ]);
+        $tenantId = session('tenant_id') ?? 'default-tenant';
 
-        Activity::create([
-            'id' => (string) Str::uuid(),
-            'type' => 'USER_CREATED',
-            'description' => "{$creatorName} created worker account for {$user->name} with role: {$role}",
-            'userId' => Auth::id() ?? 'ADMIN',
-            'userName' => $creatorName,
-            'timestamp' => now()->toIso8601String(),
-        ]);
+        try {
+            $user = DB::transaction(function () use ($tenantId, $userId, $request, $role, $warehouseId, $permissions, $creatorName) {
+                // Enforce SaaS Subscription Worker Account Limit with pessimistic row locking
+                if (config('saas.enabled')) {
+                    $tenant = \App\Models\Tenant::where('id', $tenantId)->lockForUpdate()->first();
+                    if ($tenant && $tenant->max_users !== null) {
+                        $currentUsers = User::count();
+                        if ($currentUsers >= $tenant->max_users) {
+                            throw new \DomainException("🔒 Subscription Limit Reached: Your current plan allows a maximum of {$tenant->max_users} worker account(s). Please upgrade your subscription to add more staff.");
+                        }
+                    }
+                }
 
-        return redirect()->route('users.index')->with('success', "✓ Worker account for {$user->name} created successfully!");
+                $createdUser = User::create([
+                    'id' => $userId,
+                    'name' => $request->name,
+                    'email' => strtolower(trim($request->email)),
+                    'password' => Hash::make($request->password),
+                    'role' => $role,
+                    'warehouse_id' => $warehouseId,
+                    'disabled' => false,
+                    'permissions' => $permissions,
+                ]);
+
+                Activity::create([
+                    'id' => (string) Str::uuid(),
+                    'type' => 'USER_CREATED',
+                    'description' => "{$creatorName} created worker account for {$createdUser->name} with role: {$role}",
+                    'userId' => Auth::id() ?? 'ADMIN',
+                    'userName' => $creatorName,
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+
+                return $createdUser;
+            });
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Worker account for {$user->name} created successfully!",
+                    'userId' => $user->id,
+                ]);
+            }
+
+            return redirect()->route('users.index')->with('success', "✓ Worker account for {$user->name} created successfully!");
+        } catch (\DomainException $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+            }
+            return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        }
     }
 
     /**
