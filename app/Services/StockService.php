@@ -477,7 +477,9 @@ class StockService
             // Handle Customer Debt Ledger for Part Payments
             if ($customer && $remainingDebt > 0) {
                 // Customer is already held under exclusive lockForUpdate() (Level 2)
-                $customer->total_debt = round((float)$customer->total_debt + $remainingDebt, 2);
+                $currentDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                $remainingDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($remainingDebt);
+                $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira($currentDebtKobo + $remainingDebtKobo);
                 $customer->save();
 
                 CustomerLedger::create([
@@ -1100,22 +1102,27 @@ class StockService
                     );
                 }
 
-                $customer->total_debt = max(0, round($customer->total_debt - $amount, 2));
+                $currentCustDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                $paymentTotalKobo = \App\Services\Accounting\AccountingReportService::toKobo($amount);
+                $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira(max(0, $currentCustDebtKobo - $paymentTotalKobo));
                 $customer->save();
 
-                $remainingPayment = $amount;
+                $remainingPaymentKobo = $paymentTotalKobo;
 
                 foreach ($openSales as $pSale) {
-                    if ($remainingPayment <= 0.001) break;
+                    if ($remainingPaymentKobo <= 0) break;
 
-                    $unpaid = $accountingService->calculateInvoiceBalance($pSale);
-                    if ($unpaid <= 0.001) {
+                    $unpaidKobo = \App\Services\Accounting\AccountingReportService::toKobo($accountingService->calculateInvoiceBalance($pSale));
+                    if ($unpaidKobo <= 0) {
                         continue;
                     }
 
-                    $alloc = min($remainingPayment, $unpaid);
-                    $pSale->paidAmount += $alloc;
-                    if (($pSale->totalAmount - $pSale->paidAmount) <= 0.001 || ($unpaid - $alloc) <= 0.001) {
+                    $allocKobo = min($remainingPaymentKobo, $unpaidKobo);
+                    $alloc = \App\Services\Accounting\AccountingReportService::toNaira($allocKobo);
+                    $pSale->paidAmount = \App\Services\Accounting\AccountingReportService::toNaira(
+                        \App\Services\Accounting\AccountingReportService::toKobo($pSale->paidAmount) + $allocKobo
+                    );
+                    if (($pSale->totalAmount - $pSale->paidAmount) <= 0.001 || ($unpaidKobo - $allocKobo) <= 0) {
                         $pSale->status = 'COMPLETED';
                     }
                     $pSale->save();
@@ -1133,20 +1140,23 @@ class StockService
                     ]);
 
                     $allocatedSaleIds[] = $pSale->id;
-                    $remainingPayment = round($remainingPayment - $alloc, 2);
+                    $remainingPaymentKobo -= $allocKobo;
                 }
 
                 // Strict Invariant: 100% of the payment must be allocated
-                if ($remainingPayment > 0.001) {
+                if ($remainingPaymentKobo > 0) {
+                    $unallocNaira = \App\Services\Accounting\AccountingReportService::toNaira($remainingPaymentKobo);
                     throw new \RuntimeException(
-                        "Accounting Integrity Error: Payment of ₦" . number_format($amount, 2) . " could not be fully allocated across open invoices. Remaining unallocated: ₦" . number_format($remainingPayment, 2) . "."
+                        "Accounting Integrity Error: Payment of ₦" . number_format($amount, 2) . " could not be fully allocated across open invoices. Remaining unallocated: ₦" . number_format($unallocNaira, 2) . "."
                     );
                 }
 
                 $targetWarehouseId = $warehouseId ?? ($openSales->first()?->warehouse_id ?? null);
             } else {
                 // Customer has opening debt or ledger balance without sales records
-                $customer->total_debt = max(0, round($customer->total_debt - $amount, 2));
+                $currentCustDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                $paymentTotalKobo = \App\Services\Accounting\AccountingReportService::toKobo($amount);
+                $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira(max(0, $currentCustDebtKobo - $paymentTotalKobo));
                 $customer->save();
                 $targetWarehouseId = $warehouseId;
             }
@@ -1520,7 +1530,9 @@ class StockService
                 }
 
                 if ($customer) {
-                    $customer->total_debt = max(0.0, round((float)$customer->total_debt - $totalRefundAmount, 2));
+                    $currentDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                    $refundKobo = \App\Services\Accounting\AccountingReportService::toKobo($totalRefundAmount);
+                    $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira(max(0, $currentDebtKobo - $refundKobo));
                     $customer->save();
 
                     CustomerLedger::create([

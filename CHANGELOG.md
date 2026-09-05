@@ -8,6 +8,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 15 / 16 (Non-Floating Monetary Input Boundary, Legacy Architecture Retirement, and Continuous Lock Invariant Protection)**:
+  - **Non-Floating Decimal-String Monetary Input Parsing (`AccountingReportService::toKobo`)**:
+    - Refactored `AccountingReportService::toKobo()` to parse monetary inputs directly from decimal strings and integers without binary floating-point representation (`(float)$naira * 100`).
+    - Natively handles signs, commas (`1,250,500.75`), whitespace, and performs half-up rounding on fractional sub-kobo digits.
+    - Completely eliminates binary IEEE 754 precision traps (e.g. `0.1 + 0.7` yielding 79 kobo). Added `AccountingReportService::formatKoboToNaira(int $kobo)`.
+  - **Universal Kobo Arithmetic in Customer Balance Mutations (`StockService`)**:
+    - Customer debt accruals (`recordSale()`), repayments (`recordCustomerPayment()`), and credit returns (`recordSaleReturn()`) execute strictly via integer kobo math before persisting.
+    - Multi-invoice debt payment allocation operates entirely in integer kobo without 1-kobo roundoff drift.
+  - **Legacy Architecture Retirement & Disarming (`DataController`, `package.json`, `resources/`)**:
+    - Standalone Express mock server runner dependencies (`express`, `@types/express`, `tsx`) completely purged from `package.json`.
+    - Client-side shadow storage mutations in `resources/js/lib/storage.ts` permanently disarmed with explicit architectural exceptions.
+    - `POST /api/data` remains fail-closed (403 Forbidden).
+  - **Monetary Boundary & Lock DAG Invariant Test Suite (`MonetaryBoundaryAndLockDagInvariantTest`)**:
+    - Added comprehensive invariant tests proving decimal-string parsing, comma formatting, exact string generation, customer debt kobo math, and lock DAG top-down ordering. Suite expanded to **351 passed tests (2,032 assertions, 0 failures, 0 errors)**.
+
 - **Production Hardening Pass 14 (Global Lock-Order Contract, Customer Race Elimination, and Pure Integer Kobo Domain Engine)**:
   - **Global Lock-Order Directed Acyclic Graph (DAG) (`StockService`, `StockReservation`)**:
     - Established and enforced canonical multi-resource acquisition order: `Tenant Context (Level 1) -> Customer (Level 2) -> Sale/Transfer/StockAdjustment (Level 3) -> StockLevel (Level 4, sorted by product_id) -> StockReservation (Level 5) -> Immutable Event Records (Level 6)`.

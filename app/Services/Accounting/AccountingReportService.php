@@ -25,14 +25,59 @@ use Illuminate\Support\Str;
 class AccountingReportService
 {
     /**
-     * Convert any Naira denomination (float, int, or string) strictly to integer kobo.
+     * Convert any Naira denomination strictly to integer kobo without binary floating-point representation.
+     * Parses decimal strings, integers, and numeric values directly.
+     * Handles signs, commas, whitespace, and performs half-up rounding on fractional sub-kobo digits.
      */
     public static function toKobo(float|int|string|null $naira): int
     {
-        if ($naira === null) {
+        if ($naira === null || $naira === '') {
             return 0;
         }
-        return (int) round(((float) $naira) * 100);
+
+        if (is_int($naira)) {
+            return $naira * 100;
+        }
+
+        $str = trim((string) $naira);
+        if ($str === '' || $str === '0') {
+            return 0;
+        }
+
+        $isNegative = str_starts_with($str, '-');
+        if ($isNegative) {
+            $str = substr($str, 1);
+        }
+
+        // Clean out thousands commas and whitespace
+        $str = str_replace([',', ' '], '', $str);
+
+        if (str_contains($str, '.')) {
+            [$whole, $fraction] = explode('.', $str, 2);
+            $whole = ($whole === '' || $whole === '0') ? '0' : ltrim($whole, '0');
+            if ($whole === '') {
+                $whole = '0';
+            }
+
+            // Normalise fraction to at least 3 digits for half-up rounding
+            $fraction = rtrim($fraction, " \t\n\r\0\x0B");
+            $padded = substr($fraction . '000', 0, 3);
+            $cents = (int) substr($padded, 0, 2);
+            $subKobo = (int) substr($padded, 2, 1);
+
+            $kobo = ((int) $whole * 100) + $cents;
+            if ($subKobo >= 5) {
+                $kobo += 1;
+            }
+        } else {
+            $whole = ($str === '' || $str === '0') ? '0' : ltrim($str, '0');
+            if ($whole === '') {
+                $whole = '0';
+            }
+            $kobo = (int) $whole * 100;
+        }
+
+        return $isNegative ? -$kobo : $kobo;
     }
 
     /**
@@ -41,6 +86,18 @@ class AccountingReportService
     public static function toNaira(int $kobo): float
     {
         return round($kobo / 100, 2);
+    }
+
+    /**
+     * Format integer kobo strictly to an exact two-decimal string representation with zero float conversion.
+     */
+    public static function formatKoboToNaira(int $kobo): string
+    {
+        $isNegative = $kobo < 0;
+        $abs = abs($kobo);
+        $whole = intdiv($abs, 100);
+        $cents = $abs % 100;
+        return sprintf('%s%d.%02d', $isNegative ? '-' : '', $whole, $cents);
     }
 
     /**

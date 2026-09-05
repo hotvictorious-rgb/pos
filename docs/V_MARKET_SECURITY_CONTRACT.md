@@ -311,6 +311,23 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
   - Floating-point calculations are eradicated from line totals (`$qty * $unitPriceKobo`), gross totals, tendered cash, tendered POS, change, and net paid amounts.
   - Authoritative conservation invariant: `($retainedCashKobo + $retainedPosKobo) === $paidAmountKobo` guarantees zero IEEE 754 precision drift across any invoice or payment split.
 
+### VM-031: Non-Floating Monetary Input Boundary, Legacy Architecture Retirement, and Continuous Lock Invariant Protection
+- **Pure Decimal-String Monetary Input Parsing (`AccountingReportService::toKobo`)**:
+  - `AccountingReportService::toKobo()` parses currency inputs strictly from decimal strings, integers, and numeric values without passing through a binary floating-point intermediate (`(float)$naira * 100`).
+  - Whitespace and comma formatting (`1,250,500.75`) are cleaned natively, signs are preserved, and fractional sub-kobo digits are rounded using standard half-up arithmetic.
+  - Eliminates the binary IEEE 754 precision failure mode (e.g. `0.1 + 0.7` yielding 79 instead of 80 kobo).
+  - Exact two-decimal string generation is provided via `AccountingReportService::formatKoboToNaira(int $kobo)`.
+- **Legacy Mock Server & Shadow Ledger Retirement**:
+  - Standalone Express mock server (`server.ts`) and runner packages (`express`, `@types/express`, `tsx`) are permanently purged.
+  - Client-side shadow storage mutations in `resources/js/lib/storage.ts` are permanently disarmed with explicit architectural exceptions, preventing split-brain database sync.
+  - Client-side React SPA root (`<div id="root"></div>`) is eradicated from production views.
+- **Fail-Closed Offline Sync Lockout**:
+  - `POST /api/data` remains permanently locked with 403 Forbidden, guaranteeing that client-side bulk sync cannot bypass `StockService`, row locks, or tenant boundaries.
+- **Continuous Lock DAG Invariant Protection**:
+  - All financial services touching customer debt balances mutate balances via integer kobo (`toKobo()` and `toNaira()`).
+  - Strict top-down lock ordering (Customer at Level 2 before Sale at Level 3) is enforced across both sales and debt-reducing returns.
+
+
 
 
 
