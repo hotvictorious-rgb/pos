@@ -673,7 +673,7 @@ class AccountingReportService
         // 4. Debt & Credit Exposure
         $newDebtCreated = 0.0;
         foreach ($sales as $s) {
-            $invBalance = max(0.0, (float)$s->totalAmount - (float)$s->paidAmount);
+            $invBalance = $this->calculateInvoiceBalance($s);
             $newDebtCreated += $invBalance;
         }
 

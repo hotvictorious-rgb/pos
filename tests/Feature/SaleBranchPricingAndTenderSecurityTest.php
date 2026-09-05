@@ -707,7 +707,12 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
 
         $backupPayload = [
             'version' => '1.4.0',
+            'type' => 'TENANT',
             'tenant_id' => $this->tenant->id,
+            'manifest' => [
+                'sales' => 1,
+                'sale_items' => 2,
+            ],
             'data' => [
                 'sales' => [
                     [
@@ -753,6 +758,7 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
                 ],
             ]
         ];
+        $backupPayload['checksum'] = hash_hmac('sha256', json_encode($backupPayload['data']), config('app.key'));
 
         // Call internal restoration logic via upload
         $file = \Illuminate\Http\UploadedFile::fake()->createWithContent(

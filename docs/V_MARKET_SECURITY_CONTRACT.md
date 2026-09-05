@@ -144,5 +144,21 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 - **Zero Branch Debt Leakage**: Debt calculation and debtor dashboards for branch-scoped users are derived strictly from open sales originating at the assigned warehouse. Branch workers cannot view customer debts incurred at other branches.
 - **Single Canonical Inventory Mutation Path**: All physical stock additions, including catalog initial stock creation and CSV imports, must route through the canonical `StockService::recordStockIn()` engine to guarantee transactional row locking and audit logging.
 
-
-
+### VM-022: Unsupplied Return Partitioning, Systematic Branch Privacy & Cryptographic Backup Validation
+- **Unsupplied Return State Machine & Stock Preservation**:
+  - Unsupplied sales with partial collections preserve distinct accounting between goods physically returned to the shelf and reserved units cancelled prior to pickup.
+  - Return operations partition quantities against `StockReservation`:
+    - Units currently in customer possession (`held_by_customer_qty = fulfilled_qty - returned_fulfilled_qty`) strictly restore `StockLevel.physical_stock`.
+    - Uncollected reservation units strictly decrement `StockLevel.allocated_stock` and increment `cancelled_qty`.
+    - Double returns of fulfilled units are mathematically rejected.
+  - Delivery status transitions automatically to `DELIVERED` or `RETURNED` once all line-item reservations reach complete resolution.
+- **Universal Branch-Scoped Read Privacy**:
+  - All read-layer endpoints (`/pos/receipt/{id}`, `/pos/returns`, `/transactions`, and transaction query filters) enforce `$user->isBranchScoped()`.
+  - Cashiers, storekeepers, sales officers, and branch managers are strictly forbidden from viewing receipts, recent sales, returns, stock-in/out records, refund logs, or customer debt balances originating from branches other than their assigned branch.
+- **Strict Cryptographic Backup Verification**:
+  - All backup uploads and restores enforce non-empty SHA-256 HMAC checksums generated against `config('app.key')`. Static or hardcoded key fallbacks are strictly prohibited.
+  - Uploaded backup files must pass cryptographic HMAC validation and manifest record count parity in-memory *before* any file is persisted to disk storage (`storage/app/backups/`).
+- **Authoritative Debt Derivation**:
+  - Accounting summaries (`AccountingReportService::getPeriodSummary()`) derive newly created debt (`$newDebtCreated`) strictly using `calculateInvoiceBalance($sale)` across period invoices, ensuring sales returns and ledger payments accurately reduce outstanding receivables.
+- **Customer Tenant Isolation at Point of Sale**:
+  - Checkout operations verify that `$customer->tenant_id === $activeTenantId`, preventing cross-tenant customer references or liability leakage across tenants.

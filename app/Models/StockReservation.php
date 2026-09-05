@@ -22,8 +22,9 @@ class StockReservation extends Model
         'warehouse_id',
         'reserved_qty',
         'fulfilled_qty',
+        'returned_fulfilled_qty',
         'cancelled_qty',
-        'status', // ACTIVE, PARTIALLY_FULFILLED, FULFILLED, CANCELLED
+        'status', // ACTIVE, PARTIALLY_FULFILLED, FULFILLED, CANCELLED, RETURNED
         'customer_id',
         'customer_name',
         'notes',
@@ -32,15 +33,22 @@ class StockReservation extends Model
     protected $casts = [
         'reserved_qty' => 'integer',
         'fulfilled_qty' => 'integer',
+        'returned_fulfilled_qty' => 'integer',
         'cancelled_qty' => 'integer',
         'warehouse_id' => 'integer',
         'product_id' => 'string',
     ];
 
+    /** Quantity of fulfilled units currently in the physical possession of the customer */
+    public function getHeldByCustomerQtyAttribute(): int
+    {
+        return max(0, (int)$this->fulfilled_qty - (int)$this->returned_fulfilled_qty);
+    }
+
     /** Outstanding units still owed to the customer under this reservation */
     public function getOutstandingQtyAttribute(): int
     {
-        return max(0, $this->reserved_qty - ($this->fulfilled_qty + $this->cancelled_qty));
+        return max(0, (int)$this->reserved_qty - ((int)$this->fulfilled_qty + (int)$this->cancelled_qty));
     }
 
     public function product(): BelongsTo

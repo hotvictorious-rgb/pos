@@ -8,6 +8,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 4 (Partial Unsupplied Return State Machine, Systematic Read-Layer Branch Privacy, Strict Cryptographic Backup Verification, Authoritative Debt Derivation, and Customer Tenant Ownership)**:
+  - **Partial Unsupplied Fulfillment Return State Machine & Invariant**:
+    - Added database migration `2026_09_05_040000_add_returned_fulfilled_qty_to_stock_reservations` adding `returned_fulfilled_qty` (default 0) to `stock_reservations`.
+    - Added accessors `held_by_customer_qty` (`max(0, fulfilled_qty - returned_fulfilled_qty)`) and `outstanding_qty` (`max(0, reserved_qty - (fulfilled_qty + cancelled_qty))`) to `StockReservation`.
+    - In `StockService::recordSaleReturn()`: Resolved inventory corruption bug where partially collected unsupplied sales were incorrectly treated as pure allocation cancellations. Now partitions returned units:
+      - Units currently in customer possession (`held_by_customer_qty`) increment shelf count (`$stock->physical_stock += $units`, `$reservation->returned_fulfilled_qty += $units`).
+      - Uncollected reservation units decrement allocation (`$stock->allocated_stock = max(0, $stock->allocated_stock - $units)`, `$reservation->cancelled_qty += $units`).
+      - Honors explicit line flags (`was_delivered`, `is_unsupplied`) and cancellation reasons (`cancel`, `buffer`, `unsupplied`), defaulting to held-units-first deterministic partitioning.
+      - Automatically transitions `Sale.deliveryStatus` to `DELIVERED` or `RETURNED` once all active reservation lines are resolved.
+  - **Systematic Read-Layer Branch Isolation**:
+    - Replaced fragmented role checks (`role === 'cashier'`) with canonical `$user->isBranchScoped()` across all read-layer controllers:
+      - `PosController::receipt()`: Strictly blocks branch-scoped workers (`cashier`, `storekeeper`, `sales_officer`, `branch_manager`) from viewing receipts generated at other branches (HTTP 403).
+      - `PosController::returns()`: Filters recent sales and returns queries strictly to `$user->warehouse_id` for branch-scoped staff.
+      - `TransactionController::index()`: Scopes warehouses dropdown filter to assigned branch and calculates `$totalOpenDebt` by evaluating `calculateInvoiceBalance($os)` strictly across open sales originating at `$user->warehouse_id`.
+      - `TransactionController` queries (`getSalesQuery`, `getStockInQuery`, `getStockOutQuery`, `getReturnsQuery`, `getRefundsQuery`, `getDebtsQuery`): Strictly isolated to `$user->warehouse_id`.
+  - **Strict Cryptographic Backup Verification**:
+    - In `BackupController`: Eliminated hardcoded fallback secret `'vmarket-backup-secret-key'`. Cryptographic signatures strictly enforce `config('app.key')`, throwing a `RuntimeException` if missing.
+    - Added `validateBackupIntegrity()`: Rejects backups missing cryptographic HMAC checksums, missing manifests, or containing count mismatches between manifest and payload records.
+    - In `BackupController::upload()`: Runs strict cryptographic verification before persisting files to `storage/app/backups/`, completely preventing storage pollution with corrupted or spoofed backup files.
+  - **Authoritative `newDebtCreated` Accounting Derivation**:
+    - In `AccountingReportService::getPeriodSummary()`: Replaced legacy `$s->totalAmount - $s->paidAmount` derivation with `calculateInvoiceBalance($s)` across invoices issued in the reporting period, ensuring customer returns and ledger-backed payment events accurately adjust newly created debt.
+  - **Explicit Customer Tenant Ownership Validation**:
+    - In `StockService::recordSale()`: Explicitly loads `Customer::withoutGlobalScopes()->find($customerId)` and asserts that `$customer->tenant_id === $activeTenantId`, blocking cross-tenant customer reference tampering at checkout.
+  - **Added `ProductionHardeningPass4Test`**: 8 comprehensive feature tests verifying inventory return partitioning, branch privacy, strict backup HMAC validation, financial debt derivation, and customer tenant isolation, bringing the total automated test suite to **236 passed tests (1,361 assertions, 0 errors, 0 failures)** across 30 test suites.
 - **Production Hardening Pass 3 (Warehouse Relational Restore, Platform Verification, Branch Isolation, and Canonical Inventory Mutations)**:
   - **Warehouse Backup & Restore with Complete Foreign Key Remapping**:
     - Restores warehouses FIRST to construct a bidirectional `$warehouseIdMap` (`$oldWhId => $newWhId`).

@@ -316,6 +316,11 @@ class BackupController extends Controller
                 return response()->json(['error' => 'Forbidden. Platform administrators cannot upload or manage tenant business backups.'], 403);
             }
 
+            $validationError = $this->validateBackupIntegrity($backupContent, 'PLATFORM');
+            if ($validationError) {
+                return response()->json($validationError, 400);
+            }
+
             $filename = 'platform_backup_uploaded_' . now()->format('Y-m-d_H-i-s') . '.json';
             Storage::disk('local')->put('backups/' . $filename, $json);
             $backup = Backup::create([
@@ -343,6 +348,11 @@ class BackupController extends Controller
             $tenantId = session('tenant_id') ?? $user->tenant_id;
             if (($backupContent['tenant_id'] ?? null) !== $tenantId) {
                 return response()->json(['error' => 'Cross-tenant backup upload rejected. Backup belongs to another tenant.'], 403);
+            }
+
+            $validationError = $this->validateBackupIntegrity($backupContent, 'TENANT', $tenantId);
+            if ($validationError) {
+                return response()->json($validationError, 400);
             }
 
             $tenantSlug = Str::slug($tenantId);
@@ -387,7 +397,11 @@ class BackupController extends Controller
             'custom_roles' => \App\Models\CustomRole::all()->toArray(),
         ];
 
-        $checksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
+        $signingKey = config('app.key');
+        if (empty($signingKey)) {
+            throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
+        }
+        $checksum = hash_hmac('sha256', json_encode($data), $signingKey);
 
         $backupContent = [
             'version' => '2.1.0',
@@ -449,7 +463,11 @@ class BackupController extends Controller
             'stock_adjustments' => \App\Models\StockAdjustment::where('tenant_id', $tenantId)->get()->toArray(),
         ];
 
-        $checksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
+        $signingKey = config('app.key');
+        if (empty($signingKey)) {
+            throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
+        }
+        $checksum = hash_hmac('sha256', json_encode($data), $signingKey);
 
         $backupContent = [
             'version' => '2.1.0',
@@ -514,6 +532,66 @@ class BackupController extends Controller
     // ─────────────────────────────────────────────────────────────
 
     /**
+     * Authoritatively validate backup cryptographic HMAC, manifest counts, and format.
+     */
+    private function validateBackupIntegrity(array $backupContent, string $expectedType, ?string $expectedTenantId = null): ?array
+    {
+        if (empty($backupContent['version'])) {
+            return ['error' => 'Backup integrity verification failed: Backup version identifier is missing.'];
+        }
+
+        $type = $backupContent['type'] ?? null;
+        if ($type !== $expectedType) {
+            return ['error' => "Backup integrity verification failed: Expected '{$expectedType}' backup, but found '{$type}'."];
+        }
+
+        if ($expectedType === 'TENANT') {
+            $tenantId = $backupContent['tenant_id'] ?? null;
+            if (empty($tenantId) || ($expectedTenantId !== null && $tenantId !== $expectedTenantId)) {
+                return ['error' => 'Cross-tenant restore forbidden. Backup belongs to another tenant or lacks valid tenant identifier.'];
+            }
+        } elseif ($expectedType === 'PLATFORM') {
+            if (!empty($backupContent['tenant_id'])) {
+                return ['error' => 'Invalid backup: Expected a platform infrastructure backup, but received tenant data.'];
+            }
+        }
+
+        if (empty($backupContent['checksum'])) {
+            return ['error' => 'Backup integrity verification failed: Cryptographic checksum is missing.'];
+        }
+
+        if (empty($backupContent['manifest']) || !is_array($backupContent['manifest'])) {
+            return ['error' => 'Backup integrity verification failed: Payload manifest is missing.'];
+        }
+
+        if (!isset($backupContent['data']) || !is_array($backupContent['data'])) {
+            return ['error' => 'Backup integrity verification failed: Payload data is missing.'];
+        }
+
+        $signingKey = config('app.key');
+        if (empty($signingKey)) {
+            throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
+        }
+
+        $expectedChecksum = hash_hmac('sha256', json_encode($backupContent['data']), $signingKey);
+        if (!hash_equals($expectedChecksum, $backupContent['checksum'])) {
+            return ['error' => 'Backup integrity verification failed (checksum mismatch). The backup payload may be corrupted or tampered with.'];
+        }
+
+        // Verify manifest counts against actual records in data
+        foreach ($backupContent['manifest'] as $table => $expectedCount) {
+            $actualCount = isset($backupContent['data'][$table]) && is_array($backupContent['data'][$table])
+                ? count($backupContent['data'][$table])
+                : 0;
+            if ($actualCount !== (int) $expectedCount) {
+                return ['error' => "Backup integrity verification failed: Manifest count mismatch for '{$table}'. Expected: {$expectedCount}, Found: {$actualCount}."];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Restores Platform Infrastructure metadata.
      * Never touches any tenant business data tables.
      */
@@ -524,19 +602,12 @@ class BackupController extends Controller
             return ['error' => 'Invalid platform backup JSON format.'];
         }
 
-        if (($backupContent['type'] ?? '') !== 'PLATFORM' && !empty($backupContent['tenant_id'])) {
-            return ['error' => 'Invalid backup: Expected a platform infrastructure backup, but received tenant data.'];
+        $valError = $this->validateBackupIntegrity($backupContent, 'PLATFORM');
+        if ($valError) {
+            return $valError;
         }
 
         $data = $backupContent['data'];
-
-        // Strict HMAC Cryptographic Checksum Integrity Validation
-        if (!empty($backupContent['checksum'])) {
-            $expectedChecksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
-            if (!hash_equals($expectedChecksum, $backupContent['checksum'])) {
-                return ['error' => 'Platform backup integrity verification failed (checksum mismatch). The backup payload may be corrupted or tampered with.'];
-            }
-        }
 
         try {
             DB::transaction(function () use ($data) {
@@ -612,19 +683,12 @@ class BackupController extends Controller
             return ['error' => 'Invalid tenant backup JSON format.'];
         }
 
-        $backupTenantId = $backupContent['tenant_id'] ?? null;
-        if (empty($backupTenantId) || $backupTenantId !== $targetTenantId) {
-            return ['error' => 'Cross-tenant restore forbidden. Backup belongs to another tenant or lacks valid tenant identifier.'];
+        $valError = $this->validateBackupIntegrity($backupContent, 'TENANT', $targetTenantId);
+        if ($valError) {
+            return $valError;
         }
 
         $data = $backupContent['data'];
-
-        if (!empty($backupContent['checksum'])) {
-            $expectedChecksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
-            if (!hash_equals($expectedChecksum, $backupContent['checksum'])) {
-                return ['error' => 'Backup integrity verification failed (checksum mismatch). The backup payload may be corrupted or tampered with.'];
-            }
-        }
 
         try {
             DB::transaction(function () use ($data, $user, $targetTenantId) {

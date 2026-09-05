@@ -329,11 +329,11 @@ class PosController extends Controller
     {
         $sale = Sale::with(['items', 'warehouse'])->findOrFail($id);
 
-        // Branch Isolation: Cashiers are strictly restricted to receipts within their own assigned branch
+        // Branch Isolation: Branch-scoped users are strictly restricted to receipts within their own assigned branch
         $authUser = Auth::user();
-        if ($authUser && $authUser->role === 'cashier' && !empty($authUser->warehouse_id)) {
+        if ($authUser && $authUser->isBranchScoped()) {
             if (!empty($sale->warehouse_id) && (int) $sale->warehouse_id !== (int) $authUser->warehouse_id) {
-                abort(403, '🔒 Access Denied: Cashiers are strictly restricted to viewing receipts from their assigned branch.');
+                abort(403, '🔒 Access Denied: You are strictly restricted to viewing receipts from your assigned branch.');
             }
         }
 
@@ -353,7 +353,12 @@ class PosController extends Controller
         $reason = $request->get('return_reason');
         $search = trim($request->get('search', ''));
 
+        $authUser = Auth::user();
         $query = \App\Models\SalesReturn::query();
+
+        if ($authUser && $authUser->isBranchScoped()) {
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $authUser->warehouse_id));
+        }
 
         if ($fromDate && $toDate) {
             $query->whereBetween('createdAt', [
@@ -395,8 +400,17 @@ class PosController extends Controller
         $totalUnitsRestocked = (clone $query)->sum('quantity');
         $totalRefundValue = (clone $query)->sum('refundAmount');
 
-        $sales = Sale::with('items')->orderBy('createdAt', 'desc')->take(30)->get();
-        $warehouses = Warehouse::where('is_active', true)->get();
+        $salesQuery = Sale::with('items')->orderBy('createdAt', 'desc');
+        if ($authUser && $authUser->isBranchScoped()) {
+            $salesQuery->where('warehouse_id', $authUser->warehouse_id);
+        }
+        $sales = $salesQuery->take(30)->get();
+
+        if ($authUser && $authUser->isBranchScoped()) {
+            $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
+        } else {
+            $warehouses = Warehouse::where('is_active', true)->get();
+        }
 
         return view('pos.returns', compact(
             'sales',

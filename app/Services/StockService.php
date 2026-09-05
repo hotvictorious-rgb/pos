@@ -181,7 +181,10 @@ class StockService
 
             // Server-authoritative checkout calculation via AccountingReportService
             $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-            $calc = $accountingService->calculateCheckout($items, $saleData, $saleData['sale_type'] ?? 'RETAIL');
+            $tenderInput = (isset($saleData['tender']) && is_array($saleData['tender']))
+                ? array_merge($saleData, $saleData['tender'])
+                : $saleData;
+            $calc = $accountingService->calculateCheckout($items, $tenderInput, $saleData['sale_type'] ?? 'RETAIL');
 
             $validatedItems = $calc['validatedItems'];
             $totalAmount    = $calc['totalAmount'];
@@ -195,6 +198,21 @@ class StockService
 
             $customerId = $saleData['customerId'] ?? null;
             $customerName = $saleData['customerName'] ?? 'Walk-in Customer';
+
+            if (!empty($customerId)) {
+                $activeTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+                $customer = Customer::withoutGlobalScopes()->find($customerId);
+                if (!$customer) {
+                    throw new \InvalidArgumentException("Customer #{$customerId} does not exist.");
+                }
+                $activeTenantClean = !empty($activeTenantId) ? (string) $activeTenantId : null;
+                $custTenantClean   = !empty($customer->tenant_id) ? (string) $customer->tenant_id : null;
+
+                if ($custTenantClean !== $activeTenantClean) {
+                    throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} belongs to tenant '{$customer->tenant_id}', not active tenant '{$activeTenantId}'.");
+                }
+                $customerName = $customer->name;
+            }
 
             $deliveryStatus = $isSuppliedNow ? 'DELIVERED' : 'UNSUPPLIED';
             $saleType = $saleData['sale_type'] ?? 'RETAIL';
@@ -1083,6 +1101,7 @@ class StockService
 
             $totalRefundAmount = 0;
             $firstProduct = null;
+            $itemWasDelivered = [];
 
             foreach ($returnItems as $item) {
                 $productId = $item['productId'] ?? $item['product_id'] ?? null;
@@ -1120,27 +1139,64 @@ class StockService
 
                 // Restore physical closing stock or release allocation with row locking
                 $stock = $this->getStockLevel($product->id, $warehouseId, true);
-                if ($sale->deliveryStatus === 'UNSUPPLIED') {
-                    // Goods were reserved on ground but never physically taken; release allocation
-                    $stock->allocated_stock = max(0, $stock->allocated_stock - $qty);
+
+                $reservation = \App\Models\StockReservation::where('sale_id', $saleId)
+                    ->where('product_id', $product->id)
+                    ->where('warehouse_id', $warehouseId)
+                    ->lockForUpdate()
+                    ->first();
+
+                $physicalUnitsRestored = 0;
+                $allocatedUnitsReleased = 0;
+
+                if ($reservation) {
+                    $heldUnits = $reservation->held_by_customer_qty;
+                    $outstandingUnits = $reservation->outstanding_qty;
+
+                    $explicitDelivered = isset($item['was_delivered']) ? (bool)$item['was_delivered'] : null;
+                    if ($explicitDelivered === null && isset($item['is_unsupplied'])) {
+                        $explicitDelivered = !$item['is_unsupplied'];
+                    }
+
+                    $isExplicitBufferCancel = (is_string($reason) && preg_match('/(cancel|buffer|unsupplied|uncollected|not\s+collected|pending\s+delivery)/i', $reason));
+                    $isExplicitPhysicalReturn = (is_string($reason) && preg_match('/(physical|in[- ]hand|collected|already\s+delivered|shelf)/i', $reason));
+
+                    if ($explicitDelivered === true || ($explicitDelivered === null && $isExplicitPhysicalReturn && !$isExplicitBufferCancel)) {
+                        $physicalUnitsRestored = min($qty, $heldUnits);
+                        $allocatedUnitsReleased = $qty - $physicalUnitsRestored;
+                    } elseif ($explicitDelivered === false || ($explicitDelivered === null && $isExplicitBufferCancel && !$isExplicitPhysicalReturn)) {
+                        $allocatedUnitsReleased = min($qty, $outstandingUnits);
+                        $physicalUnitsRestored = $qty - $allocatedUnitsReleased;
+                    } else {
+                        // Intelligent partitioning: customer returns physical items in hand first
+                        $physicalUnitsRestored = min($qty, $heldUnits);
+                        $allocatedUnitsReleased = $qty - $physicalUnitsRestored;
+                    }
+
+                    if ($physicalUnitsRestored > 0) {
+                        $stock->physical_stock += $physicalUnitsRestored;
+                        $reservation->returned_fulfilled_qty += $physicalUnitsRestored;
+                    }
+
+                    if ($allocatedUnitsReleased > 0) {
+                        $stock->allocated_stock = max(0, $stock->allocated_stock - $allocatedUnitsReleased);
+                        $reservation->cancelled_qty += $allocatedUnitsReleased;
+                    }
+
                     $stock->save();
 
-                    // Update StockReservation to record cancellation
-                    $reservation = \App\Models\StockReservation::where('sale_id', $saleId)
-                        ->where('product_id', $product->id)
-                        ->where('warehouse_id', $warehouseId)
-                        ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED'])
-                        ->first();
-
-                    if ($reservation) {
-                        $reservation->cancelled_qty += $qty;
-                        if ($reservation->outstanding_qty <= 0) {
-                            $reservation->status = ($reservation->fulfilled_qty > 0) ? 'FULFILLED' : 'CANCELLED';
+                    if ($reservation->outstanding_qty <= 0) {
+                        if ($reservation->held_by_customer_qty > 0) {
+                            $reservation->status = 'FULFILLED';
+                        } else {
+                            $reservation->status = ($reservation->returned_fulfilled_qty > 0) ? 'RETURNED' : 'CANCELLED';
                         }
-                        $reservation->save();
+                    } else {
+                        $reservation->status = ($reservation->fulfilled_qty > 0) ? 'PARTIALLY_FULFILLED' : 'ACTIVE';
                     }
+                    $reservation->save();
                 } else {
-                    // Goods were physically delivered; restore physical stock to shelves
+                    $physicalUnitsRestored = $qty;
                     $stock->physical_stock += $qty;
                     $stock->save();
                 }
@@ -1148,20 +1204,49 @@ class StockService
                 $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
                 $product->save();
 
+                $itemWasDelivered[$productId] = ($physicalUnitsRestored > 0);
+
+                $descParts = [];
+                if ($physicalUnitsRestored > 0) {
+                    $descParts[] = "{$physicalUnitsRestored} units restored to shelf count";
+                }
+                if ($allocatedUnitsReleased > 0) {
+                    $descParts[] = "{$allocatedUnitsReleased} units reservation allocation released";
+                }
+                $movementDesc = implode(' & ', $descParts);
+
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
                     'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                     'productId' => $product->id,
                     'warehouse_id' => $warehouseId,
                     'type' => 'SALES_RETURN',
-                    'quantity' => ($sale->deliveryStatus === 'UNSUPPLIED') ? 0 : $qty,
+                    'quantity' => $physicalUnitsRestored,
                     'userId' => $userId,
                     'userName' => $userName,
                     'productCode' => $product->code,
                     'productName' => $product->name,
-                    'description' => "Customer Return for Sale #{$saleId} ({$qty} units " . ($sale->deliveryStatus === 'UNSUPPLIED' ? 'reservation released' : 'restored to shelf count') . "). Reason: {$reason}",
+                    'description' => "Customer Return for Sale #{$saleId} ({$movementDesc}). Reason: {$reason}",
                     'timestamp' => now()->toIso8601String(),
                 ]);
+            }
+
+            // Update sale delivery status if all reservations are resolved
+            $remainingActiveReservations = \App\Models\StockReservation::where('sale_id', $saleId)
+                ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED'])
+                ->count();
+            if ($remainingActiveReservations === 0 && $sale->deliveryStatus === 'UNSUPPLIED') {
+                $hasHeld = (int) \App\Models\StockReservation::where('sale_id', $saleId)
+                    ->get()
+                    ->sum('held_by_customer_qty');
+                if ($hasHeld > 0) {
+                    $sale->deliveryStatus = 'DELIVERED';
+                    $sale->deliveredAt = now()->toIso8601String();
+                    $sale->deliveredBy = $userName;
+                } else {
+                    $sale->deliveryStatus = 'RETURNED';
+                }
+                $sale->save();
             }
 
             $wasDelivered = ($sale->deliveryStatus === 'DELIVERED');
@@ -1265,7 +1350,7 @@ class StockService
                     'createdAt' => now()->toIso8601String(),
                     'userId' => $userId,
                     'userName' => $userName,
-                    'wasDelivered' => $wasDelivered,
+                    'wasDelivered' => $itemWasDelivered[$pId] ?? $wasDelivered,
                     'deliveryStatus' => $sale->deliveryStatus,
                 ]);
 

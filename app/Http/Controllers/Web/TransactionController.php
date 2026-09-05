@@ -104,18 +104,13 @@ class TransactionController extends Controller
         $query = Sale::with('items');
         $this->applyDateFilter($query, 'createdAt', $request);
 
-        // 🔒 Role Privacy Scoping: Cashiers only see their own sales, branch staff see their shop
+        // 🔒 Role & Branch Privacy Scoping
         $user = Auth::user();
-        if ($user && $user->role === 'cashier') {
-            $query->where('userId', $user->id);
-        } elseif ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
-            $shopStaffIds = User::where('warehouse_id', $user->warehouse_id)->pluck('id');
-            $query->where(function($sq) use ($user, $shopStaffIds) {
-                $sq->where('warehouse_id', $user->warehouse_id);
-                if ($shopStaffIds->isNotEmpty()) {
-                    $sq->orWhereIn('userId', $shopStaffIds);
-                }
-            });
+        if ($user && $user->isBranchScoped()) {
+            $query->where('warehouse_id', $user->warehouse_id);
+            if ($user->role === 'cashier') {
+                $query->where('userId', $user->id);
+            }
         } elseif ($request->filled('warehouse_id')) {
             $query->where('warehouse_id', $request->warehouse_id);
         }
@@ -179,13 +174,15 @@ class TransactionController extends Controller
         $query = InventoryLog::where('type', 'STOCK_IN');
         $this->applyDateFilter($query, 'timestamp', $request);
 
-        // 🔒 Privacy Scoping: Cashiers see their own; Branch staff see their shop
+        // 🔒 Privacy Scoping: Branch staff see their shop
         $user = Auth::user();
-        if ($user && $user->role === 'cashier') {
-            $query->where('userId', $user->id);
-        } elseif ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
-            $shopStaffIds = User::where('warehouse_id', $user->warehouse_id)->pluck('id');
-            $query->whereIn('userId', $shopStaffIds);
+        if ($user && $user->isBranchScoped()) {
+            $query->where('warehouse_id', $user->warehouse_id);
+            if ($user->role === 'cashier') {
+                $query->where('userId', $user->id);
+            }
+        } elseif ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('inflow_category')) {
@@ -235,13 +232,15 @@ class TransactionController extends Controller
         });
         $this->applyDateFilter($query, 'timestamp', $request);
 
-        // 🔒 Privacy Scoping: Cashiers see their own; Branch staff see their shop
+        // 🔒 Privacy Scoping: Branch staff see their shop
         $user = Auth::user();
-        if ($user && $user->role === 'cashier') {
-            $query->where('userId', $user->id);
-        } elseif ($user && $user->role !== 'admin' && $user->role !== 'viewer' && !empty($user->warehouse_id)) {
-            $shopStaffIds = User::where('warehouse_id', $user->warehouse_id)->pluck('id');
-            $query->whereIn('userId', $shopStaffIds);
+        if ($user && $user->isBranchScoped()) {
+            $query->where('warehouse_id', $user->warehouse_id);
+            if ($user->role === 'cashier') {
+                $query->where('userId', $user->id);
+            }
+        } elseif ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->warehouse_id);
         }
 
         $outflowParam = $request->get('outflow_type') ?: $request->get('movement_type');
@@ -371,10 +370,16 @@ class TransactionController extends Controller
         $query = SalesReturn::query();
         $this->applyDateFilter($query, 'createdAt', $request);
 
-        // 🔒 Role Privacy Scoping: Cashiers only see returns they processed
+        // 🔒 Branch Privacy Scoping
         $user = Auth::user();
-        if ($user && $user->role === 'cashier') {
-            $query->where('userId', $user->id);
+        if ($user && $user->isBranchScoped()) {
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $user->warehouse_id));
+            if ($user->role === 'cashier') {
+                $query->where('userId', $user->id);
+            }
+        } elseif ($request->filled('warehouse_id')) {
+            $whId = (int) $request->warehouse_id;
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
         }
 
         if ($request->filled('return_reason')) {
@@ -403,10 +408,16 @@ class TransactionController extends Controller
         $query = SalesReturn::where('refundAmount', '>', 0);
         $this->applyDateFilter($query, 'createdAt', $request);
 
-        // 🔒 Role Privacy Scoping: Cashiers only see refunds they processed
+        // 🔒 Branch Privacy Scoping
         $user = Auth::user();
-        if ($user && $user->role === 'cashier') {
-            $query->where('userId', $user->id);
+        if ($user && $user->isBranchScoped()) {
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $user->warehouse_id));
+            if ($user->role === 'cashier') {
+                $query->where('userId', $user->id);
+            }
+        } elseif ($request->filled('warehouse_id')) {
+            $whId = (int) $request->warehouse_id;
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
         }
 
         if ($request->filled('min_amount')) {
@@ -438,13 +449,17 @@ class TransactionController extends Controller
 
         // 🔒 Role & Branch Privacy Scoping
         $user = Auth::user();
-        if ($user && $user->role === 'cashier') {
-            $query->where('recorded_by', $user->name);
-        } elseif ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
-            $branchStaffNames = User::where('warehouse_id', $user->warehouse_id)->pluck('name');
-            if ($branchStaffNames->isNotEmpty()) {
-                $query->whereIn('recorded_by', $branchStaffNames);
+        if ($user && $user->isBranchScoped()) {
+            $query->where(function ($q) use ($user) {
+                $q->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $user->warehouse_id))
+                  ->orWhereNull('sale_id');
+            });
+            if ($user->role === 'cashier') {
+                $query->where('recorded_by', $user->name);
             }
+        } elseif ($request->filled('warehouse_id')) {
+            $whId = (int) $request->warehouse_id;
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
         }
 
         if ($request->filled('ledger_type')) {
@@ -485,7 +500,12 @@ class TransactionController extends Controller
         $search = trim($request->get('search', ''));
         $userName = $request->get('user_name');
 
-        $warehouses = Warehouse::where('is_active', true)->get();
+        $authUser = Auth::user();
+        if ($authUser && $authUser->isBranchScoped()) {
+            $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
+        } else {
+            $warehouses = Warehouse::where('is_active', true)->get();
+        }
         $cashiers = User::orderBy('name')->pluck('name');
         $carriers = Transfer::distinct()->whereNotNull('carrier_name')->where('carrier_name', '!=', '')->pluck('carrier_name');
         $products = \App\Models\Product::orderBy('name')->get();
@@ -548,7 +568,19 @@ class TransactionController extends Controller
         $debtsEntryCount = (clone $debtsQuery)->count();
         $totalRepayments = (clone $debtsQuery)->where('type', 'PAYMENT')->sum('amount');
         $totalDebtCreated = (clone $debtsQuery)->where('type', 'INVOICE')->sum('amount');
-        $totalOpenDebt = Customer::sum('total_debt');
+        if ($authUser && $authUser->isBranchScoped()) {
+            $openSalesBranch = Sale::where('warehouse_id', $authUser->warehouse_id)
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->get();
+            $branchOpenDebt = 0.0;
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            foreach ($openSalesBranch as $os) {
+                $branchOpenDebt += $accountingService->calculateInvoiceBalance($os);
+            }
+            $totalOpenDebt = round($branchOpenDebt, 2);
+        } else {
+            $totalOpenDebt = (float) Customer::sum('total_debt');
+        }
         $debtLedgers = (clone $debtsQuery)->orderBy('created_at', 'desc')->paginate(20, ['*'], 'debts_page')->withQueryString();
 
         return view('transactions.index', compact(
