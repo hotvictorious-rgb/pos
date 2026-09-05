@@ -104,6 +104,7 @@ export interface Payment {
   timestamp: string;
   recordedBy: string;
   createdAt?: string;
+  userName?: string;
 }
 
 export interface SalesReturn {
