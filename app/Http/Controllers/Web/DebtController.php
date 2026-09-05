@@ -163,10 +163,7 @@ class DebtController extends Controller
             $hasAnySales = \App\Models\Sale::where('customerId', $customerId)->exists();
             if ($hasAnySales) {
                 $hasBranchDebt = \App\Models\Sale::where('customerId', $customerId)
-                    ->where(function ($q) use ($warehouseId) {
-                        $q->where('warehouse_id', $warehouseId)
-                          ->orWhereNull('warehouse_id');
-                    })
+                    ->where('warehouse_id', $warehouseId)
                     ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                     ->exists();
                 if (!$hasBranchDebt) {

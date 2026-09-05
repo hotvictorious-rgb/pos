@@ -217,10 +217,12 @@ class UserController extends Controller
         $action = $user->disabled ? 'LOCKED / DISABLED' : 'ACTIVATED';
         $creatorName = Auth::user()->name ?? 'Auditor / Admin';
 
+        $clientIp = request()->ip() ?? '127.0.0.1';
         Activity::create([
             'id' => (string) Str::uuid(),
+            'tenant_id' => session('tenant_id') ?? $user->tenant_id ?? null,
             'type' => 'USER_STATUS_CHANGED',
-            'description' => "{$creatorName} {$action} worker account for {$user->name}",
+            'description' => "{$creatorName} {$action} worker account for {$user->name} (Role: {$user->role}, Branch: #{$user->warehouse_id}) from IP {$clientIp}.",
             'userId' => Auth::id() ?? 'ADMIN',
             'userName' => $creatorName,
             'timestamp' => now()->toIso8601String(),
@@ -419,11 +421,12 @@ class UserController extends Controller
         $user->save();
 
         $actingUserName = $authUser->name ?? 'System Administrator';
+        $clientIp = $request->ip() ?? '127.0.0.1';
         Activity::create([
             'id'          => (string) Str::uuid(),
             'tenant_id'   => session('tenant_id') ?? $user->tenant_id ?? null,
             'type'        => 'PASSWORD_RESET',
-            'description' => "Password reset for worker '{$user->name}' ({$user->email}, Role: {$user->role}, Branch: #{$user->warehouse_id}) by {$actingUserName}.",
+            'description' => "Password reset for worker '{$user->name}' ({$user->email}, Role: {$user->role}, Branch: #{$user->warehouse_id}) by {$actingUserName} from IP {$clientIp}.",
             'userId'      => Auth::id(),
             'userName'    => $actingUserName,
             'timestamp'   => now()->toIso8601String(),
