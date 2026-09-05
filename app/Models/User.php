@@ -110,6 +110,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Determine if user has administrator role.
+     */
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin' || $this->role === 'super_admin';
+    }
+
+    /**
      * Determine if user is a business owner / tenant administrator.
      */
     public function isTenantAdmin(): bool

@@ -55,6 +55,13 @@ class SettingController extends Controller
      */
     public function update(Request $request)
     {
+        $authUser = Auth::user();
+        // 🔒 Invariant VM-023: Universal Scope Boundary
+        // Company-wide business and receipt settings are strictly tenant-wide configuration
+        if ($authUser && $authUser->isBranchScoped()) {
+            abort(403, 'Forbidden: Branch employees cannot modify company-wide business settings.');
+        }
+
         $request->validate([
             'businessName' => 'required|string|max:150',
             'businessPhone' => 'nullable|string',
@@ -116,6 +123,12 @@ class SettingController extends Controller
      */
     public function storeWarehouse(Request $request)
     {
+        $authUser = Auth::user();
+        // 🔒 Invariant VM-023: Universal Scope Boundary
+        if ($authUser && $authUser->isBranchScoped()) {
+            abort(403, 'Forbidden: Branch employees cannot create branch locations.');
+        }
+
         $tenantId = session('tenant_id') ?? 'default-tenant';
 
         // Enforce SaaS Subscription Branch Limit
@@ -159,6 +172,12 @@ class SettingController extends Controller
      */
     public function updateWarehouse(Request $request, $id)
     {
+        $authUser = Auth::user();
+        // 🔒 Invariant VM-023: Universal Scope Boundary
+        if ($authUser && $authUser->isBranchScoped()) {
+            abort(403, 'Forbidden: Branch employees cannot modify branch infrastructure.');
+        }
+
         $wh = Warehouse::findOrFail($id);
         $tenantId = session('tenant_id') ?? 'default-tenant';
 
@@ -196,6 +215,12 @@ class SettingController extends Controller
      */
     public function toggleWarehouse($id)
     {
+        $authUser = Auth::user();
+        // 🔒 Invariant VM-023: Universal Scope Boundary
+        if ($authUser && $authUser->isBranchScoped()) {
+            abort(403, 'Forbidden: Branch employees cannot enable or disable branch locations.');
+        }
+
         $wh = Warehouse::findOrFail($id);
         $wh->is_active = !$wh->is_active;
         $wh->save();

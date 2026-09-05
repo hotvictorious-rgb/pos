@@ -107,7 +107,6 @@ class DataController extends Controller
         $returns = SalesReturn::all();
         $activities = Activity::all();
         $settings = $this->getSettings();
-        $customRoles = \App\Models\CustomRole::all();
 
         return response()->json([
             'users' => $users,
@@ -118,7 +117,6 @@ class DataController extends Controller
             'returns' => $returns,
             'activities' => $activities,
             'settings' => $settings,
-            'custom_roles' => $customRoles
         ]);
     }
 
@@ -161,7 +159,6 @@ class DataController extends Controller
             InventoryLog::query()->delete();
             Activity::query()->delete();
             Product::query()->delete();
-            \App\Models\CustomRole::query()->delete();
 
             Product::create([
                 'id' => 'p1',

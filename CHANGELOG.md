@@ -8,6 +8,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 5 (Scope-vs-Capability Hierarchy, Platform CustomRole Boundary, Event-Authoritative Filters, and CI Automation)**:
+  - **Elimination of Platform `CustomRole` Leakage in Legacy Data Endpoints**:
+    - In `DataController::get()`: Permanently removed `$customRoles = \App\Models\CustomRole::all();` and excluded `custom_roles` from the JSON payload returned to tenant administrators.
+    - In `DataController::reset()`: Permanently removed `\App\Models\CustomRole::query()->delete();` so tenant resets cannot delete platform infrastructure roles.
+  - **Universal Scope-vs-Capability Invariant across Write & Admin Controllers**:
+    - Enforced the architectural invariant: *"Capability determines WHAT a user may do; authority category and branch context determine WHERE they may do it."*
+    - In `UserController`:
+      - `index()`: Branch-scoped staff (`$authUser->isBranchScoped()`) only see worker accounts assigned to their own branch.
+      - `store()`: Branch-scoped staff can only create accounts for their own assigned branch (`warehouse_id = $authUser->warehouse_id`), and are strictly forbidden from creating `admin`, `super_admin`, or platform accounts (HTTP 403).
+      - `update()`: Branch-scoped staff can only update accounts assigned to their own branch; attempts to modify administrators, promote staff to admin, or reassign workers to other branches are rejected with HTTP 403.
+      - `toggleStatus()` & `resetPassword()`: Branch-scoped staff can only lock/unlock accounts or reset passwords for staff assigned to their own branch.
+    - In `SettingController`:
+      - `update()`: Company-wide business and receipt settings are strictly tenant-wide; branch-scoped staff are rejected with HTTP 403.
+      - `storeWarehouse()`, `updateWarehouse()`, `toggleWarehouse()`: Creating, updating, or toggling branch locations is reserved strictly for Tenant Administrators; branch-scoped staff are rejected with HTTP 403.
+  - **Event-Authoritative Payment Status Filtering in `TransactionController`**:
+    - In `TransactionController::getSalesQuery()`: Replaced cached `paidAmount` and `status` column queries with SQL subqueries deriving net balance directly from `Payment` financial events and `SalesReturn` credits, accurately classifying `PAID`, `PARTIAL`, `NOT_PAID`, and `DEBT` states.
+    - In `TransactionController::index()`: Derived `$totalPaid` using net event payments (`inflowPayments - cashRefunds`) and return credits across matching sales with graceful legacy fallback when zero payment events exist.
+  - **GitHub Actions CI Automation**:
+    - Added `.github/workflows/ci.yml` to automatically execute the full test suite (`php artisan test`) on push to `main` and on pull requests.
+  - **Added `ProductionHardeningPass5Test`**: 8 comprehensive feature tests bringing the total automated test suite to **244 passed tests (1,387 assertions, 0 errors, 0 failures)** across 31 test suites.
 - **Production Hardening Pass 4 (Partial Unsupplied Return State Machine, Systematic Read-Layer Branch Privacy, Strict Cryptographic Backup Verification, Authoritative Debt Derivation, and Customer Tenant Ownership)**:
   - **Partial Unsupplied Fulfillment Return State Machine & Invariant**:
     - Added database migration `2026_09_05_040000_add_returned_fulfilled_qty_to_stock_reservations` adding `returned_fulfilled_qty` (default 0) to `stock_reservations`.

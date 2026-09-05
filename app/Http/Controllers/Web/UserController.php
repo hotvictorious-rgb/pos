@@ -19,7 +19,7 @@ class UserController extends Controller
     public function index()
     {
         $authUser = Auth::user();
-        if ($authUser && !empty($authUser->warehouse_id)) {
+        if ($authUser && $authUser->isBranchScoped()) {
             $users = User::where('warehouse_id', $authUser->warehouse_id)->orderBy('name')->get();
             $warehouses = Warehouse::where('id', $authUser->warehouse_id)->where('is_active', true)->get();
         } else {
@@ -67,13 +67,26 @@ class UserController extends Controller
             return back()->withErrors(['role' => 'Forbidden: The platform Super-Administrator role cannot be assigned. There is exactly one platform root Super Admin defined by system environment.']);
         }
 
-        $warehouseId = null;
-        if ($request->filled('warehouse_id')) {
-            $wh = Warehouse::find($request->warehouse_id);
-            if (!$wh) {
-                return back()->withErrors(['warehouse_id' => 'Selected branch location does not exist in your business.']);
+        $authUser = Auth::user();
+
+        // 🔒 Invariant VM-023: Branch-Scoped Capability Boundary
+        if ($authUser && $authUser->isBranchScoped()) {
+            if (in_array($role, ['admin', 'super_admin'])) {
+                abort(403, 'Forbidden: Branch employees cannot create administrator accounts.');
             }
-            $warehouseId = $wh->id;
+            if ($request->filled('warehouse_id') && (int) $request->warehouse_id !== (int) $authUser->warehouse_id) {
+                abort(403, 'Forbidden: Branch employees may only create staff accounts for their own branch.');
+            }
+            $warehouseId = $authUser->warehouse_id;
+        } else {
+            $warehouseId = null;
+            if ($request->filled('warehouse_id')) {
+                $wh = Warehouse::find($request->warehouse_id);
+                if (!$wh) {
+                    return back()->withErrors(['warehouse_id' => 'Selected branch location does not exist in your business.']);
+                }
+                $warehouseId = $wh->id;
+            }
         }
 
         $permissions = match($role) {
@@ -186,6 +199,18 @@ class UserController extends Controller
     public function toggleStatus($id)
     {
         $user = User::findOrFail($id);
+        $authUser = Auth::user();
+
+        // 🔒 Invariant VM-023: Branch-Scoped Capability Boundary
+        if ($authUser && $authUser->isBranchScoped()) {
+            if ($user->warehouse_id !== $authUser->warehouse_id) {
+                abort(403, 'Forbidden: Branch employees may only lock or unlock accounts assigned to their own branch.');
+            }
+            if ($user->isAdmin() || $user->isPlatformUser()) {
+                abort(403, 'Forbidden: Branch employees cannot modify administrator accounts.');
+            }
+        }
+
         $user->disabled = !$user->disabled;
         $user->save();
 
@@ -210,6 +235,23 @@ class UserController extends Controller
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
+        $authUser = Auth::user();
+
+        // 🔒 Invariant VM-023: Branch-Scoped Capability Boundary
+        if ($authUser && $authUser->isBranchScoped()) {
+            if ($user->warehouse_id !== $authUser->warehouse_id) {
+                abort(403, 'Forbidden: Branch employees may only update staff accounts assigned to their own branch.');
+            }
+            if ($user->isAdmin() || $user->isPlatformUser()) {
+                abort(403, 'Forbidden: Branch employees cannot modify administrator accounts.');
+            }
+            if (in_array($request->role, ['admin', 'super_admin'])) {
+                abort(403, 'Forbidden: Branch employees cannot promote staff to administrator.');
+            }
+            if ($request->filled('warehouse_id') && (int) $request->warehouse_id !== (int) $authUser->warehouse_id) {
+                abort(403, 'Forbidden: Branch employees cannot reassign staff to another branch.');
+            }
+        }
 
         $request->validate([
             'name' => 'required|string|max:100',
@@ -228,13 +270,17 @@ class UserController extends Controller
             return back()->withErrors(['role' => 'Forbidden: The platform root Super-Administrator account cannot be demoted.']);
         }
 
-        $newWarehouseId = null;
-        if ($request->filled('warehouse_id')) {
-            $wh = Warehouse::find($request->warehouse_id);
-            if (!$wh) {
-                return back()->withErrors(['warehouse_id' => 'Selected branch location does not exist in your business.']);
+        if ($authUser && $authUser->isBranchScoped()) {
+            $newWarehouseId = $authUser->warehouse_id;
+        } else {
+            $newWarehouseId = null;
+            if ($request->filled('warehouse_id')) {
+                $wh = Warehouse::find($request->warehouse_id);
+                if (!$wh) {
+                    return back()->withErrors(['warehouse_id' => 'Selected branch location does not exist in your business.']);
+                }
+                $newWarehouseId = $wh->id;
             }
-            $newWarehouseId = $wh->id;
         }
 
         $permissions = match($newRole) {
@@ -357,6 +403,18 @@ class UserController extends Controller
         ]);
 
         $user = User::findOrFail($id);
+        $authUser = Auth::user();
+
+        // 🔒 Invariant VM-023: Branch-Scoped Capability Boundary
+        if ($authUser && $authUser->isBranchScoped()) {
+            if ($user->warehouse_id !== $authUser->warehouse_id) {
+                abort(403, 'Forbidden: Branch employees may only reset passwords for staff assigned to their own branch.');
+            }
+            if ($user->isAdmin() || $user->isPlatformUser()) {
+                abort(403, 'Forbidden: Branch employees cannot modify administrator accounts.');
+            }
+        }
+
         $user->password = Hash::make($request->new_password);
         $user->save();
 

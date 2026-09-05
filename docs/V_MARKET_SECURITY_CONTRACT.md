@@ -162,3 +162,18 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
   - Accounting summaries (`AccountingReportService::getPeriodSummary()`) derive newly created debt (`$newDebtCreated`) strictly using `calculateInvoiceBalance($sale)` across period invoices, ensuring sales returns and ledger payments accurately reduce outstanding receivables.
 - **Customer Tenant Isolation at Point of Sale**:
   - Checkout operations verify that `$customer->tenant_id === $activeTenantId`, preventing cross-tenant customer references or liability leakage across tenants.
+
+### VM-023: Universal Scope-vs-Capability Hierarchy & Event-Authoritative Filters
+- **Scope vs. Capability Principle**:
+  - *"Capability determines WHAT a user may do; authority category and branch context determine WHERE they may do it."*
+  - Permission overrides (e.g. `users.manage = true`, `settings.manage = true`) grant operational permissions but can NEVER bypass or widen the user's branch or authority category boundary.
+  - Branch-scoped employees (`$user->isBranchScoped()`):
+    - May strictly view, create, edit, lock, unlock, or reset passwords for staff assigned to their own warehouse (`$user->warehouse_id`).
+    - Are strictly prohibited from creating administrator accounts, promoting staff to admin, or reassigning staff to other branches or HQ.
+    - Are strictly prohibited from modifying tenant-wide business settings (currency, business name, receipt headers/footers) or managing branch locations (create, edit, toggle warehouses).
+- **Platform Infrastructure Isolation in Legacy APIs**:
+  - The tenant data synchronization endpoint (`/api/data`) strictly excludes platform-global `CustomRole` infrastructure metadata.
+  - Tenant data reset operations cannot delete or mutate `custom_roles`.
+- **Event-Authoritative Payment Status Filtering**:
+  - Universal history tabs (`/transactions`) derive sales payment status (`PAID`, `PARTIAL`, `NOT_PAID`, `DEBT`) from authoritative `Payment` financial events (net inflows minus cash refunds) and `SalesReturn` credits rather than cached table columns.
+

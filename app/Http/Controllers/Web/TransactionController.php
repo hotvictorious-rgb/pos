@@ -117,28 +117,24 @@ class TransactionController extends Controller
 
         if ($request->filled('payment_status')) {
             $pStatus = strtoupper($request->payment_status);
+
+            // Authoritative event-based financial calculation subqueries:
+            // When payment records exist for the sale, calculate net paid from payment events.
+            // Otherwise, fall back to cached paidAmount for legacy/mock test records.
+            $hasPaymentsSql = "(SELECT COUNT(*) FROM payments WHERE payments.saleId = sales.id)";
+            $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method != 'REFUND_CASH'), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method = 'REFUND_CASH'), 0)";
+            $netPaidSql = "CASE WHEN {$hasPaymentsSql} > 0 THEN ({$eventNetPaidSql}) ELSE sales.paidAmount END";
+            $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
+            $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$netPaidSql}))";
+
             if ($pStatus === 'PAID') {
-                $query->where(function ($q) {
-                    $q->where('status', 'COMPLETED')
-                      ->orWhereColumn('paidAmount', '>=', 'totalAmount');
-                });
+                $query->whereRaw("{$netBalanceSql} <= 0.01");
             } elseif (in_array($pStatus, ['PART_PAID', 'PARTIAL'])) {
-                $query->where(function ($q) {
-                    $q->where('status', 'PARTIAL')
-                      ->orWhere(function ($sq) {
-                          $sq->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0);
-                      });
-                });
+                $query->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01");
             } elseif (in_array($pStatus, ['NOT_PAID', 'UNPAID'])) {
-                $query->where(function ($q) {
-                    $q->where('status', 'PENDING')
-                      ->orWhere('paidAmount', '<=', 0);
-                });
+                $query->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) <= 0.01");
             } elseif ($pStatus === 'DEBT') {
-                $query->where(function ($q) {
-                    $q->whereIn('status', ['PARTIAL', 'PENDING'])
-                      ->orWhereColumn('paidAmount', '<', 'totalAmount');
-                });
+                $query->whereRaw("{$netBalanceSql} > 0.01");
             }
         }
 
@@ -514,8 +510,18 @@ class TransactionController extends Controller
         $salesQuery = $this->getSalesQuery($request);
         $totalSalesCount = (clone $salesQuery)->count();
         $totalRevenue = (clone $salesQuery)->sum('totalAmount');
-        $totalPaid = (clone $salesQuery)->sum('paidAmount');
-        $totalDebt = max(0, $totalRevenue - $totalPaid);
+        $saleIds = (clone $salesQuery)->pluck('id');
+        $inflows = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->where('amount', '>', 0)
+            ->where('method', '!=', 'REFUND_CASH')
+            ->sum('amount');
+        $cashRefunds = abs((float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->where('method', 'REFUND_CASH')
+            ->sum('amount'));
+        $totalPaid = max(0.0, round($inflows - $cashRefunds, 2));
+        $returnCredits = (float) \App\Models\SalesReturn::whereIn('saleId', $saleIds)->sum('refundAmount');
+        $netPayable = max(0.0, round($totalRevenue - $returnCredits, 2));
+        $totalDebt = max(0.0, round($netPayable - $totalPaid, 2));
         $sales = (clone $salesQuery)->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'sales_page')->withQueryString();
 
         // TAB 2: STOCK IN
