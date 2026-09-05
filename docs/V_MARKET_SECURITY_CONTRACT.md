@@ -177,3 +177,20 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 - **Event-Authoritative Payment Status Filtering**:
   - Universal history tabs (`/transactions`) derive sales payment status (`PAID`, `PARTIAL`, `NOT_PAID`, `DEBT`) from authoritative `Payment` financial events (net inflows minus cash refunds) and `SalesReturn` credits rather than cached table columns.
 
+### VM-024: Universal Branch Debt Isolation, Event-Driven Financial Authority, and Envelope Cryptography
+- **Branch-Isolated Debt Payments & Invoice Allocation**:
+  - Branch employees (`$user->isBranchScoped()`) are strictly forbidden from accepting or recording debt payments for customers who have no outstanding debt originating at the employee's assigned branch (`warehouse_id`).
+  - When a customer has open debt invoices across multiple branches, payments recorded at a branch are strictly partitioned and allocated only across open sales originating at that branch (`sale.warehouse_id = $warehouseId`). Invoices originating at other branches remain completely untouched.
+  - Payment amounts are strictly capped at the customer's authoritative outstanding balance at the employee's branch. Attempts to pay more than the branch balance fail closed with `InvalidArgumentException`.
+  - Customer payment ledgers stamp `warehouse_id`, ensuring historical payment records maintain branch traceability.
+- **Branch-Scoped Customer Ledgers in Accounting Period Summaries**:
+  - `AccountingReportService::getPeriodSummary()` scopes debt recovery strictly using `warehouse_id = $scopedWarehouseId OR sale.warehouse_id = $scopedWarehouseId`. Unlinked legacy customer ledgers belonging to other branches can never contaminate branch accounting figures.
+- **Branch-Isolated Report Intelligence & Inventory Exports**:
+  - AI data exports (`/reports/export-json/{type}`) strictly scope inventory stock levels, damages/adjustments, and debtors to the employee's assigned warehouse when requested by branch-scoped personnel.
+  - Reports dashboard metrics (`$totalDebtOwedAllTime`) evaluate authoritative open invoice balances strictly originating at the employee's assigned branch rather than exposing tenant-wide debt totals to branch employees.
+  - Financial totals (`$totalCollected`, `$totalDebtCreated`) are calculated from immutable financial transaction events (`Payment` inflows, `Payment` cash refunds, and `SalesReturn` credits) rather than cached table columns.
+- **Cryptographic Backup Envelope HMAC Integrity**:
+  - Backup signatures enforce canonical HMAC SHA-256 integrity covering the complete backup envelope (`version`, `type`, `tenant_id`, `manifest`, and `data`).
+  - Any tampering with backup metadata, table manifests, or payload structures invalidates the cryptographic verification.
+  - Maintained backward compatibility for legacy backups signed exclusively over the `data` payload.
+

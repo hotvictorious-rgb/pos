@@ -183,11 +183,14 @@
                             <strong style="color: #93c5fd;">{{ $debtor->phone ?: 'N/A' }}</strong>
                         </td>
                         <td style="color: #cbd5e1;">{{ $debtor->address ?: 'Walk-in' }}</td>
+                        @php
+                            $effectiveDebt = isset($debtor->branch_debt) ? $debtor->branch_debt : $debtor->total_debt;
+                        @endphp
                         <td style="font-size: 1.2rem; font-weight: 800; color: #f87171;">
-                            ₦{{ number_format($debtor->total_debt, 0) }}
+                            ₦{{ number_format($effectiveDebt, 0) }}
                         </td>
                         <td>
-                            @if($debtor->total_debt >= 100000)
+                            @if($effectiveDebt >= 100000)
                                 <span class="badge badge-danger">🔴 High Risk</span>
                             @else
                                 <span class="badge badge-warning">⚠️ Owes Balance</span>
@@ -196,7 +199,7 @@
                         <td>
                             @if(auth()->user()?->role !== 'viewer')
                                 <button class="btn btn-success" style="padding: 0.5rem 1rem; font-size: 0.85rem;"
-                                        onclick="openPaymentModal({{ $debtor->id }}, '{{ addslashes($debtor->name) }}', {{ $debtor->total_debt }})">
+                                        onclick="openPaymentModal({{ $debtor->id }}, '{{ addslashes($debtor->name) }}', {{ $effectiveDebt }})">
                                     💵 Record Payment
                                 </button>
                             @else

@@ -590,6 +590,13 @@ class AccountingReportService
             $query->where('userId', $filters['user_id']);
         }
 
+        $user = Auth::user();
+        if ($user && $user->isBranchScoped()) {
+            $query->where('warehouse_id', (int) $user->warehouse_id);
+        } elseif (!empty($filters['warehouse_id'])) {
+            $query->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
+
         return $query->orderBy('timestamp', 'desc');
     }
 
@@ -691,8 +698,8 @@ class AccountingReportService
 
         if ($scopedWarehouseId) {
             $debtPaymentsQuery->where(function ($q) use ($scopedWarehouseId) {
-                $q->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $scopedWarehouseId))
-                  ->orWhereNull('sale_id');
+                $q->where('warehouse_id', $scopedWarehouseId)
+                  ->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $scopedWarehouseId));
             });
         }
 

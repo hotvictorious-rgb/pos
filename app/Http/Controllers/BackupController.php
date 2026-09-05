@@ -384,6 +384,26 @@ class BackupController extends Controller
     // ─────────────────────────────────────────────────────────────
 
     /**
+     * Compute authoritative HMAC SHA-256 over the complete canonical backup envelope.
+     */
+    public static function computeEnvelopeChecksum(array $backupContent, ?string $signingKey = null): string
+    {
+        $key = $signingKey ?: config('app.key');
+        if (empty($key)) {
+            throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
+        }
+
+        $envelope = [
+            'version' => (string) ($backupContent['version'] ?? '2.1.0'),
+            'type' => (string) ($backupContent['type'] ?? ''),
+            'tenant_id' => $backupContent['tenant_id'] ?? null,
+            'manifest' => $backupContent['manifest'] ?? [],
+            'data' => $backupContent['data'] ?? [],
+        ];
+        return hash_hmac('sha256', json_encode($envelope), $key);
+    }
+
+    /**
      * Generates a Platform Infrastructure Backup.
      * Contains ONLY platform metadata (tenants, platform settings, platform activities).
      * Strictly contains ZERO tenant business data (no products, sales, customers, stock, or payments).
@@ -397,11 +417,25 @@ class BackupController extends Controller
             'custom_roles' => \App\Models\CustomRole::all()->toArray(),
         ];
 
+        $manifest = [
+            'tenants' => count($data['tenants']),
+            'platform_settings' => count($data['platform_settings']),
+            'platform_activities' => count($data['platform_activities']),
+            'custom_roles' => count($data['custom_roles']),
+        ];
+
         $signingKey = config('app.key');
         if (empty($signingKey)) {
             throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
         }
-        $checksum = hash_hmac('sha256', json_encode($data), $signingKey);
+
+        $checksum = self::computeEnvelopeChecksum([
+            'version' => '2.1.0',
+            'type' => 'PLATFORM',
+            'tenant_id' => null,
+            'manifest' => $manifest,
+            'data' => $data,
+        ], $signingKey);
 
         $backupContent = [
             'version' => '2.1.0',
@@ -409,12 +443,7 @@ class BackupController extends Controller
             'tenant_id' => null,
             'timestamp' => now()->toIso8601String(),
             'checksum' => $checksum,
-            'manifest' => [
-                'tenants' => count($data['tenants']),
-                'platform_settings' => count($data['platform_settings']),
-                'platform_activities' => count($data['platform_activities']),
-                'custom_roles' => count($data['custom_roles']),
-            ],
+            'manifest' => $manifest,
             'data' => $data,
         ];
 
@@ -463,11 +492,38 @@ class BackupController extends Controller
             'stock_adjustments' => \App\Models\StockAdjustment::where('tenant_id', $tenantId)->get()->toArray(),
         ];
 
+        $manifest = [
+            'users' => count($data['users']),
+            'products' => count($data['products']),
+            'sales' => count($data['sales']),
+            'sale_items' => count($data['sale_items']),
+            'payments' => count($data['payments']),
+            'sales_returns' => count($data['sales_returns']),
+            'inventory_logs' => count($data['inventory_logs']),
+            'customers' => count($data['customers']),
+            'warehouses' => count($data['warehouses']),
+            'stock_levels' => count($data['stock_levels']),
+            'activities' => count($data['activities']),
+            'settings' => count($data['settings']),
+            'transfers' => count($data['transfers']),
+            'transfer_items' => count($data['transfer_items']),
+            'stock_reservations' => count($data['stock_reservations']),
+            'customer_ledgers' => count($data['customer_ledgers']),
+            'stock_adjustments' => count($data['stock_adjustments']),
+        ];
+
         $signingKey = config('app.key');
         if (empty($signingKey)) {
             throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
         }
-        $checksum = hash_hmac('sha256', json_encode($data), $signingKey);
+
+        $checksum = self::computeEnvelopeChecksum([
+            'version' => '2.1.0',
+            'type' => 'TENANT',
+            'tenant_id' => $tenantId,
+            'manifest' => $manifest,
+            'data' => $data,
+        ], $signingKey);
 
         $backupContent = [
             'version' => '2.1.0',
@@ -475,25 +531,7 @@ class BackupController extends Controller
             'tenant_id' => $tenantId,
             'timestamp' => now()->toIso8601String(),
             'checksum' => $checksum,
-            'manifest' => [
-                'users' => count($data['users']),
-                'products' => count($data['products']),
-                'sales' => count($data['sales']),
-                'sale_items' => count($data['sale_items']),
-                'payments' => count($data['payments']),
-                'sales_returns' => count($data['sales_returns']),
-                'inventory_logs' => count($data['inventory_logs']),
-                'customers' => count($data['customers']),
-                'warehouses' => count($data['warehouses']),
-                'stock_levels' => count($data['stock_levels']),
-                'activities' => count($data['activities']),
-                'settings' => count($data['settings']),
-                'transfers' => count($data['transfers']),
-                'transfer_items' => count($data['transfer_items']),
-                'stock_reservations' => count($data['stock_reservations']),
-                'customer_ledgers' => count($data['customer_ledgers']),
-                'stock_adjustments' => count($data['stock_adjustments']),
-            ],
+            'manifest' => $manifest,
             'data' => $data,
         ];
 
@@ -534,7 +572,7 @@ class BackupController extends Controller
     /**
      * Authoritatively validate backup cryptographic HMAC, manifest counts, and format.
      */
-    private function validateBackupIntegrity(array $backupContent, string $expectedType, ?string $expectedTenantId = null): ?array
+    public function validateBackupIntegrity(array $backupContent, string $expectedType, ?string $expectedTenantId = null): ?array
     {
         if (empty($backupContent['version'])) {
             return ['error' => 'Backup integrity verification failed: Backup version identifier is missing.'];
@@ -573,8 +611,16 @@ class BackupController extends Controller
             throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
         }
 
-        $expectedChecksum = hash_hmac('sha256', json_encode($backupContent['data']), $signingKey);
-        if (!hash_equals($expectedChecksum, $backupContent['checksum'])) {
+        $expectedEnvelopeChecksum = self::computeEnvelopeChecksum($backupContent, $signingKey);
+        $checksumMatches = hash_equals($expectedEnvelopeChecksum, $backupContent['checksum']);
+
+        // Backward compatibility: If envelope checksum does not match, check legacy data-only checksum
+        if (!$checksumMatches) {
+            $legacyDataChecksum = hash_hmac('sha256', json_encode($backupContent['data']), $signingKey);
+            $checksumMatches = hash_equals($legacyDataChecksum, $backupContent['checksum']);
+        }
+
+        if (!$checksumMatches) {
             return ['error' => 'Backup integrity verification failed (checksum mismatch). The backup payload may be corrupted or tampered with.'];
         }
 

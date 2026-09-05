@@ -41,13 +41,7 @@ class ReportController extends Controller
         if ($isBranchScoped) {
             $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
             $staffList = User::where('warehouse_id', $authUser->warehouse_id)->get();
-            $shopStaffIds = $staffList->pluck('id');
-            $salesQuery->where(function($sq) use ($authUser, $shopStaffIds) {
-                $sq->where('warehouse_id', $authUser->warehouse_id);
-                if ($shopStaffIds->isNotEmpty()) {
-                    $sq->orWhereIn('userId', $shopStaffIds);
-                }
-            });
+            $salesQuery->where('warehouse_id', $authUser->warehouse_id);
         } else {
             $warehouses = Warehouse::where('is_active', true)->get();
             $staffList = User::all();
@@ -89,16 +83,23 @@ class ReportController extends Controller
             $salesQuery->where('userName', 'like', "%{$request->user_name}%");
         }
 
+        // Authoritative event-based financial calculation subqueries:
+        $hasPaymentsSql = "(SELECT COUNT(*) FROM payments WHERE payments.saleId = sales.id)";
+        $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method != 'REFUND_CASH'), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method = 'REFUND_CASH'), 0)";
+        $netPaidSql = "CASE WHEN {$hasPaymentsSql} > 0 THEN ({$eventNetPaidSql}) ELSE sales.paidAmount END";
+        $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
+        $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$netPaidSql}))";
+
         if ($request->filled('payment_status')) {
             $pStatus = strtoupper($request->payment_status);
             if ($pStatus === 'PAID') {
-                $salesQuery->whereColumn('paidAmount', '>=', 'totalAmount');
+                $salesQuery->whereRaw("{$netBalanceSql} <= 0.01");
             } elseif (in_array($pStatus, ['PART_PAID', 'PARTIAL'])) {
-                $salesQuery->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0);
+                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01");
             } elseif (in_array($pStatus, ['NOT_PAID', 'UNPAID'])) {
-                $salesQuery->where('paidAmount', '<=', 0);
+                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) <= 0.01");
             } elseif ($pStatus === 'DEBT') {
-                $salesQuery->whereColumn('paidAmount', '<', 'totalAmount');
+                $salesQuery->whereRaw("{$netBalanceSql} > 0.01");
             }
         }
 
@@ -109,13 +110,13 @@ class ReportController extends Controller
             } elseif (in_array($dStatus, ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING'])) {
                 $salesQuery->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
             } elseif ($dStatus === 'PAID_SUPPLIED') {
-                $salesQuery->whereColumn('paidAmount', '>=', 'totalAmount')->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+                $salesQuery->whereRaw("{$netBalanceSql} <= 0.01")->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
             } elseif ($dStatus === 'PAID_NOT_SUPPLIED') {
-                $salesQuery->whereColumn('paidAmount', '>=', 'totalAmount')->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+                $salesQuery->whereRaw("{$netBalanceSql} <= 0.01")->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
             } elseif ($dStatus === 'PART_PAID_SUPPLIED') {
-                $salesQuery->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0)->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01")->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
             } elseif ($dStatus === 'PART_PAID_NOT_SUPPLIED') {
-                $salesQuery->whereColumn('paidAmount', '<', 'totalAmount')->where('paidAmount', '>', 0)->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01")->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
             } else {
                 $salesQuery->where('deliveryStatus', $dStatus);
             }
@@ -133,12 +134,40 @@ class ReportController extends Controller
         // Executed Sales Collection
         $sales = (clone $salesQuery)->orderBy('createdAt', 'desc')->get();
 
-        // 2. High-Level Aggregates
-        $totalRevenue = $sales->sum('totalAmount');
-        $totalCollected = $sales->sum('paidAmount');
-        $totalDebtCreated = max(0, $totalRevenue - $totalCollected);
+        // 2. High-Level Aggregates (Event-Authoritative)
+        $totalRevenue = (float) $sales->sum('totalAmount');
+        $saleIds = $sales->pluck('id');
+        $hasPayments = \App\Models\Payment::whereIn('saleId', $saleIds)->exists();
+        if ($hasPayments) {
+            $inflows = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
+                ->where('amount', '>', 0)
+                ->where('method', '!=', 'REFUND_CASH')
+                ->sum('amount');
+            $cashRefunds = abs((float) \App\Models\Payment::whereIn('saleId', $saleIds)
+                ->where('method', 'REFUND_CASH')
+                ->sum('amount'));
+            $totalCollected = max(0.0, round($inflows - $cashRefunds, 2));
+        } else {
+            $totalCollected = (float) $sales->sum('paidAmount');
+        }
+        $returnCredits = (float) \App\Models\SalesReturn::whereIn('saleId', $saleIds)->sum('refundAmount');
+        $netPayable = max(0.0, round($totalRevenue - $returnCredits, 2));
+        $totalDebtCreated = max(0.0, round($netPayable - $totalCollected, 2));
         $totalInvoices = $sales->count();
-        $totalDebtOwedAllTime = Customer::sum('total_debt');
+
+        if ($isBranchScoped) {
+            $branchSales = Sale::where('warehouse_id', $authUser->warehouse_id)
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->get();
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            $branchTotalDebt = 0.0;
+            foreach ($branchSales as $bs) {
+                $branchTotalDebt += $accountingService->calculateInvoiceBalance($bs);
+            }
+            $totalDebtOwedAllTime = round($branchTotalDebt, 2);
+        } else {
+            $totalDebtOwedAllTime = (float) Customer::sum('total_debt');
+        }
 
         // Top Selling Products (by revenue) - Strictly scoped to filtered sales within tenant & branch
         $topProductsQuery = SaleItem::selectRaw('productName, code, sum(quantity) as total_qty, sum(totalPrice) as total_revenue');
@@ -169,8 +198,12 @@ class ReportController extends Controller
             $prodQuery->where('category', $request->category);
         }
 
-        $products = $prodQuery->get()->map(function ($p) use ($warehouses) {
-            $p->branch_stocks = StockLevel::where('product_id', $p->id)->pluck('physical_stock', 'warehouse_id')->toArray();
+        $products = $prodQuery->get()->map(function ($p) use ($isBranchScoped, $authUser) {
+            $stockLevelsQuery = StockLevel::where('product_id', $p->id);
+            if ($isBranchScoped) {
+                $stockLevelsQuery->where('warehouse_id', $authUser->warehouse_id);
+            }
+            $p->branch_stocks = $stockLevelsQuery->pluck('physical_stock', 'warehouse_id')->toArray();
             $p->total_physical_stock = array_sum($p->branch_stocks);
             $p->total_valuation = $p->total_physical_stock * (float) $p->unitPrice;
             $p->stock_status = $p->total_physical_stock <= 0 ? 'OUT_OF_STOCK' : ($p->total_physical_stock <= 5 ? 'LOW_STOCK' : 'IN_STOCK');
@@ -442,6 +475,23 @@ class ReportController extends Controller
         $returnsQuery = $accountingService->buildReturnsQuery($filters);
         $damagesQuery = $accountingService->buildStockMovementsQuery($filters);
 
+        $debtorsQuery = Customer::where('total_debt', '>', 0);
+        if ($isBranchScoped) {
+            $branchSaleCustomerIds = Sale::where('warehouse_id', $branchWarehouseId)
+                ->whereNotNull('customerId')
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->pluck('customerId')
+                ->filter()
+                ->unique();
+            $debtorsQuery->whereIn('id', $branchSaleCustomerIds);
+        }
+
+        $activitiesQuery = Activity::orderBy('timestamp', 'desc');
+        if ($isBranchScoped) {
+            $branchUserIds = User::where('warehouse_id', $branchWarehouseId)->pluck('id');
+            $activitiesQuery->whereIn('userId', $branchUserIds);
+        }
+
         $data = match($type) {
             'sales' => [
                 'meta' => ['report' => 'Sales & Revenue Analysis', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
@@ -451,7 +501,12 @@ class ReportController extends Controller
             'inventory' => [
                 'meta' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => Product::with('stockLevels')->where('archived', false)->get()
+                'data' => $isBranchScoped
+                    ? Product::with(['stockLevels' => fn($q) => $q->where('warehouse_id', $branchWarehouseId)])
+                        ->where('archived', false)
+                        ->whereHas('stockLevels', fn($q) => $q->where('warehouse_id', $branchWarehouseId))
+                        ->get()
+                    : Product::with('stockLevels')->where('archived', false)->get()
             ],
             'transfers' => [
                 'meta' => ['report' => 'Inter-Branch Transfer Movements & Discrepancies', 'generated_at' => now()->toIso8601String()],

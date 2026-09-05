@@ -33,4 +33,9 @@ class InventoryLog extends Model
         'quantity' => 'integer',
         'warehouse_id' => 'integer',
     ];
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class, 'productId', 'id');
+    }
 }

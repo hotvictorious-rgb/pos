@@ -27,14 +27,18 @@ class DebtController extends Controller
         $debtBracket = $request->get('debt_bracket', 'ALL');
         $sortBy = $request->get('sort_by', 'highest_debt');
         $authUser = Auth::user();
-        $assignedWarehouseId = ($authUser && !empty($authUser->warehouse_id)) ? $authUser->warehouse_id : null;
+        $isBranchScoped = ($authUser && $authUser->isBranchScoped());
+        $assignedWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
 
         $query = Customer::where('total_debt', '>', 0);
 
         if ($assignedWarehouseId) {
             $customerIdsAtBranch = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
                 ->whereNotNull('customerId')
-                ->pluck('customerId');
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->pluck('customerId')
+                ->filter()
+                ->unique();
             $query->whereIn('id', $customerIdsAtBranch);
         }
 
@@ -67,14 +71,43 @@ class DebtController extends Controller
         $debtors = (clone $query)->paginate(25)->withQueryString();
         $allCustomers = Customer::orderBy('name')->get();
 
-        $totalOutstandingDebt = (clone $query)->sum('total_debt');
+        if ($assignedWarehouseId) {
+            $branchSales = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
+                ->whereNotNull('customerId')
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->get();
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            $totalOutstandingDebt = 0.0;
+            foreach ($branchSales as $bs) {
+                $totalOutstandingDebt += $accountingService->calculateInvoiceBalance($bs);
+            }
+            $totalOutstandingDebt = round($totalOutstandingDebt, 2);
+
+            $debtors->getCollection()->transform(function ($debtor) use ($assignedWarehouseId, $accountingService) {
+                $bSales = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
+                    ->where('customerId', $debtor->id)
+                    ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                    ->get();
+                $bDebt = 0.0;
+                foreach ($bSales as $bs) {
+                    $bDebt += $accountingService->calculateInvoiceBalance($bs);
+                }
+                $debtor->branch_debt = round($bDebt, 2);
+                return $debtor;
+            });
+        } else {
+            $totalOutstandingDebt = (clone $query)->sum('total_debt');
+        }
+
         $totalDebtorsCount = (clone $query)->count();
         $highRiskDebtorsCount = (clone $query)->where('total_debt', '>=', 100000)->count();
 
         $recentPaymentsQuery = CustomerLedger::with(['customer', 'sale'])->where('type', 'PAYMENT');
         if ($assignedWarehouseId) {
-            $saleIdsAtBranch = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)->pluck('id');
-            $recentPaymentsQuery->whereIn('sale_id', $saleIdsAtBranch);
+            $recentPaymentsQuery->where(function ($q) use ($assignedWarehouseId) {
+                $q->where('warehouse_id', $assignedWarehouseId)
+                  ->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $assignedWarehouseId));
+            });
         }
         $recentPayments = $recentPaymentsQuery->orderBy('created_at', 'desc')->take(15)->get();
 
@@ -101,6 +134,27 @@ class DebtController extends Controller
             'payment_method' => 'required|string|in:CASH,POS,cash,pos',
         ]);
 
+        $authUser = Auth::user();
+        $isBranchScoped = ($authUser && $authUser->isBranchScoped());
+        $warehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
+
+        // Independent validation: if actor is branch-scoped, customer MUST have open debt at this branch
+        if ($warehouseId) {
+            $hasAnySales = \App\Models\Sale::where('customerId', $customerId)->exists();
+            if ($hasAnySales) {
+                $hasBranchDebt = \App\Models\Sale::where('customerId', $customerId)
+                    ->where(function ($q) use ($warehouseId) {
+                        $q->where('warehouse_id', $warehouseId)
+                          ->orWhereNull('warehouse_id');
+                    })
+                    ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                    ->exists();
+                if (!$hasBranchDebt) {
+                    return back()->withErrors(['error' => 'Unauthorized: Customer has no outstanding invoices at your assigned branch location.'])->withInput();
+                }
+            }
+        }
+
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Cashier';
 
@@ -118,8 +172,9 @@ class DebtController extends Controller
                     'customerId' => (int) $customerId,
                     'amount' => (float) $request->amount,
                     'payment_method' => $request->payment_method,
+                    'warehouse_id' => $warehouseId,
                 ],
-                function () use ($customerId, $request, $userId, $userName) {
+                function () use ($customerId, $request, $userId, $userName, $warehouseId) {
                     return $this->stockService->recordCustomerPayment(
                         (int) $customerId,
                         (float) $request->amount,
@@ -127,7 +182,8 @@ class DebtController extends Controller
                         $request->reference_no,
                         $userId,
                         $userName,
-                        $request->notes
+                        $request->notes,
+                        $warehouseId
                     );
                 }
             );

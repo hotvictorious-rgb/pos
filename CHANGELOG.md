@@ -8,6 +8,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 6 (Universal Branch Debt Isolation, Event-Driven Financial Authority, Envelope HMAC Integrity, and CI PHP Matrix)**:
+  - **Branch-Isolated Debt Payments & Multi-Branch Reconciliations**:
+    - Added database migration `2026_09_05_080000_add_warehouse_id_to_customer_ledgers_table` stamping `warehouse_id` on `customer_ledgers`.
+    - In `DebtController`:
+      - `index()`: Debtors list calculates `branch_debt` strictly across open sales originating at `$authUser->warehouse_id` when branch-scoped. Total outstanding debt displays branch-scoped debt instead of tenant-wide customer liability.
+      - `recordPayment()`: Validates that customer holds open debt at the employee's assigned branch before execution.
+      - UI (`debts/index.blade.php`): Displays `branch_debt` and pre-populates debt payment modal with branch balance rather than tenant-wide totals.
+    - In `StockService::recordCustomerPayment()`:
+      - Accepts `$warehouseId` context and automatically infers warehouse assignment from branch-scoped actors.
+      - Enforces that open invoices are retrieved strictly from the acting branch (`warehouse_id = $warehouseId`).
+      - Strictly restricts payment allocation to open sales originating at the acting branch. Open invoices belonging to other branches are completely untouched.
+      - Enforces 100% allocation integrity across invoice balances (`$remainingPayment == 0`), rejecting unapplied or floating customer debt reductions.
+      - Stamps `warehouse_id` and `tenant_id` on created `CustomerLedger` entries.
+  - **Period Summary Branch Scoping**:
+    - In `AccountingReportService::getPeriodSummary()`: Eliminated `->orWhereNull('sale_id')` query leakage. Customer debt payments are scoped strictly via `$q->where('warehouse_id', $scopedWarehouseId)->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $scopedWarehouseId))`.
+  - **Branch-Isolated Reporting & Inventory Exports**:
+    - In `ReportController`:
+      - Removed `orWhereIn('userId', $shopStaffIds)` from `$salesQuery`, ensuring sales reporting strictly isolates by `sales.warehouse_id = $authUser->warehouse_id`.
+      - Derived dashboard `$totalDebtOwedAllTime` strictly from branch open invoice balances when branch-scoped.
+      - Replaced cached `paidAmount` queries with authoritative event SQL subqueries calculating net inflows (`inflowPayments - cashRefunds`) and return credits.
+      - Scoped `exportJson('inventory')`, `'debtors'`, and `'activities'` strictly to `$user->warehouse_id` for branch-scoped personnel.
+      - Added `product()` relationship on `InventoryLog` model.
+    - In `AccountingReportService::buildStockMovementsQuery()`: Enforced `where('warehouse_id', (int) $user->warehouse_id)` for branch staff.
+  - **Cryptographic Backup Envelope HMAC Integrity**:
+    - In `BackupController`: Added `computeEnvelopeChecksum()` covering the complete canonical JSON envelope (`version`, `type`, `tenant_id`, `manifest`, `data`).
+    - Made `validateBackupIntegrity()` public and verified that metadata tampering or manifest alterations are detected and rejected. Maintained backward compatibility for legacy data-only signatures.
+  - **Continuous Integration Matrix**:
+    - In `.github/workflows/ci.yml`: Added matrix testing across PHP 8.2 and PHP 8.3.
+  - **Added `ProductionHardeningPass6Test`**: 9 comprehensive feature tests verifying branch debt isolation, multi-branch payment containment, period summary isolation, inventory export scoping, and backup envelope HMAC integrity, bringing the total automated test suite to **253 passed tests (1,429 assertions, 0 errors, 0 failures)** across 32 test suites.
 - **Production Hardening Pass 5 (Scope-vs-Capability Hierarchy, Platform CustomRole Boundary, Event-Authoritative Filters, and CI Automation)**:
   - **Elimination of Platform `CustomRole` Leakage in Legacy Data Endpoints**:
     - In `DataController::get()`: Permanently removed `$customRoles = \App\Models\CustomRole::all();` and excluded `custom_roles` from the JSON payload returned to tenant administrators.

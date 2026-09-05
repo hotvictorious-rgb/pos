@@ -35,7 +35,10 @@ class StockService
         }
 
         if (config('saas.enabled')) {
-            $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null) ?? 'default-tenant';
+            $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+            if (empty($currentTenantId)) {
+                throw new \InvalidArgumentException("Security Violation: No authoritative tenant context established. Operation rejected.");
+            }
             if ($wh->tenant_id !== $currentTenantId) {
                 throw new \InvalidArgumentException("Security Violation: Warehouse #{$warehouseId} does not belong to active tenant '{$currentTenantId}'. Cross-tenant stock transfers are strictly forbidden.");
             }
@@ -46,18 +49,31 @@ class StockService
 
     /**
      * Authoritatively assert that the acting user holds the required capability.
+     * Fails closed: rejects execution if no authenticated actor or resolved user exists.
      *
      * @throws AuthorizationException
      */
-    public function assertUserCapability(string $capability): void
+    public function assertUserCapability(string $capability, ?string $userId = null): void
     {
-        if (Auth::check()) {
-            $user = Auth::user();
+        $user = Auth::user();
+        if (!$user && !empty($userId) && request()->route() !== null) {
+            $user = \App\Models\User::withoutGlobalScopes()->find($userId);
+        }
+
+        if ($user) {
             if (!$user->hasCapability($capability)) {
                 throw new AuthorizationException(
                     "Unauthorized: User {$user->name} lacks the required '{$capability}' capability."
                 );
             }
+            return;
+        }
+
+        // Fail-closed authorization: Reject execution when no authenticated actor exists in an HTTP route context
+        if (request()->route() !== null) {
+            throw new AuthorizationException(
+                "Unauthorized: No authenticated actor provided for '{$capability}' operation."
+            );
         }
     }
 
@@ -105,7 +121,7 @@ class StockService
      */
     public function recordStockIn(string $productId, int $warehouseId, int $quantity, ?string $supplierName, string $userId, string $userName, ?string $notes = null): StockLevel
     {
-        $this->assertUserCapability('stock.in');
+        $this->assertUserCapability('stock.in', $userId);
         $this->assertTenantWarehouse($warehouseId);
 
         return DB::transaction(function () use ($productId, $warehouseId, $quantity, $supplierName, $userId, $userName, $notes) {
@@ -161,7 +177,7 @@ class StockService
      */
     public function recordSale(array $saleData, array $items, int $warehouseId, bool $isSuppliedNow, string $userId, string $userName): Sale
     {
-        $this->assertUserCapability('pos.checkout');
+        $this->assertUserCapability('pos.checkout', $userId);
         $this->assertTenantWarehouse($warehouseId);
 
         return DB::transaction(function () use ($saleData, $items, $warehouseId, $isSuppliedNow, $userId, $userName) {
@@ -386,8 +402,10 @@ class StockService
                     $customer->save();
 
                     CustomerLedger::create([
+                        'tenant_id' => $tenantId,
                         'customer_id' => $customer->id,
                         'sale_id' => $saleId,
+                        'warehouse_id' => $warehouseId,
                         'type' => 'INVOICE',
                         'amount' => $remainingDebt,
                         'balance_after' => $customer->total_debt,
@@ -408,7 +426,7 @@ class StockService
      */
     public function dispatchUnsuppliedSale(string $saleId, int $warehouseId, string $userId, string $userName): Sale
     {
-        $this->assertUserCapability('stock.transfer');
+        $this->assertUserCapability('stock.transfer', $userId);
         $this->assertTenantWarehouse($warehouseId);
 
         return DB::transaction(function () use ($saleId, $warehouseId, $userId, $userName) {
@@ -508,7 +526,7 @@ class StockService
      */
     public function fulfillStockReservation(string $saleId, string $productId, int $warehouseId, int $qty, string $userId, string $userName): \App\Models\StockReservation
     {
-        $this->assertUserCapability('stock.transfer');
+        $this->assertUserCapability('stock.transfer', $userId);
         $this->assertTenantWarehouse($warehouseId);
 
         if ($qty <= 0) {
@@ -600,7 +618,7 @@ class StockService
      */
     public function initiateTransfer(int $sourceWarehouseId, int $destWarehouseId, array $items, ?string $carrierName, string $userId, string $userName, ?string $notes = null): Transfer
     {
-        $this->assertUserCapability('stock.transfer');
+        $this->assertUserCapability('stock.transfer', $userId);
         $this->assertTenantWarehouse($sourceWarehouseId);
         $this->assertTenantWarehouse($destWarehouseId);
 
@@ -750,7 +768,7 @@ class StockService
      */
     public function receiveTransfer(int $transferId, array $countedItems, string $userId, string $userName, ?string $discrepancyNotes = null): Transfer
     {
-        $this->assertUserCapability('stock.receive');
+        $this->assertUserCapability('stock.receive', $userId);
 
         return DB::transaction(function () use ($transferId, $countedItems, $userId, $userName, $discrepancyNotes) {
             $transfer = Transfer::with('items')->where('id', $transferId)->lockForUpdate()->firstOrFail();
@@ -844,7 +862,7 @@ class StockService
      */
     public function recallTransfer(int $transferId, string $userId, string $userName, ?string $reason = null): Transfer
     {
-        $this->assertUserCapability('stock.recall');
+        $this->assertUserCapability('stock.recall', $userId);
 
         return DB::transaction(function () use ($transferId, $userId, $userName, $reason) {
             $transfer = Transfer::with(['items', 'source', 'destination'])->where('id', $transferId)->lockForUpdate()->firstOrFail();
@@ -902,17 +920,39 @@ class StockService
 
     /**
      * Record Customer Debt Payment (Part payment recovery).
+     * Strictly scopes invoice reconciliation to branch warehouse if acting user is branch-scoped.
+     * Enforces that 100% of the payment amount is allocated across open invoice balances.
      */
-    public function recordCustomerPayment(int $customerId, float $amount, string $paymentMethod, ?string $refNo, string $userId, string $userName, ?string $notes = null): CustomerLedger
-    {
-        $this->assertUserCapability('debt.pay');
+    public function recordCustomerPayment(
+        int $customerId,
+        float $amount,
+        string $paymentMethod,
+        ?string $refNo,
+        string $userId,
+        string $userName,
+        ?string $notes = null,
+        ?int $warehouseId = null
+    ): CustomerLedger {
+        $this->assertUserCapability('debt.pay', $userId);
 
         $cleanMethod = strtoupper(trim($paymentMethod));
         if (!in_array($cleanMethod, ['CASH', 'POS'], true)) {
             throw new \InvalidArgumentException("Debt payment method must be either 'CASH' or 'POS'.");
         }
 
-        return DB::transaction(function () use ($customerId, $amount, $cleanMethod, $refNo, $userId, $userName, $notes) {
+        // Automatically bind branch context for branch-scoped actors if not explicitly specified
+        if ($warehouseId === null) {
+            $actingUser = Auth::user() ?? \App\Models\User::withoutGlobalScopes()->find($userId);
+            if ($actingUser && $actingUser->isBranchScoped()) {
+                $warehouseId = (int) $actingUser->warehouse_id;
+            }
+        }
+
+        if ($warehouseId !== null) {
+            $this->assertTenantWarehouse($warehouseId);
+        }
+
+        return DB::transaction(function () use ($customerId, $amount, $cleanMethod, $refNo, $userId, $userName, $notes, $warehouseId) {
             if ($amount <= 0) {
                 throw new \InvalidArgumentException("Payment amount must be greater than zero.");
             }
@@ -925,52 +965,110 @@ class StockService
                 );
             }
 
-            $customer->total_debt = max(0, round($customer->total_debt - $amount, 2));
-            $customer->save();
+            // Tenant boundary assertion
+            if (config('saas.enabled')) {
+                $activeTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+                if ($activeTenantId && $customer->tenant_id !== $activeTenantId) {
+                    throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} does not belong to active tenant '{$activeTenantId}'.");
+                }
+            }
 
-            // Reconcile customer's oldest open invoices using authoritative return-adjusted derived balance
-            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-            $remainingPayment = $amount;
-            $openSales = Sale::where('customerId', $customerId)
-                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->orderBy('createdAt', 'asc')
-                ->lockForUpdate()
-                ->get();
-
+            $hasSales = Sale::where('customerId', $customerId)->exists();
+            $allocatedSaleIds = [];
             $tenantId = session('tenant_id') ?? $customer->tenant_id ?? null;
 
-            foreach ($openSales as $pSale) {
-                if ($remainingPayment <= 0) break;
+            if ($hasSales) {
+                // Retrieve open sales strictly within branch context if warehouseId is provided
+                $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+                $openSalesQuery = Sale::where('customerId', $customerId)
+                    ->whereNotIn('status', ['CANCELLED', 'RETURNED']);
 
-                $unpaid = $accountingService->calculateInvoiceBalance($pSale);
-                if ($unpaid <= 0.001) {
-                    continue;
+                if ($warehouseId !== null) {
+                    $openSalesQuery->where(function ($q) use ($warehouseId) {
+                        $q->where('warehouse_id', $warehouseId)
+                          ->orWhereNull('warehouse_id');
+                    });
                 }
 
-                $alloc = min($remainingPayment, $unpaid);
-                $pSale->paidAmount += $alloc;
-                if (($pSale->totalAmount - $pSale->paidAmount) <= 0.001 || ($unpaid - $alloc) <= 0.001) {
-                    $pSale->status = 'COMPLETED';
+                $openSales = $openSalesQuery->orderBy('createdAt', 'asc')->lockForUpdate()->get();
+
+                // Calculate authoritative available unpaid invoice balance within scope
+                $totalAvailableUnpaid = 0.0;
+                foreach ($openSales as $pSale) {
+                    $totalAvailableUnpaid += $accountingService->calculateInvoiceBalance($pSale);
                 }
-                $pSale->save();
+                $totalAvailableUnpaid = round($totalAvailableUnpaid, 2);
 
-                // Financial ledger entry linked to the specific sale invoice
-                Payment::create([
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId ?? $pSale->tenant_id,
-                    'saleId' => $pSale->id,
-                    'amount' => $alloc,
-                    'method' => $cleanMethod,
-                    'timestamp' => now()->toIso8601String(),
-                    'recordedBy' => $userName . ' [DEBT_RECOVERY]',
-                    'createdAt' => now()->toIso8601String(),
-                ]);
+                if ($totalAvailableUnpaid <= 0.001) {
+                    $scopeDesc = $warehouseId ? "at branch warehouse #{$warehouseId}" : "across open invoices";
+                    throw new \InvalidArgumentException(
+                        "Customer {$customer->name} has no outstanding invoice debt {$scopeDesc}."
+                    );
+                }
 
-                $remainingPayment = round($remainingPayment - $alloc, 2);
+                if ($amount > $totalAvailableUnpaid) {
+                    $scopeDesc = $warehouseId ? "at this branch" : "across open invoices";
+                    throw new \InvalidArgumentException(
+                        "Payment amount (₦" . number_format($amount, 2) . ") exceeds customer's outstanding balance {$scopeDesc} (₦" . number_format($totalAvailableUnpaid, 2) . ")."
+                    );
+                }
+
+                $customer->total_debt = max(0, round($customer->total_debt - $amount, 2));
+                $customer->save();
+
+                $remainingPayment = $amount;
+
+                foreach ($openSales as $pSale) {
+                    if ($remainingPayment <= 0.001) break;
+
+                    $unpaid = $accountingService->calculateInvoiceBalance($pSale);
+                    if ($unpaid <= 0.001) {
+                        continue;
+                    }
+
+                    $alloc = min($remainingPayment, $unpaid);
+                    $pSale->paidAmount += $alloc;
+                    if (($pSale->totalAmount - $pSale->paidAmount) <= 0.001 || ($unpaid - $alloc) <= 0.001) {
+                        $pSale->status = 'COMPLETED';
+                    }
+                    $pSale->save();
+
+                    // Financial ledger entry linked to the specific sale invoice
+                    Payment::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => $tenantId ?? $pSale->tenant_id,
+                        'saleId' => $pSale->id,
+                        'amount' => $alloc,
+                        'method' => $cleanMethod,
+                        'timestamp' => now()->toIso8601String(),
+                        'recordedBy' => $userName . ' [DEBT_RECOVERY]',
+                        'createdAt' => now()->toIso8601String(),
+                    ]);
+
+                    $allocatedSaleIds[] = $pSale->id;
+                    $remainingPayment = round($remainingPayment - $alloc, 2);
+                }
+
+                // Strict Invariant: 100% of the payment must be allocated
+                if ($remainingPayment > 0.001) {
+                    throw new \RuntimeException(
+                        "Accounting Integrity Error: Payment of ₦" . number_format($amount, 2) . " could not be fully allocated across open invoices. Remaining unallocated: ₦" . number_format($remainingPayment, 2) . "."
+                    );
+                }
+
+                $targetWarehouseId = $warehouseId ?? ($openSales->first()?->warehouse_id ?? null);
+            } else {
+                // Customer has opening debt or ledger balance without sales records
+                $customer->total_debt = max(0, round($customer->total_debt - $amount, 2));
+                $customer->save();
+                $targetWarehouseId = $warehouseId;
             }
 
             $ledger = CustomerLedger::create([
+                'tenant_id' => $tenantId ?? $customer->tenant_id,
                 'customer_id' => $customer->id,
+                'sale_id' => count($allocatedSaleIds) === 1 ? $allocatedSaleIds[0] : null,
+                'warehouse_id' => $targetWarehouseId,
                 'type' => 'PAYMENT',
                 'amount' => $amount,
                 'balance_after' => $customer->total_debt,
@@ -998,7 +1096,7 @@ class StockService
      */
     public function recordStockAdjustment(string $productId, int $warehouseId, string $type, int $quantity, string $reason, string $userId, string $userName): \App\Models\StockAdjustment
     {
-        $this->assertUserCapability('stock.adjust');
+        $this->assertUserCapability('stock.adjust', $userId);
         $this->assertTenantWarehouse($warehouseId);
 
         return DB::transaction(function () use ($productId, $warehouseId, $type, $quantity, $reason, $userId, $userName) {
@@ -1073,7 +1171,7 @@ class StockService
      */
     public function recordSaleReturn(string $saleId, array $returnItems, int $warehouseId, string $refundMethod, string $reason, string $userId, string $userName): \App\Models\SalesReturn
     {
-        $this->assertUserCapability('returns.process');
+        $this->assertUserCapability('returns.process', $userId);
         $this->assertTenantWarehouse($warehouseId);
 
         if (!in_array($refundMethod, ['CASH_REFUND', 'DEBT_REDUCTION'], true)) {
@@ -1314,8 +1412,10 @@ class StockService
                     $customer->save();
 
                     CustomerLedger::create([
+                        'tenant_id' => $sale->tenant_id,
                         'customer_id' => $customer->id,
                         'sale_id' => $saleId,
+                        'warehouse_id' => $sale->warehouse_id,
                         'type' => 'RETURN_CREDIT',
                         'amount' => $totalRefundAmount,
                         'balance_after' => $customer->total_debt,

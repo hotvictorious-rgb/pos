@@ -15,6 +15,7 @@ class CustomerLedger extends Model
         'tenant_id',
         'customer_id',
         'sale_id',
+        'warehouse_id',
         'type', // INVOICE, PAYMENT, RETURN, ADJUSTMENT
         'amount',
         'balance_after',
@@ -37,5 +38,10 @@ class CustomerLedger extends Model
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class, 'sale_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }
