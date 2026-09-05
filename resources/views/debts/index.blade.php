@@ -278,6 +278,7 @@
 
             <form id="paymentForm" method="POST" action="" onsubmit="return validateDebtPayment(event)">
                 @csrf
+                <input type="hidden" name="idempotency_key" id="payIdempotencyKey" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
                 <div class="form-group">
                     <label>Current Debt Balance</label>
                     <input type="text" id="payCurrentDebt" disabled style="font-size: 1.1rem; font-weight: 800; color: #f87171; background: rgba(0,0,0,0.3);">
@@ -345,6 +346,10 @@ function openPaymentModal(custId, custName, currentDebt) {
     document.getElementById('payAmount').max = currentDebt;
     document.getElementById('payAmount').value = '';
     document.getElementById('paymentForm').action = '/debts/pay/' + custId;
+    const keyField = document.getElementById('payIdempotencyKey');
+    if (keyField) {
+        keyField.value = 'pay-' + custId + '-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+    }
     openModal('modalPayment');
 }
 

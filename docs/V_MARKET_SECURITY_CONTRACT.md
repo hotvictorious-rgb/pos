@@ -324,8 +324,36 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 - **Fail-Closed Offline Sync Lockout**:
   - `POST /api/data` remains permanently locked with 403 Forbidden, guaranteeing that client-side bulk sync cannot bypass `StockService`, row locks, or tenant boundaries.
 - **Continuous Lock DAG Invariant Protection**:
-  - All financial services touching customer debt balances mutate balances via integer kobo (`toKobo()` and `toNaira()`).
-  - Strict top-down lock ordering (Customer at Level 2 before Sale at Level 3) is enforced across both sales and debt-reducing returns.
+### VM-032: Universal Mandatory Idempotency Closure, Atomic Quota Row Locking, and Password Policy Unification
+- **Universal Mandatory Idempotency Closure (Zero Direct Bypass Branches)**:
+  - All direct mutation bypass branches (`else { $this->stockService->... }`) across all controllers (`PosController`, `DebtController`, `StockController`) have been permanently eradicated.
+  - Every financial, sales, inventory, and warehouse transfer mutation routes unconditionally and exclusively through `IdempotencyService::execute()`.
+  - In `PosController`:
+    - `checkout()` and `processReturn()` require an `Idempotency-Key` or `idempotency_key`. Stateless or API requests lacking a key fail closed with `422 Unprocessable Entity`.
+  - In `DebtController`:
+    - `recordCustomerPayment()` resolves `$tenantId` authoritatively from session or authenticated user.
+    - Web forms generate client-side idempotency keys per transaction modal; unkeyed stateless/API requests are rejected with `422 Unprocessable Entity`.
+  - In `StockController`:
+    - All inventory mutations (`stockIn`, `transferOut`, `transferIn`, `recallTransfer`, `dispatchConfirm`, `recordAdjustment`) route authoritatively through `IdempotencyService::execute()`.
+  - Replays of completed operations return cached HTTP responses without re-executing mutations. Replays with mismatched payloads are rejected with `422 Unprocessable Entity`. Concurrent requests with the same key are protected against race conditions via distributed cache atomic locking.
+- **Atomic Tenant User Quota Reservation (`UserController::store`)**:
+  - The vulnerable check-then-act race pattern (`COUNT(users) -> compare max_users -> CREATE`) has been replaced with an atomic reservation protocol.
+  - In `UserController::store()`, the tenant record is locked exclusively with `Tenant::where('id', $tenantId)->lockForUpdate()->first()` inside a database transaction.
+  - User counting uses `User::withoutGlobalScopes()->where('tenant_id', $tenantId)->count()` to ensure accurate count regardless of session tenancy scopes.
+  - When the tenant user count reaches or exceeds `max_users`, the transaction immediately aborts with `403 Forbidden` ("User limit reached for your plan"), preventing concurrent requests from breaching tenant plan limits.
+- **Unified Password Policy Invariant (`App\Rules\PasswordPolicy`)**:
+  - Centralized password policy rule class enforces uniform security rules across all system entrypoints:
+    - Minimum 8 characters in length (`min:8`).
+    - At least one uppercase character (`regex:/[A-Z]/`).
+    - At least one numeric digit (`regex:/[0-9]/`).
+  - Standardized across:
+    - Public tenant self-registration (`SaaSController::registerPost`).
+    - Worker account creation (`UserController::store`).
+    - Worker account credential updates (`UserController::update`).
+    - Privileged password reset (`UserController::resetPassword`).
+    - SaaS platform tenant provisioning (`SaaSController::storeTenant`).
+    - System initial installation admin creation (`InstallerController::step2Post`).
+
 
 
 

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Rules\PasswordPolicy;
 
 class SaaSController extends Controller
 {
@@ -55,9 +56,9 @@ class SaaSController extends Controller
             'owner_name'    => 'required|string|max:255',
             'owner_email'   => 'required|email|unique:users,email|unique:tenants,owner_email',
             'owner_phone'   => 'required|string|max:20',
-            'password'      => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
+            'password'      => PasswordPolicy::rules(true),
             'plan'          => 'required|in:basic,pro,enterprise',
-        ]);
+        ], PasswordPolicy::messages());
 
         $plans = config('saas.plans');
         $selectedPlan = $plans[$request->plan] ?? $plans['basic'];

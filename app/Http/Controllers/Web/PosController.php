@@ -247,7 +247,7 @@ class PosController extends Controller
             $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('sale_id');
 
             if (empty($idempotencyKey)) {
-                if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
+                if ($request->header('X-Require-Idempotency') || $request->header('X-Strict-Idempotency') || $request->is('api/*') || ($request->expectsJson() && !$request->hasSession())) {
                     return response()->json(['success' => false, 'error' => 'Idempotency key is required for POS checkout.'], 422);
                 }
                 $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
@@ -489,19 +489,24 @@ class PosController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
+        // 🔒 Invariant VM-032: Enforce Mandatory Idempotency Closure
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Strict-Idempotency') || $request->header('X-Require-Idempotency') || $request->is('api/*') || ($request->expectsJson() && !$request->hasSession())) {
+                $errorMsg = 'Idempotency key is required for processing returns.';
+                if ($request->wantsJson() || $request->expectsJson()) {
+                    return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                }
+                return back()->withErrors(['error' => $errorMsg]);
+            }
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
+
         $idempotencyPayload = [
             'sale_id' => $request->sale_id,
             'warehouse_id' => $warehouseId,
             'items' => $request->items,
             'refund_method' => $request->refund_method,
         ];
-
-        if (empty($idempotencyKey)) {
-            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
-                return response()->json(['success' => false, 'error' => 'Idempotency key is required for processing returns.'], 422);
-            }
-            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
-        }
 
         try {
             $idempotencyService = app(\App\Services\IdempotencyService::class);
@@ -524,18 +529,19 @@ class PosController extends Controller
                 }
             );
 
-            if ($request->wantsJson()) {
+            if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json([
                     'success' => true,
                     'message' => "Return #{$salesReturn->code} processed successfully!",
                     'returnId' => $salesReturn->id,
                     'code' => $salesReturn->code,
+                    'return' => $salesReturn,
                 ]);
             }
 
             return redirect()->route('pos.returns')->with('success', "✓ Return #{$salesReturn->code} processed! Items restored to physical closing stock.");
         } catch (\InvalidArgumentException $e) {
-            if ($request->wantsJson()) {
+            if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
             }
             return back()->withErrors(['error' => $e->getMessage()]);
@@ -547,7 +553,7 @@ class PosController extends Controller
                 'warehouse_id' => $warehouseId,
             ]);
             $msg = 'Unable to process sales return. Please verify item quantities or contact support.';
-            if ($request->wantsJson()) {
+            if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $msg], 422);
             }
             return back()->withErrors(['error' => $msg]);

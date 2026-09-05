@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Rules\PasswordPolicy;
 
 class UserController extends Controller
 {
@@ -36,15 +37,7 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:100',
-            'email' => 'required|email|unique:users,email',
-            'password' => ['required', 'string', 'min:8'],
-            'role' => 'required|string',
-        ]);
-
-        $userId = (string) Str::uuid();
-        $creatorName = Auth::user()->name ?? 'Auditor / Admin';
+        $tenantId = session('tenant_id') ?? 'default-tenant';
 
         $role = $request->role;
         if ($role === 'super_admin') {
@@ -72,6 +65,16 @@ class UserController extends Controller
                 $warehouseId = $wh->id;
             }
         }
+
+        $request->validate([
+            'name' => 'required|string|max:100',
+            'email' => 'required|email|unique:users,email',
+            'password' => PasswordPolicy::rules(true),
+            'role' => 'required|string',
+        ], PasswordPolicy::messages());
+
+        $userId = (string) Str::uuid();
+        $creatorName = Auth::user()->name ?? 'Auditor / Admin';
 
         $permissions = match($role) {
             'cashier' => [
@@ -107,7 +110,7 @@ class UserController extends Controller
                 'reports' => false,
                 'users' => false,
             ],
-            'branch_manager' => [
+            'manager' => [
                 'pos' => true,
                 'debts' => true,
                 'returns' => true,
@@ -115,6 +118,17 @@ class UserController extends Controller
                 'stockIn' => true,
                 'transfer' => true,
                 'adjustments' => true,
+                'reports' => true,
+                'users' => false,
+            ],
+            'accountant' => [
+                'pos' => false,
+                'debts' => true,
+                'returns' => true,
+                'products' => false,
+                'stockIn' => false,
+                'transfer' => false,
+                'adjustments' => false,
                 'reports' => true,
                 'users' => false,
             ],
@@ -132,13 +146,13 @@ class UserController extends Controller
             ],
             'admin', 'super_admin' => [
                 'pos' => true,
+                'debts' => true,
+                'returns' => true,
                 'products' => true,
                 'stockIn' => true,
                 'transfer' => true,
-                'reports' => true,
-                'debts' => true,
-                'returns' => true,
                 'adjustments' => true,
+                'reports' => true,
                 'users' => true,
             ],
             default => [
@@ -154,15 +168,13 @@ class UserController extends Controller
             ],
         };
 
-        $tenantId = session('tenant_id') ?? 'default-tenant';
-
         try {
             $user = DB::transaction(function () use ($tenantId, $userId, $request, $role, $warehouseId, $permissions, $creatorName) {
                 // Enforce SaaS Subscription Worker Account Limit with pessimistic row locking
                 if (config('saas.enabled')) {
                     $tenant = \App\Models\Tenant::where('id', $tenantId)->lockForUpdate()->first();
                     if ($tenant && $tenant->max_users !== null) {
-                        $currentUsers = User::count();
+                        $currentUsers = User::withoutGlobalScopes()->where('tenant_id', $tenantId)->count();
                         if ($currentUsers >= $tenant->max_users) {
                             throw new \DomainException("🔒 Subscription Limit Reached: Your current plan allows a maximum of {$tenant->max_users} worker account(s). Please upgrade your subscription to add more staff.");
                         }
@@ -171,6 +183,7 @@ class UserController extends Controller
 
                 $createdUser = User::create([
                     'id' => $userId,
+                    'tenant_id' => $tenantId,
                     'name' => $request->name,
                     'email' => strtolower(trim($request->email)),
                     'password' => Hash::make($request->password),
@@ -182,6 +195,7 @@ class UserController extends Controller
 
                 Activity::create([
                     'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
                     'type' => 'USER_CREATED',
                     'description' => "{$creatorName} created worker account for {$createdUser->name} with role: {$role}",
                     'userId' => Auth::id() ?? 'ADMIN',
@@ -197,11 +211,12 @@ class UserController extends Controller
                     'success' => true,
                     'message' => "Worker account for {$user->name} created successfully!",
                     'userId' => $user->id,
-                ]);
+                    'user' => $user,
+                ], 200);
             }
 
             return redirect()->route('users.index')->with('success', "✓ Worker account for {$user->name} created successfully!");
-        } catch (\DomainException $e) {
+        } catch (\Throwable $e) {
             if ($request->wantsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
             }
@@ -400,7 +415,7 @@ class UserController extends Controller
         $user->permissions = $permissions;
 
         if ($request->filled('password')) {
-            $request->validate(['password' => ['required', 'string', 'min:8']]);
+            $request->validate(['password' => PasswordPolicy::rules(true)], PasswordPolicy::messages());
             $user->password = Hash::make($request->password);
         }
 
@@ -441,8 +456,8 @@ class UserController extends Controller
     public function resetPassword(Request $request, $id)
     {
         $request->validate([
-            'new_password' => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
-        ]);
+            'new_password' => PasswordPolicy::rules(true),
+        ], PasswordPolicy::messages());
 
         $user = User::findOrFail($id);
         $authUser = Auth::user();

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use App\Rules\PasswordPolicy;
 
 class InstallerController extends Controller
 {
@@ -89,8 +90,8 @@ class InstallerController extends Controller
         $request->validate([
             'admin_name'     => 'required|string|max:100',
             'admin_email'    => 'required|email',
-            'admin_password' => 'required|min:8|confirmed',
-        ]);
+            'admin_password' => array_merge(['confirmed'], PasswordPolicy::rules(true)),
+        ], PasswordPolicy::messages());
 
         // Store pre-hashed password in session; never store plaintext passwords
         session([

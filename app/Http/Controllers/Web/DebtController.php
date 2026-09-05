@@ -157,6 +157,7 @@ class DebtController extends Controller
         $authUser = Auth::user();
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
         $warehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
+        $tenantId = session('tenant_id') ?? ($authUser ? $authUser->tenant_id : 'default-tenant');
 
         // Independent validation: if actor is branch-scoped, customer MUST have open debt at this branch
         if ($warehouseId) {
@@ -173,8 +174,24 @@ class DebtController extends Controller
         }
 
         $userId = Auth::id() ?? 'USER-1';
-        $userName = Auth::user()->name ?? 'Cashier';
-        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
+        $userName = $authUser->name ?? 'Cashier';
+
+        $idempotencyKey = $request->header('X-Idempotency-Key')
+            ?? $request->input('idempotency_key')
+            ?? $request->input('reference_no');
+
+        // 🔒 Invariant VM-032: Enforce Mandatory Idempotency Closure
+        if (empty($idempotencyKey)) {
+            if ($request->header('X-Strict-Idempotency') || $request->header('X-Require-Idempotency') || $request->is('api/*') || ($request->expectsJson() && !$request->hasSession())) {
+                $errorMsg = 'Idempotency key is required for debt payment.';
+                if ($request->wantsJson() || $request->expectsJson()) {
+                    return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                }
+                return back()->withErrors(['error' => $errorMsg])->withInput();
+            }
+            // Seamless web session fallback: derive unique UUID so all executions route authoritatively through IdempotencyService
+            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+        }
 
         $idempotencyPayload = [
             'customerId' => (int) $customerId,
@@ -182,17 +199,6 @@ class DebtController extends Controller
             'payment_method' => strtolower($request->payment_method),
             'warehouse_id' => $warehouseId,
         ];
-
-        $idempotencyKey = $request->header('X-Idempotency-Key')
-            ?? $request->input('idempotency_key')
-            ?? $request->input('reference_no');
-
-        if (empty($idempotencyKey)) {
-            if ($request->header('X-Require-Idempotency') || $request->is('api/*')) {
-                return response()->json(['success' => false, 'error' => 'Idempotency key is required for debt payment.'], 422);
-            }
-            $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
-        }
 
         try {
             $idempotencyService = app(\App\Services\IdempotencyService::class);
@@ -216,18 +222,19 @@ class DebtController extends Controller
                 }
             );
 
-            if ($request->wantsJson()) {
+            if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Payment successfully credited to customer ledger!',
+                    'message' => "✓ Payment of ₦" . number_format($request->amount, 2) . " successfully credited to customer ledger!",
                     'ledgerId' => $ledger->id ?? null,
                     'balance_after' => $ledger->balance_after ?? null,
+                    'ledger' => $ledger,
                 ]);
             }
 
             return redirect()->route('debts.index')->with('success', "✓ Payment of ₦" . number_format($request->amount, 2) . " successfully credited to customer ledger!");
         } catch (\InvalidArgumentException $e) {
-            if ($request->wantsJson()) {
+            if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
             }
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
@@ -238,8 +245,8 @@ class DebtController extends Controller
                 'user_id' => $userId,
                 'customer_id' => $customerId,
             ]);
-            $msg = 'Unable to process debt payment. Please check your network or contact support.';
-            if ($request->wantsJson()) {
+            $msg = $e->getMessage() ?: 'Unable to process debt payment. Please check your network or contact support.';
+            if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $msg], 422);
             }
             return back()->withErrors(['error' => $msg])->withInput();

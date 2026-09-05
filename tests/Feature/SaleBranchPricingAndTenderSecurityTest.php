@@ -949,7 +949,7 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
         ])->post('/users', [
             'name' => 'Illegal Super Admin',
             'email' => 'hacker@superadmin.com',
-            'password' => 'secret123',
+            'password' => 'Secret123!',
             'role' => 'super_admin',
         ]);
 
@@ -961,7 +961,7 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
             'tenant_id' => 'default-tenant',
             'name' => 'Default Tenant Manager',
             'email' => 'manager@hysam.com',
-            'password' => Hash::make('secret123'),
+            'password' => Hash::make('Secret123!'),
             'role' => 'admin',
         ]);
 
@@ -976,7 +976,7 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'name' => 'Test Cashier Role',
             'email' => 'cashier_role@test.com',
-            'password' => Hash::make('secret123'),
+            'password' => Hash::make('Secret123!'),
             'role' => 'cashier',
             'warehouse_id' => $this->branchA->id,
         ]);
@@ -990,7 +990,7 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
         ])->post('/users', [
             'name' => 'Scoped Cashier',
             'email' => 'scoped_cashier@test.com',
-            'password' => 'secret123',
+            'password' => 'Secret123!',
             'role' => 'cashier',
             'warehouse_id' => $this->branchA->id,
         ]);

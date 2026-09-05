@@ -8,6 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 17 (Financial Mutation Closure, Universal Mandatory Idempotency, Atomic Tenant Quota Locking, and Password Policy Unification)**:
+  - **Universal Mandatory Idempotency Closure (Zero Bypass Branches)**:
+    - Permanently eradicated direct mutation bypass branches (`else { $this->stockService->... }`) across all controllers (`PosController`, `DebtController`, `StockController`).
+    - Enforced mandatory routing of all checkouts, returns, debt collections, stock-ins, transfers, dispatches, and inventory adjustments through `IdempotencyService::execute()`.
+    - Resolved `$tenantId` safely in `DebtController::recordCustomerPayment()` and established client-side modal idempotency keys for web collections.
+    - Strict/stateless financial requests lacking an idempotency key fail closed with `422 Unprocessable Entity`.
+  - **Atomic Tenant User Quota Reservation (`UserController::store`)**:
+    - Replaced check-then-act race (`COUNT -> compare -> CREATE`) with an exclusive row lock: `Tenant::where('id', $tenantId)->lockForUpdate()->first()` inside a database transaction.
+    - Tenant user counting uses `User::withoutGlobalScopes()->where('tenant_id', $tenantId)->count()` to prevent tenancy scope count masking.
+    - Concurrently racing user creations exceeding plan `max_users` are cleanly rejected with `403 Forbidden`.
+  - **Unified Password Policy Invariant (`App\Rules\PasswordPolicy`)**:
+    - Centralized password requirements into `PasswordPolicy::rules()`: minimum 8 characters, at least one uppercase letter, and at least one numeric digit.
+    - Applied universally across public self-registration (`SaaSController`), worker account creation and updates (`UserController`), privileged password resets (`UserController`), tenant provisioning, and initial installer admin creation (`InstallerController`).
+  - **Pass 17 Hardening Test Suite (`ProductionHardeningPass17Test`)**:
+    - Added 7 comprehensive adversarial tests verifying zero mutation bypasses, idempotency replay caching, payload mismatch rejection, cross-tenant/user key isolation, strict API unkeyed rejection, atomic quota race blocking under concurrency, and password policy invariant consistency across all endpoints.
+    - Total test suite expanded to **358 passed tests (2,072 assertions, 0 errors, 0 failures)** across 36 test files.
+
 - **Production Hardening Pass 15 / 16 (Non-Floating Monetary Input Boundary, Legacy Architecture Retirement, and Continuous Lock Invariant Protection)**:
   - **Non-Floating Decimal-String Monetary Input Parsing (`AccountingReportService::toKobo`)**:
     - Refactored `AccountingReportService::toKobo()` to parse monetary inputs directly from decimal strings and integers without binary floating-point representation (`(float)$naira * 100`).
