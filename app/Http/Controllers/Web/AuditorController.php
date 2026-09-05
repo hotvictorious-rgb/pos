@@ -55,9 +55,15 @@ class AuditorController extends Controller
             ];
         });
 
-        // 3. Customer Debt Liability
-        $totalCustomerDebt = Customer::sum('total_debt');
-        $debtors = Customer::where('total_debt', '>', 0)->orderBy('total_debt', 'desc')->get();
+        // 3. Customer Debt Liability (Branch scoped if worker is assigned to a specific shop)
+        $debtorQuery = Customer::where('total_debt', '>', 0);
+        if ($assignedWarehouseId) {
+            $debtorQuery->whereHas('sales', function ($q) use ($assignedWarehouseId) {
+                $q->where('warehouse_id', $assignedWarehouseId);
+            });
+        }
+        $debtors = $debtorQuery->orderBy('total_debt', 'desc')->get();
+        $totalCustomerDebt = (float) $debtors->sum('total_debt');
 
         // 4. Undelivered / Unsupplied Sales Liability
         $unsuppliedQuery = Sale::with('items')->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);

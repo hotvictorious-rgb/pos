@@ -177,9 +177,12 @@ class AccountingReportService
 
         $netInvoice = max(0.0, round($grossInvoice - $returnCredits, 2));
 
-        $inflowPayments = (float) Payment::where('saleId', $sale->id)
+        $paymentRecordsSum = (float) Payment::where('saleId', $sale->id)
             ->where('amount', '>', 0)
             ->sum('amount');
+
+        // Materialized payment records take precedence, falling back to sale.paidAmount for direct/legacy entries
+        $inflowPayments = max($paymentRecordsSum, (float) ($sale->paidAmount ?? 0.0));
 
         $cashRefunds = abs((float) Payment::where('saleId', $sale->id)
             ->where('method', 'REFUND_CASH')
@@ -714,8 +717,15 @@ class AccountingReportService
         }
 
         // 6. Cashier Shift / Drawer physical cash reconciliation:
-        // Physical Cash = Net Cash Sales + Cash Debt Recoveries - Cash Refunds
-        $expectedCash = round($cashCollected + $cashDebtRecovered - $cashRefunded, 2);
+        // Physical Cash = Total Cash Inflows - Cash Refunds
+        // Identify debt payments that are already captured in $cashCollected to prevent double-counting,
+        // while properly counting unlinked debt payments that were not attached to specific sale invoices.
+        $cashDebtInPayments = (float) $payments->where('method', 'CASH')
+            ->filter(fn($p) => str_contains($p->recordedBy ?? '', '[DEBT_RECOVERY]'))
+            ->sum('amount');
+        $unlinkedCashDebt = max(0.0, round($cashDebtRecovered - $cashDebtInPayments, 2));
+
+        $expectedCash = round($cashCollected + $unlinkedCashDebt - $cashRefunded, 2);
 
         return [
             'dateInfo'                   => $dateInfo,

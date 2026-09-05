@@ -8,6 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 2 (17 Structural Invariants & Relational Integrity)**:
+  - **Schema & Type Alignment**: Aligned `StockReservation.product_id` to string UUID matching `Product.id`. Added migration `2026_09_05_020000_fix_stock_reservations_product_id_type` and updated `StockReservation` model cast.
+  - **Complete Tenant Backup & Relational Restore**: Included `StockReservation`, `CustomerLedger`, and `StockAdjustment` in tenant backups. Transactionally restores customers first, maps `$oldId => $newId`, and remaps all foreign keys across `Sale.customerId`, `CustomerLedger.customer_id`, and `StockReservation.customer_id`.
+  - **Tenant Relational Restore Safety**: Force deletes soft-deleted tenant customer records before restore and clears `customer_code` collisions, ensuring unique per-tenant code assignment without constraint failures.
+  - **CustomRole Isolation**: Removed platform-global `CustomRole` records from tenant backups; included strictly in platform infrastructure backups.
+  - **Complete Tenant Purge**: Enhanced `SaaSController::deleteTenant()` to purge `StockReservation`, `InventoryLog`, and `Backup` records in an atomic transaction.
+  - **Platform Metric & Impersonation Isolation**: Removed tenant business metrics (`Sale::count()`, `Product::count()`, `sales` count) and legacy impersonation banners from `/saas/admin` and `layouts/app.blade.php`.
+  - **Cash Drawer Reconciliation**: Eliminated double-counting in `AccountingReportService::getPeriodSummary()`. Distinguishes checkout sales payments from debt recovery payments, properly balancing physical cash in drawer without duplicating ledger receipts.
+  - **Return-Adjusted Debt Allocation**: Integrated `AccountingReportService::calculateInvoiceBalance($sale)` into `StockService::recordCustomerPayment()` so debt repayment allocations respect sales returns and automatically mark fully settled invoices as `COMPLETED`.
+  - **CustomerLedger Semantic Accuracy**: Updated `StockService::recordSale()` so `CustomerLedger` `INVOICE` records `amount = $remainingDebt` instead of gross invoice.
+  - **Warehouse Ownership Enforcement**: Added `assertTenantWarehouse()` check and staff branch locking to `ProductController::store()` to prevent spoofed foreign warehouse stock creation.
+  - **Dedicated Backup Capability & UI Authority**: Added `tenant.backup` capability in `CapabilityService`, protected backup routes, and bound settings backup tab to capability.
+  - **Default Tenant Protection**: Guarded `default-tenant` assignment in `User` model hook and `SaaSController::processRegister()`.
+  - **Auditor Branch Scoping**: Scoped debtor query in `AuditorController::index()` to assigned branch sales.
+  - **Backup Integrity Verification**: Implemented HMAC SHA-256 signatures and item count manifests for both platform and tenant backups.
+  - **Idempotency Tenant Validation**: Enforced tenant ownership verification on model rehydration in `IdempotencyService::deserializeResult()`.
+  - **Added `ProductionHardeningPass2Test`**: 8 comprehensive feature tests bringing the total automated suite to **220 passed tests (1,291 assertions, 0 errors, 0 failures)** across 28 test suites.
 - **Platform vs. Tenant Backup Isolation & Zero Tenant Data Access**:
   - Partitioned backups with indexed `tenant_id` column: Platform backups (`tenant_id = null`) vs Tenant backups (`tenant_id = $tenantId`).
   - Platform backups archive strictly SaaS infrastructure (`tenants`, platform settings, platform activities), with ZERO business data (0 products, 0 sales, 0 customers, 0 stock).

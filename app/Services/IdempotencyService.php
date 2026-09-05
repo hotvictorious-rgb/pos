@@ -91,7 +91,7 @@ class IdempotencyService
                 }
 
                 if ($persistentRecord->status === 'COMPLETED') {
-                    $result = $this->deserializeResult($persistentRecord->response_data);
+                    $result = $this->deserializeResult($persistentRecord->response_data, $tenantId);
 
                     // Repopulate L1 cache
                     Cache::put($cacheKey, [
@@ -191,7 +191,7 @@ class IdempotencyService
     /**
      * Deserializes result back to original model or data structure.
      */
-    protected function deserializeResult(mixed $data): mixed
+    protected function deserializeResult(mixed $data, ?string $tenantId = null): mixed
     {
         if (is_string($data)) {
             $decoded = json_decode($data, true);
@@ -204,12 +204,19 @@ class IdempotencyService
             $class = $data['__class'] ?? null;
             $id = $data['id'] ?? null;
             if ($class && class_exists($class) && $id) {
-                $model = $class::withoutGlobalScopes()->find($id);
+                $query = $class::withoutGlobalScopes()->where('id', $id);
+                if (!empty($tenantId) && in_array('tenant_id', (new $class())->getFillable(), true)) {
+                    $query->where('tenant_id', $tenantId);
+                }
+                $model = $query->first();
                 if ($model) {
                     return $model;
                 }
                 $instance = new $class();
                 $instance->setRawAttributes($data['attributes'] ?? [], true);
+                if (!empty($tenantId) && isset($instance->tenant_id) && $instance->tenant_id !== $tenantId) {
+                    throw new \InvalidArgumentException("Idempotency Tenant Boundary Violation: Deserialized model does not belong to active tenant.");
+                }
                 $instance->exists = true;
                 return $instance;
             }

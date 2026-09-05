@@ -132,3 +132,10 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 - **Strict CSRF Boundary**: All state-mutating endpoints (`/api/*`, `/settings/backups/*`, `/stock/*`, `/sales/*`) enforce CSRF token verification. Only stateless credential exchange (`api/login`) is exempt from CSRF validation.
 - **Pure Tender Authority**: Checkout strictly accepts separate `cashAmount` and `posAmount` tenders. Client-supplied `paidAmount` inputs are rejected, and total paid amount is strictly derived from verified tenders on the server.
 
+### VM-020: Relational Integrity Across Restore & Accounting Math
+- **Comprehensive Entity Backup**: Tenant backups encompass all business models (`StockReservation`, `CustomerLedger`, `StockAdjustment`, `SalesReturn`, `InventoryLog`, `Customer`, `Sale`, `SaleItem`, `Payment`, `Product`, `StockLevel`, `Transfer`). Platform-global definitions (`CustomRole`) are excluded from tenant backups.
+- **Relational Key Remapping**: Tenant restore transactionally restores auto-increment models (`Customer`) first, maps old primary keys to newly generated keys, and remaps all foreign references (`Sale.customerId`, `CustomerLedger.customer_id`, `StockReservation.customer_id`), preventing relational dangling or cross-tenant pointer corruption.
+- **Backup Tamper Resistance**: All backup archives feature SHA-256 HMAC cryptographic signatures and payload manifests that are verified before initiating transactional restoration.
+- **Zero Double-Counting in Cash Drawer Math**: The cashier drawer expected cash equation cleanly distinguishes checkout sale cash from debt repayments, ensuring physical cash in drawer matches net cash sales plus unlinked debt recoveries minus cash refunds with zero duplicate additions.
+
+

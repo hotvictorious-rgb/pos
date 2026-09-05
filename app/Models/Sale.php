@@ -49,6 +49,15 @@ class Sale extends Model
         'warehouse_id' => 'integer',
     ];
 
+    protected static function booted()
+    {
+        static::creating(function ($sale) {
+            if (empty($sale->createdAt)) {
+                $sale->createdAt = now()->toIso8601String();
+            }
+        });
+    }
+
     public function items()
     {
         return $this->hasMany(SaleItem::class, 'saleId', 'id');

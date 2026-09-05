@@ -52,6 +52,9 @@ class CapabilityService
         // Business Settings & Branches
         'settings.manage',
 
+        // Tenant Backup & Disaster Recovery
+        'tenant.backup',
+
         // SaaS Platform Management (Platform Admin & Platform Employee)
         'platform.tenants',
         'platform.settings',
@@ -107,6 +110,7 @@ class CapabilityService
             'transactions.view', 'transactions.export',
             'users.manage',
             'settings.manage',
+            'tenant.backup',
         ],
         'branch_manager' => [
             'pos.view', 'pos.checkout',

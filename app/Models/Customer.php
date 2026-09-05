@@ -42,4 +42,9 @@ class Customer extends Model
     {
         return $this->hasMany(CustomerLedger::class)->orderBy('created_at', 'desc');
     }
+
+    public function sales(): HasMany
+    {
+        return $this->hasMany(Sale::class, 'customerId', 'id');
+    }
 }

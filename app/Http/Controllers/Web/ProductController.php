@@ -93,12 +93,25 @@ class ProductController extends Controller
             'warehouse_id' => 'nullable|numeric',
         ]);
 
+        $stockService = app(\App\Services\StockService::class);
+        $authUser = Auth::user();
+
+        if ($authUser && $authUser->isBranchScoped() && !empty($authUser->warehouse_id)) {
+            $warehouseId = (int) $authUser->warehouse_id;
+        } else {
+            $defaultWh = Warehouse::where('tenant_id', $tenantId)->first();
+            $warehouseId = (int) ($request->warehouse_id ?? ($defaultWh ? $defaultWh->id : 1));
+        }
+
+        // Canonical assertion: warehouse must belong strictly to active tenant
+        $warehouse = $stockService->assertTenantWarehouse($warehouseId);
+
         $productId = (string) Str::uuid();
         $initialStock = (int) ($request->initial_stock ?? 0);
-        $warehouseId = (int) ($request->warehouse_id ?? (Warehouse::first()->id ?? 1));
 
         $product = Product::create([
             'id' => $productId,
+            'tenant_id' => $tenantId,
             'name' => $request->name,
             'code' => strtoupper($request->code),
             'category' => $request->category,
@@ -114,14 +127,33 @@ class ProductController extends Controller
 
         // Initialize stock level for this warehouse
         StockLevel::create([
+            'tenant_id' => $tenantId,
             'product_id' => $product->id,
-            'warehouse_id' => $warehouseId,
+            'warehouse_id' => $warehouse->id,
             'physical_stock' => $initialStock,
             'allocated_stock' => 0,
-            'min_stock_alert' => 5,
+            'min_stock_alert' => (int) ($request->minStockLevel ?? 5),
         ]);
 
         $userName = Auth::user()->name ?? 'Auditor / Admin';
+
+        if ($initialStock > 0) {
+            \App\Models\InventoryLog::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'warehouse_id' => $warehouse->id,
+                'productId' => $product->id,
+                'productCode' => $product->code,
+                'productName' => $product->name,
+                'quantity' => $initialStock,
+                'type' => 'INITIAL_STOCK',
+                'notes' => 'Initial catalog registration stock',
+                'description' => 'Initial catalog registration stock',
+                'userId' => Auth::id() ?? 'ADMIN',
+                'userName' => $userName,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        }
 
         Activity::create([
             'id' => (string) Str::uuid(),

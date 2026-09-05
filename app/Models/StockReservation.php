@@ -34,7 +34,7 @@ class StockReservation extends Model
         'fulfilled_qty' => 'integer',
         'cancelled_qty' => 'integer',
         'warehouse_id' => 'integer',
-        'product_id' => 'integer',
+        'product_id' => 'string',
     ];
 
     /** Outstanding units still owed to the customer under this reservation */

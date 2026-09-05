@@ -52,7 +52,7 @@
         <button class="set-tab active" onclick="showTab('tabBusiness', this)">🏢 Business & Receipts</button>
         <button class="set-tab" onclick="showTab('tabLocations', this)">🏬 Branch Locations ({{ $warehouses->count() }})</button>
         <button class="set-tab" onclick="showTab('tabInventory', this)">📦 Inventory Rules</button>
-        @if(auth()->check() && auth()->user()->isSuperAdmin())
+        @if(auth()->check() && (auth()->user()->hasCapability('tenant.backup') || auth()->user()->isPlatformAdmin()))
         <button class="set-tab" onclick="showTab('tabBackups', this)">💾 Data Safety & Backups</button>
         @endif
     </div>
@@ -221,7 +221,7 @@
         </div>
     </div>
 
-    @if(auth()->check() && auth()->user()->isSuperAdmin())
+    @if(auth()->check() && (auth()->user()->hasCapability('tenant.backup') || auth()->user()->isPlatformAdmin()))
     <!-- Tab 4: Data Safety & Database Backups -->
     <div id="tabBackups" class="tab-content">
         <div class="card">

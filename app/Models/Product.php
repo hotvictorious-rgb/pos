@@ -37,6 +37,15 @@ class Product extends Model
         'archived' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function ($product) {
+            if (empty($product->updatedAt)) {
+                $product->updatedAt = now()->toIso8601String();
+            }
+        });
+    }
+
     public function stockLevels()
     {
         return $this->hasMany(StockLevel::class, 'product_id', 'id');

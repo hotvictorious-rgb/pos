@@ -79,8 +79,8 @@ class BackupController extends Controller
         }
 
         if ($user->isTenantUser()) {
-            if (!$this->assertTenantCapability($user, 'settings.manage')) {
-                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            if (!$this->assertTenantCapability($user, 'tenant.backup') && !$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: tenant.backup capability required.'], 403);
             }
             $tenantId = session('tenant_id') ?? $user->tenant_id;
             $backups = Backup::where('tenant_id', $tenantId)->orderBy('created_at', 'desc')->get();
@@ -111,8 +111,8 @@ class BackupController extends Controller
         }
 
         if ($user->isTenantUser()) {
-            if (!$this->assertTenantCapability($user, 'settings.manage')) {
-                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            if (!$this->assertTenantCapability($user, 'tenant.backup') && !$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: tenant.backup capability required.'], 403);
             }
             $tenantId = session('tenant_id') ?? $user->tenant_id;
             $backup = self::generateTenantBackup($user->name, $user, $tenantId);
@@ -257,8 +257,8 @@ class BackupController extends Controller
             }
             $result = $this->restorePlatformFromJson($json, $user);
         } elseif ($user->isTenantUser()) {
-            if (!$this->assertTenantCapability($user, 'settings.manage')) {
-                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            if (!$this->assertTenantCapability($user, 'tenant.backup') && !$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: tenant.backup capability required.'], 403);
             }
             $tenantId = session('tenant_id') ?? $user->tenant_id;
             if ($backup->tenant_id !== $tenantId) {
@@ -337,8 +337,8 @@ class BackupController extends Controller
         }
 
         if ($user->isTenantUser()) {
-            if (!$this->assertTenantCapability($user, 'settings.manage')) {
-                return response()->json(['error' => 'Forbidden: settings.manage capability required.'], 403);
+            if (!$this->assertTenantCapability($user, 'tenant.backup') && !$this->assertTenantCapability($user, 'settings.manage')) {
+                return response()->json(['error' => 'Forbidden: tenant.backup capability required.'], 403);
             }
             $tenantId = session('tenant_id') ?? $user->tenant_id;
             if (($backupContent['tenant_id'] ?? null) !== $tenantId) {
@@ -384,13 +384,23 @@ class BackupController extends Controller
             'tenants' => Tenant::all()->toArray(),
             'platform_settings' => Setting::whereNull('tenant_id')->get()->toArray(),
             'platform_activities' => Activity::whereNull('tenant_id')->limit(500)->get()->toArray(),
+            'custom_roles' => \App\Models\CustomRole::all()->toArray(),
         ];
 
+        $checksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
+
         $backupContent = [
-            'version' => '2.0.0',
+            'version' => '2.1.0',
             'type' => 'PLATFORM',
             'tenant_id' => null,
             'timestamp' => now()->toIso8601String(),
+            'checksum' => $checksum,
+            'manifest' => [
+                'tenants' => count($data['tenants']),
+                'platform_settings' => count($data['platform_settings']),
+                'platform_activities' => count($data['platform_activities']),
+                'custom_roles' => count($data['custom_roles']),
+            ],
             'data' => $data,
         ];
 
@@ -434,14 +444,38 @@ class BackupController extends Controller
             'settings' => Setting::where('tenant_id', $tenantId)->get()->toArray(),
             'transfers' => \App\Models\Transfer::where('tenant_id', $tenantId)->get()->toArray(),
             'transfer_items' => \App\Models\TransferItem::where('tenant_id', $tenantId)->get()->toArray(),
-            'custom_roles' => \App\Models\CustomRole::all()->toArray(),
+            'stock_reservations' => \App\Models\StockReservation::where('tenant_id', $tenantId)->get()->toArray(),
+            'customer_ledgers' => \App\Models\CustomerLedger::where('tenant_id', $tenantId)->get()->toArray(),
+            'stock_adjustments' => \App\Models\StockAdjustment::where('tenant_id', $tenantId)->get()->toArray(),
         ];
 
+        $checksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
+
         $backupContent = [
-            'version' => '2.0.0',
+            'version' => '2.1.0',
             'type' => 'TENANT',
             'tenant_id' => $tenantId,
             'timestamp' => now()->toIso8601String(),
+            'checksum' => $checksum,
+            'manifest' => [
+                'users' => count($data['users']),
+                'products' => count($data['products']),
+                'sales' => count($data['sales']),
+                'sale_items' => count($data['sale_items']),
+                'payments' => count($data['payments']),
+                'sales_returns' => count($data['sales_returns']),
+                'inventory_logs' => count($data['inventory_logs']),
+                'customers' => count($data['customers']),
+                'warehouses' => count($data['warehouses']),
+                'stock_levels' => count($data['stock_levels']),
+                'activities' => count($data['activities']),
+                'settings' => count($data['settings']),
+                'transfers' => count($data['transfers']),
+                'transfer_items' => count($data['transfer_items']),
+                'stock_reservations' => count($data['stock_reservations']),
+                'customer_ledgers' => count($data['customer_ledgers']),
+                'stock_adjustments' => count($data['stock_adjustments']),
+            ],
             'data' => $data,
         ];
 
@@ -531,8 +565,18 @@ class BackupController extends Controller
 
         $data = $backupContent['data'];
 
+        if (!empty($backupContent['checksum'])) {
+            $expectedChecksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
+            if (!hash_equals($expectedChecksum, $backupContent['checksum'])) {
+                return ['error' => 'Backup integrity verification failed (checksum mismatch). The backup payload may be corrupted or tampered with.'];
+            }
+        }
+
         try {
             DB::transaction(function () use ($data, $user, $targetTenantId) {
+                \App\Models\StockReservation::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\StockAdjustment::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\CustomerLedger::where('tenant_id', $targetTenantId)->delete();
                 User::where('tenant_id', $targetTenantId)->where('id', '!=', $user->id)->delete();
                 Product::where('tenant_id', $targetTenantId)->delete();
                 SaleItem::where('tenant_id', $targetTenantId)->delete();
@@ -542,10 +586,26 @@ class BackupController extends Controller
                 \App\Models\TransferItem::where('tenant_id', $targetTenantId)->delete();
                 \App\Models\Transfer::where('tenant_id', $targetTenantId)->delete();
                 InventoryLog::where('tenant_id', $targetTenantId)->delete();
-                \App\Models\Customer::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\Customer::withTrashed()->where('tenant_id', $targetTenantId)->forceDelete();
                 \App\Models\StockLevel::where('tenant_id', $targetTenantId)->delete();
                 Activity::where('tenant_id', $targetTenantId)->delete();
                 Setting::where('tenant_id', $targetTenantId)->delete();
+
+                // Restore Customers FIRST to establish old -> new ID mapping
+                $customerIdMap = [];
+                if (isset($data['customers']) && is_array($data['customers'])) {
+                    foreach ($data['customers'] as $c) {
+                        $oldId = $c['id'] ?? null;
+                        $c['tenant_id'] = $targetTenantId;
+                        unset($c['id']);
+                        unset($c['customer_code']);
+                        $newCustomer = \App\Models\Customer::create($c);
+                        if ($oldId !== null) {
+                            $customerIdMap[(string)$oldId] = $newCustomer->id;
+                            $customerIdMap[(int)$oldId] = $newCustomer->id;
+                        }
+                    }
+                }
 
                 // Restore Users
                 if (isset($data['users']) && is_array($data['users'])) {
@@ -572,11 +632,14 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Sales & Sale Items
+                // Restore Sales & Sale Items with remapped Customer IDs
                 $restoredSaleIds = [];
                 if (isset($data['sales']) && is_array($data['sales'])) {
                     foreach ($data['sales'] as $s) {
                         $s['tenant_id'] = $targetTenantId;
+                        if (!empty($s['customerId'])) {
+                            $s['customerId'] = $customerIdMap[$s['customerId']] ?? $customerIdMap[(int)$s['customerId']] ?? null;
+                        }
                         $createdSale = Sale::create($s);
                         $restoredSaleIds[$createdSale->id] = true;
                     }
@@ -665,21 +728,44 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Customers
-                if (isset($data['customers']) && is_array($data['customers'])) {
-                    foreach ($data['customers'] as $c) {
-                        $c['tenant_id'] = $targetTenantId;
-                        unset($c['id']);
-                        \App\Models\Customer::create($c);
-                    }
-                }
-
                 // Restore Stock Levels
                 if (isset($data['stock_levels']) && is_array($data['stock_levels'])) {
                     foreach ($data['stock_levels'] as $sl) {
                         $sl['tenant_id'] = $targetTenantId;
                         unset($sl['id']);
                         \App\Models\StockLevel::create($sl);
+                    }
+                }
+
+                // Restore Customer Ledgers with remapped Customer IDs
+                if (isset($data['customer_ledgers']) && is_array($data['customer_ledgers'])) {
+                    foreach ($data['customer_ledgers'] as $cl) {
+                        $cl['tenant_id'] = $targetTenantId;
+                        if (!empty($cl['customer_id'])) {
+                            $cl['customer_id'] = $customerIdMap[$cl['customer_id']] ?? $customerIdMap[(int)$cl['customer_id']] ?? null;
+                        }
+                        unset($cl['id']);
+                        \App\Models\CustomerLedger::create($cl);
+                    }
+                }
+
+                // Restore Stock Adjustments
+                if (isset($data['stock_adjustments']) && is_array($data['stock_adjustments'])) {
+                    foreach ($data['stock_adjustments'] as $sa) {
+                        $sa['tenant_id'] = $targetTenantId;
+                        unset($sa['id']);
+                        \App\Models\StockAdjustment::create($sa);
+                    }
+                }
+
+                // Restore Stock Reservations with remapped Customer IDs
+                if (isset($data['stock_reservations']) && is_array($data['stock_reservations'])) {
+                    foreach ($data['stock_reservations'] as $sr) {
+                        $sr['tenant_id'] = $targetTenantId;
+                        if (!empty($sr['customer_id'])) {
+                            $sr['customer_id'] = (string) ($customerIdMap[$sr['customer_id']] ?? $customerIdMap[(int)$sr['customer_id']] ?? $sr['customer_id']);
+                        }
+                        \App\Models\StockReservation::create($sr);
                     }
                 }
             });

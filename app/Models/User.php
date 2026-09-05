@@ -46,6 +46,19 @@ class User extends Authenticatable
                     $user->role = 'admin'; // Normalize privilege escalation attempt
                 }
             }
+
+            // Reserved System Tenant Boundary:
+            // Prevent ordinary tenant users from being assigned to 'default-tenant'
+            if ($user->tenant_id === 'default-tenant') {
+                $isRootAdmin = (strtolower(trim($user->email ?? '')) === $superAdminEmail);
+                $isConsole = app()->runningInConsole();
+                $actingUser = \Illuminate\Support\Facades\Auth::check() ? \Illuminate\Support\Facades\Auth::user() : null;
+                $actingIsPlatformAdmin = $actingUser ? $actingUser->isPlatformAdmin() : false;
+
+                if (!$isRootAdmin && !$isConsole && !$actingIsPlatformAdmin) {
+                    throw new \InvalidArgumentException("Security Violation: 'default-tenant' is a reserved platform system identifier and cannot be assigned to ordinary accounts.");
+                }
+            }
         });
     }
 

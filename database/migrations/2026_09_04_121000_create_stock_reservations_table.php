@@ -14,7 +14,7 @@ return new class extends Migration
                 $table->string('tenant_id')->nullable()->index();
                 $table->string('sale_id')->index();
                 $table->unsignedBigInteger('sale_item_id')->nullable()->index();
-                $table->unsignedBigInteger('product_id')->index();
+                $table->string('product_id')->index();
                 $table->unsignedBigInteger('warehouse_id')->index();
                 $table->integer('reserved_qty')->default(0);
                 $table->integer('fulfilled_qty')->default(0);

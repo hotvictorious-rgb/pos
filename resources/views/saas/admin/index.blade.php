@@ -18,9 +18,6 @@
         .stat-title { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
         .stat-value { font-size: 26px; font-weight: 800; color: #38bdf8; margin-top: 6px; }
 
-        /* Banner */
-        .banner-impersonating { background: #451a03; border: 1px solid #d97706; color: #fef08a; padding: 14px 20px; border-radius: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
-
         /* Tabs & Section Cards */
         .card-section { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; margin-bottom: 24px; }
         .section-title { font-size: 18px; font-weight: 700; color: #f8fafc; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
@@ -98,9 +95,9 @@
             <div class="stat-value" style="color: #c084fc;">{{ $totalBranchesPlatform }} Branches</div>
         </div>
         <div class="stat-card">
-            <div class="stat-title">Total Products & Sales</div>
+            <div class="stat-title">Platform Infrastructure</div>
             <div class="stat-value" style="font-size: 18px; color: #cbd5e1; margin-top: 10px;">
-                {{ number_format($totalProductsPlatform) }} Products | {{ number_format($totalSalesPlatform) }} Sales
+                <span style="color:#38bdf8;">{{ count($backups) }} Backups</span> | <span style="color:#34d399;">Active</span>
             </div>
         </div>
     </div>

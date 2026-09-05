@@ -371,7 +371,7 @@ class StockService
                         'customer_id' => $customer->id,
                         'sale_id' => $saleId,
                         'type' => 'INVOICE',
-                        'amount' => $totalAmount,
+                        'amount' => $remainingDebt,
                         'balance_after' => $customer->total_debt,
                         'payment_method' => 'DEBT_ISSUED',
                         'reference_no' => $saleId,
@@ -910,10 +910,10 @@ class StockService
             $customer->total_debt = max(0, round($customer->total_debt - $amount, 2));
             $customer->save();
 
-            // Reconcile customer's oldest open invoices and record financial payment records
+            // Reconcile customer's oldest open invoices using authoritative return-adjusted derived balance
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
             $remainingPayment = $amount;
             $openSales = Sale::where('customerId', $customerId)
-                ->whereColumn('paidAmount', '<', 'totalAmount')
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->orderBy('createdAt', 'asc')
                 ->lockForUpdate()
@@ -923,10 +923,15 @@ class StockService
 
             foreach ($openSales as $pSale) {
                 if ($remainingPayment <= 0) break;
-                $unpaid = max(0, (float) $pSale->totalAmount - (float) $pSale->paidAmount);
+
+                $unpaid = $accountingService->calculateInvoiceBalance($pSale);
+                if ($unpaid <= 0.001) {
+                    continue;
+                }
+
                 $alloc = min($remainingPayment, $unpaid);
                 $pSale->paidAmount += $alloc;
-                if ($pSale->paidAmount >= $pSale->totalAmount) {
+                if (($pSale->totalAmount - $pSale->paidAmount) <= 0.001 || ($unpaid - $alloc) <= 0.001) {
                     $pSale->status = 'COMPLETED';
                 }
                 $pSale->save();
@@ -939,11 +944,11 @@ class StockService
                     'amount' => $alloc,
                     'method' => $cleanMethod,
                     'timestamp' => now()->toIso8601String(),
-                    'recordedBy' => $userName,
+                    'recordedBy' => $userName . ' [DEBT_RECOVERY]',
                     'createdAt' => now()->toIso8601String(),
                 ]);
 
-                $remainingPayment -= $alloc;
+                $remainingPayment = round($remainingPayment - $alloc, 2);
             }
 
             $ledger = CustomerLedger::create([

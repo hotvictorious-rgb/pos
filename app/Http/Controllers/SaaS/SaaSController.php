@@ -56,6 +56,11 @@ class SaaSController extends Controller
 
         $plans = config('saas.plans');
         $selectedPlan = $plans[$request->plan] ?? $plans['basic'];
+
+        if (Str::slug($request->business_name) === 'default-tenant' || str_contains(strtolower($request->business_name), 'default-tenant')) {
+            return back()->withInput()->with('error', "Invalid business name: 'default-tenant' is a reserved system identifier.");
+        }
+
         $tenantId = 'tenant-' . Str::slug($request->business_name) . '-' . Str::random(5);
         $trialDays = (int) SaaSSetting::get('trial_days', '14');
 
@@ -111,11 +116,11 @@ class SaaSController extends Controller
     /** Super Admin Master SaaS Dashboard & Control Panel */
     public function adminIndex()
     {
-        if (config('saas.enabled') && session('tenant_id') !== 'default-tenant' && !session('is_impersonating')) {
+        if (config('saas.enabled') && session('tenant_id') !== 'default-tenant') {
             return redirect()->route('dashboard')->with('error', '🔒 Access Restricted: Only the SaaS Super Admin can access the Master Control Panel.');
         }
 
-        $tenants = Tenant::withCount(['users', 'warehouses', 'sales'])->orderBy('created_at', 'desc')->get();
+        $tenants = Tenant::withCount(['users', 'warehouses'])->orderBy('created_at', 'desc')->get();
         $totalTenants = $tenants->count();
         $activeTenants = $tenants->where('status', 'active')->count();
         $trialTenants = $tenants->where('status', 'trial')->count();
@@ -133,10 +138,8 @@ class SaaSController extends Controller
             elseif ($t->plan === 'enterprise') $mrr += $priceEnterprise;
         }
 
-        // Platform-wide counts (bypassing tenant scopes)
+        // Platform-wide infrastructure count (zero tenant business data)
         $totalBranchesPlatform = Warehouse::withoutGlobalScopes()->count();
-        $totalProductsPlatform = Product::withoutGlobalScopes()->count();
-        $totalSalesPlatform = Sale::withoutGlobalScopes()->count();
 
         // SaaS Settings Map
         $settings = [
@@ -168,8 +171,6 @@ class SaaSController extends Controller
             'suspendedTenants',
             'mrr',
             'totalBranchesPlatform',
-            'totalProductsPlatform',
-            'totalSalesPlatform',
             'settings',
             'backups'
         ));
@@ -317,6 +318,7 @@ class SaaSController extends Controller
             \App\Models\TransferItem::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\Transfer::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\InventoryLog::withoutGlobalScopes()->where('tenant_id', $id)->delete();
+            \App\Models\StockReservation::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\StockAdjustment::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\StockLevel::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\Product::withoutGlobalScopes()->where('tenant_id', $id)->delete();
@@ -328,6 +330,7 @@ class SaaSController extends Controller
             \App\Models\Activity::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\Setting::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\IdempotencyRecord::where('tenant_id', $id)->delete();
+            \App\Models\Backup::where('tenant_id', $id)->delete();
             \App\Models\User::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             Tenant::where('id', $id)->delete();
         });

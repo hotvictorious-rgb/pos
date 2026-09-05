@@ -197,12 +197,14 @@ Route::prefix('settings')->name('settings.')->middleware(['capability:settings.m
     Route::post('/warehouse/toggle/{id}', [\App\Http\Controllers\Web\SettingController::class, 'toggleWarehouse'])->name('warehouse.toggle');
     
     // Tenant Data Safety & Business Backups
-    Route::get('/backups',               [BackupController::class, 'index'])->name('backups.index');
-    Route::post('/backups',              [BackupController::class, 'create'])->name('backups.create');
-    Route::get('/backups/{id}/download', [BackupController::class, 'download'])->name('backups.download');
-    Route::post('/backups/{id}/restore', [BackupController::class, 'restore'])->name('backups.restore');
-    Route::post('/backups/upload',       [BackupController::class, 'upload'])->name('backups.upload');
-    Route::delete('/backups/{id}',       [BackupController::class, 'destroy'])->name('backups.destroy');
+    Route::middleware(['capability:tenant.backup'])->group(function () {
+        Route::get('/backups',               [BackupController::class, 'index'])->name('backups.index');
+        Route::post('/backups',              [BackupController::class, 'create'])->name('backups.create');
+        Route::get('/backups/{id}/download', [BackupController::class, 'download'])->name('backups.download');
+        Route::post('/backups/{id}/restore', [BackupController::class, 'restore'])->name('backups.restore');
+        Route::post('/backups/upload',       [BackupController::class, 'upload'])->name('backups.upload');
+        Route::delete('/backups/{id}',       [BackupController::class, 'destroy'])->name('backups.destroy');
+    });
 });
 
 // 10. User Guide & Training Center
