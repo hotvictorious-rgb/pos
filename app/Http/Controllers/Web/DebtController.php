@@ -175,35 +175,51 @@ class DebtController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Cashier';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('reference_no') ?? (string) \Illuminate\Support\Str::uuid();
-        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
+        $idempotencyPayload = [
+            'customerId' => (int) $customerId,
+            'amount' => (float) $request->amount,
+            'payment_method' => strtolower($request->payment_method),
+            'warehouse_id' => $warehouseId,
+        ];
+
+        $idempotencyKey = $request->header('X-Idempotency-Key')
+            ?? $request->input('idempotency_key')
+            ?? $request->input('reference_no');
 
         try {
-            $idempotencyService = app(\App\Services\IdempotencyService::class);
-            $ledger = $idempotencyService->execute(
-                'debt_payment',
-                (string) $idempotencyKey,
-                (string) $tenantId,
-                (string) $userId,
-                [
-                    'customerId' => (int) $customerId,
-                    'amount' => (float) $request->amount,
-                    'payment_method' => $request->payment_method,
-                    'warehouse_id' => $warehouseId,
-                ],
-                function () use ($customerId, $request, $userId, $userName, $warehouseId) {
-                    return $this->stockService->recordCustomerPayment(
-                        (int) $customerId,
-                        (float) $request->amount,
-                        $request->payment_method,
-                        $request->reference_no,
-                        $userId,
-                        $userName,
-                        $request->notes,
-                        $warehouseId
-                    );
-                }
-            );
+            if (!empty($idempotencyKey)) {
+                $idempotencyService = app(\App\Services\IdempotencyService::class);
+                $ledger = $idempotencyService->execute(
+                    'debt_payment',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    $idempotencyPayload,
+                    function () use ($customerId, $request, $userId, $userName, $warehouseId) {
+                        return $this->stockService->recordCustomerPayment(
+                            (int) $customerId,
+                            (float) $request->amount,
+                            $request->payment_method,
+                            $request->reference_no,
+                            $userId,
+                            $userName,
+                            $request->notes,
+                            $warehouseId
+                        );
+                    }
+                );
+            } else {
+                $ledger = $this->stockService->recordCustomerPayment(
+                    (int) $customerId,
+                    (float) $request->amount,
+                    $request->payment_method,
+                    $request->reference_no,
+                    $userId,
+                    $userName,
+                    $request->notes,
+                    $warehouseId
+                );
+            }
 
             return redirect()->route('debts.index')->with('success', "✓ Payment of ₦" . number_format($request->amount, 2) . " successfully credited to customer ledger!");
         } catch (\Throwable $e) {

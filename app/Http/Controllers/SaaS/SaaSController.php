@@ -69,44 +69,49 @@ class SaaSController extends Controller
         $tenantId = 'tenant-' . Str::slug($request->business_name) . '-' . Str::random(5);
         $trialDays = (int) SaaSSetting::get('trial_days', '14');
 
-        // 1. Create Tenant
-        $tenant = Tenant::create([
-            'id'           => $tenantId,
-            'name'         => $request->business_name,
-            'owner_email'  => $request->owner_email,
-            'owner_phone'  => $request->owner_phone,
-            'plan'         => $request->plan,
-            'status'       => 'trial',
-            'trial_ends_at'=> now()->addDays($trialDays),
-            'max_branches' => $selectedPlan['max_branches'],
-            'max_users'    => $selectedPlan['max_users'],
-        ]);
+        // Atomic Provisioning: Tenant + Initial Branch + Admin Account
+        [$tenant, $adminUser] = DB::transaction(function () use ($tenantId, $request, $trialDays, $selectedPlan) {
+            // 1. Create Tenant
+            $createdTenant = Tenant::create([
+                'id'           => $tenantId,
+                'name'         => $request->business_name,
+                'owner_email'  => $request->owner_email,
+                'owner_phone'  => $request->owner_phone,
+                'plan'         => $request->plan,
+                'status'       => 'trial',
+                'trial_ends_at'=> now()->addDays($trialDays),
+                'max_branches' => $selectedPlan['max_branches'],
+                'max_users'    => $selectedPlan['max_users'],
+            ]);
 
-        // 2. Create Initial Main Branch for the Tenant
-        $mainWarehouse = Warehouse::create([
-            'tenant_id'    => $tenantId,
-            'name'         => 'Main Headquarters',
-            'code'         => 'HQ-' . strtoupper(Str::random(5)),
-            'address'      => 'Main Address',
-            'phone'        => $request->owner_phone,
-            'manager_name' => $request->owner_name,
-            'is_active'    => true,
-        ]);
+            // 2. Create Initial Main Branch for the Tenant
+            $mainWarehouse = Warehouse::create([
+                'tenant_id'    => $tenantId,
+                'name'         => 'Main Headquarters',
+                'code'         => 'HQ-' . strtoupper(Str::random(5)),
+                'address'      => 'Main Address',
+                'phone'        => $request->owner_phone,
+                'manager_name' => $request->owner_name,
+                'is_active'    => true,
+            ]);
 
-        // 3. Create Tenant Super Admin User
-        $adminUser = User::create([
-            'id'           => (string) Str::uuid(),
-            'tenant_id'    => $tenantId,
-            'name'         => $request->owner_name,
-            'email'        => strtolower(trim($request->owner_email)),
-            'password'     => Hash::make($request->password),
-            'role'         => 'admin',
-            'warehouse_id' => $mainWarehouse->id,
-            'disabled'     => false,
-            'permissions'  => ['all' => true],
-        ]);
+            // 3. Create Tenant Super Admin User
+            $createdUser = User::create([
+                'id'           => (string) Str::uuid(),
+                'tenant_id'    => $tenantId,
+                'name'         => $request->owner_name,
+                'email'        => strtolower(trim($request->owner_email)),
+                'password'     => Hash::make($request->password),
+                'role'         => 'admin',
+                'warehouse_id' => $mainWarehouse->id,
+                'disabled'     => false,
+                'permissions'  => ['all' => true],
+            ]);
 
-        // Log into tenant session
+            return [$createdTenant, $createdUser];
+        });
+
+        // Log into tenant session only after successful transaction commit
         session([
             'user_id'   => $adminUser->id,
             'user_name' => $adminUser->name,
@@ -223,6 +228,25 @@ class SaaSController extends Controller
     /** Update SaaS Platform Settings */
     public function updateSettings(Request $request)
     {
+        $request->validate([
+            'platform_name'            => 'nullable|string|max:100',
+            'support_email'            => 'nullable|email|max:100',
+            'support_phone'            => 'nullable|string|max:30',
+            'currency_symbol'          => 'nullable|string|max:10',
+            'trial_days'               => 'nullable|integer|min:1|max:365',
+            'allow_registration'       => 'nullable|in:0,1',
+            'monthly_price_basic'      => 'nullable|numeric|min:0|max:10000000',
+            'monthly_price_pro'        => 'nullable|numeric|min:0|max:10000000',
+            'monthly_price_enterprise' => 'nullable|numeric|min:0|max:10000000',
+            'bank_name'                => 'nullable|string|max:100',
+            'bank_account_number'      => 'nullable|string|max:30',
+            'bank_account_name'        => 'nullable|string|max:100',
+            'bank_instructions'        => 'nullable|string|max:1000',
+            'paystack_enabled'         => 'nullable|in:0,1',
+            'paystack_public_key'      => 'nullable|string|max:255',
+            'paystack_secret_key'      => 'nullable|string|max:255',
+        ]);
+
         $fields = [
             'platform_name',
             'support_email',
@@ -273,42 +297,46 @@ class SaaSController extends Controller
         $plans = config('saas.plans');
         $selectedPlan = $plans[$request->plan] ?? $plans['basic'];
         $tenantId = 'tenant-' . Str::slug($request->business_name) . '-' . Str::random(5);
-
-        $tenant = Tenant::create([
-            'id'           => $tenantId,
-            'name'         => $request->business_name,
-            'owner_email'  => $request->owner_email,
-            'owner_phone'  => $request->owner_phone,
-            'plan'         => $request->plan,
-            'status'       => $request->status,
-            'trial_ends_at'=> now()->addDays((int) SaaSSetting::get('trial_days', '14')),
-            'max_branches' => $selectedPlan['max_branches'],
-            'max_users'    => $selectedPlan['max_users'],
-        ]);
-
-        $mainWarehouse = Warehouse::create([
-            'tenant_id'    => $tenantId,
-            'name'         => 'Main Headquarters',
-            'code'         => 'HQ-' . strtoupper(Str::random(5)),
-            'address'      => 'HQ Address',
-            'phone'        => $request->owner_phone,
-            'manager_name' => $request->owner_name,
-            'is_active'    => true,
-        ]);
-
         $temporaryPassword = Str::random(12);
 
-        User::create([
-            'id'           => (string) Str::uuid(),
-            'tenant_id'    => $tenantId,
-            'name'         => $request->owner_name,
-            'email'        => strtolower(trim($request->owner_email)),
-            'password'     => Hash::make($temporaryPassword),
-            'role'         => 'admin',
-            'warehouse_id' => $mainWarehouse->id,
-            'disabled'     => false,
-            'permissions'  => ['all' => true],
-        ]);
+        // Atomic Provisioning: Tenant + Warehouse + Admin
+        $tenant = DB::transaction(function () use ($tenantId, $request, $selectedPlan, $temporaryPassword) {
+            $createdTenant = Tenant::create([
+                'id'           => $tenantId,
+                'name'         => $request->business_name,
+                'owner_email'  => $request->owner_email,
+                'owner_phone'  => $request->owner_phone,
+                'plan'         => $request->plan,
+                'status'       => $request->status,
+                'trial_ends_at'=> now()->addDays((int) SaaSSetting::get('trial_days', '14')),
+                'max_branches' => $selectedPlan['max_branches'],
+                'max_users'    => $selectedPlan['max_users'],
+            ]);
+
+            $mainWarehouse = Warehouse::create([
+                'tenant_id'    => $tenantId,
+                'name'         => 'Main Headquarters',
+                'code'         => 'HQ-' . strtoupper(Str::random(5)),
+                'address'      => 'HQ Address',
+                'phone'        => $request->owner_phone,
+                'manager_name' => $request->owner_name,
+                'is_active'    => true,
+            ]);
+
+            User::create([
+                'id'           => (string) Str::uuid(),
+                'tenant_id'    => $tenantId,
+                'name'         => $request->owner_name,
+                'email'        => strtolower(trim($request->owner_email)),
+                'password'     => Hash::make($temporaryPassword),
+                'role'         => 'admin',
+                'warehouse_id' => $mainWarehouse->id,
+                'disabled'     => false,
+                'permissions'  => ['all' => true],
+            ]);
+
+            return $createdTenant;
+        });
 
         return back()->with('success', "✓ New Business Tenant '{$tenant->name}' created successfully! An account activation notice has been recorded for {$request->owner_email}. (Credentials are strictly delivered out-of-band and never exposed in browser responses).");
     }

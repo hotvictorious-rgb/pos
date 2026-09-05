@@ -184,29 +184,41 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Storekeeper';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? (string) Str::uuid();
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         try {
-            $idempotencyService = app(IdempotencyService::class);
-            $idempotencyService->execute(
-                'stock_in',
-                (string) $idempotencyKey,
-                (string) $tenantId,
-                (string) $userId,
-                $request->all(),
-                function () use ($request, $warehouseId, $userId, $userName) {
-                    return $this->stockService->recordStockIn(
-                        $request->product_id,
-                        $warehouseId,
-                        (int) $request->quantity,
-                        $request->supplier_name,
-                        $userId,
-                        $userName,
-                        $request->notes
-                    );
-                }
-            );
+            if (!empty($idempotencyKey)) {
+                $idempotencyService = app(IdempotencyService::class);
+                $idempotencyService->execute(
+                    'stock_in',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    $request->all(),
+                    function () use ($request, $warehouseId, $userId, $userName) {
+                        return $this->stockService->recordStockIn(
+                            $request->product_id,
+                            $warehouseId,
+                            (int) $request->quantity,
+                            $request->supplier_name,
+                            $userId,
+                            $userName,
+                            $request->notes
+                        );
+                    }
+                );
+            } else {
+                $this->stockService->recordStockIn(
+                    $request->product_id,
+                    $warehouseId,
+                    (int) $request->quantity,
+                    $request->supplier_name,
+                    $userId,
+                    $userName,
+                    $request->notes
+                );
+            }
 
             return redirect()->route('stock.index')->with('success', '✓ Stock In recorded successfully! Physical count increased.');
         } catch (\Throwable $e) {
@@ -252,29 +264,41 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Dispatch Officer';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? (string) Str::uuid();
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         try {
-            $idempotencyService = app(IdempotencyService::class);
-            $transfer = $idempotencyService->execute(
-                'transfer_out',
-                (string) $idempotencyKey,
-                (string) $tenantId,
-                (string) $userId,
-                $request->all(),
-                function () use ($sourceWarehouseId, $destWarehouseId, $request, $userId, $userName) {
-                    return $this->stockService->initiateTransfer(
-                        $sourceWarehouseId,
-                        $destWarehouseId,
-                        $request->items,
-                        $request->carrier_name,
-                        $userId,
-                        $userName,
-                        $request->notes
-                    );
-                }
-            );
+            if (!empty($idempotencyKey)) {
+                $idempotencyService = app(IdempotencyService::class);
+                $transfer = $idempotencyService->execute(
+                    'transfer_out',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    $request->all(),
+                    function () use ($sourceWarehouseId, $destWarehouseId, $request, $userId, $userName) {
+                        return $this->stockService->initiateTransfer(
+                            $sourceWarehouseId,
+                            $destWarehouseId,
+                            $request->items,
+                            $request->carrier_name,
+                            $userId,
+                            $userName,
+                            $request->notes
+                        );
+                    }
+                );
+            } else {
+                $transfer = $this->stockService->initiateTransfer(
+                    $sourceWarehouseId,
+                    $destWarehouseId,
+                    $request->items,
+                    $request->carrier_name,
+                    $userId,
+                    $userName,
+                    $request->notes
+                );
+            }
 
             return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
         } catch (\Throwable $e) {
@@ -302,27 +326,37 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Receiving Storekeeper';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? (string) Str::uuid();
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         try {
-            $idempotencyService = app(IdempotencyService::class);
-            $transfer = $idempotencyService->execute(
-                'transfer_in',
-                (string) $idempotencyKey,
-                (string) $tenantId,
-                (string) $userId,
-                $request->all(),
-                function () use ($id, $request, $userId, $userName) {
-                    return $this->stockService->receiveTransfer(
-                        (int) $id,
-                        $request->counted_items,
-                        $userId,
-                        $userName,
-                        $request->discrepancy_notes
-                    );
-                }
-            );
+            if (!empty($idempotencyKey)) {
+                $idempotencyService = app(IdempotencyService::class);
+                $transfer = $idempotencyService->execute(
+                    'transfer_in',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    $request->all(),
+                    function () use ($id, $request, $userId, $userName) {
+                        return $this->stockService->receiveTransfer(
+                            (int) $id,
+                            $request->counted_items,
+                            $userId,
+                            $userName,
+                            $request->discrepancy_notes
+                        );
+                    }
+                );
+            } else {
+                $transfer = $this->stockService->receiveTransfer(
+                    (int) $id,
+                    $request->counted_items,
+                    $userId,
+                    $userName,
+                    $request->discrepancy_notes
+                );
+            }
 
             if ($transfer->status === 'DISCREPANCY') {
                 return redirect()->route('stock.transfers')->with('warning', "⚠️ Transfer Received with DISCREPANCY! Missing items flagged to Auditor.");
@@ -350,26 +384,35 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Dispatch Officer';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? (string) Str::uuid();
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         try {
-            $idempotencyService = app(IdempotencyService::class);
-            $transfer = $idempotencyService->execute(
-                'transfer_recall',
-                (string) $idempotencyKey,
-                (string) $tenantId,
-                (string) $userId,
-                $request->all(),
-                function () use ($id, $userId, $userName, $request) {
-                    return $this->stockService->recallTransfer(
-                        (int) $id,
-                        $userId,
-                        $userName,
-                        $request->reason ?? 'Cancelled by source branch'
-                    );
-                }
-            );
+            if (!empty($idempotencyKey)) {
+                $idempotencyService = app(IdempotencyService::class);
+                $transfer = $idempotencyService->execute(
+                    'transfer_recall',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    $request->all(),
+                    function () use ($id, $userId, $userName, $request) {
+                        return $this->stockService->recallTransfer(
+                            (int) $id,
+                            $userId,
+                            $userName,
+                            $request->reason ?? 'Cancelled by source branch'
+                        );
+                    }
+                );
+            } else {
+                $transfer = $this->stockService->recallTransfer(
+                    (int) $id,
+                    $userId,
+                    $userName,
+                    $request->reason ?? 'Cancelled by source branch'
+                );
+            }
 
             return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} has been cancelled! All items have been restored to your shop physical inventory.");
         } catch (\Throwable $e) {
@@ -554,21 +597,25 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Dispatch Officer';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? (string) Str::uuid();
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         try {
-            $idempotencyService = app(IdempotencyService::class);
-            $idempotencyService->execute(
-                'stock_dispatch',
-                (string) $idempotencyKey,
-                (string) $tenantId,
-                (string) $userId,
-                $request->all(),
-                function () use ($saleId, $warehouseId, $userId, $userName) {
-                    return $this->stockService->dispatchUnsuppliedSale($saleId, $warehouseId, $userId, $userName);
-                }
-            );
+            if (!empty($idempotencyKey)) {
+                $idempotencyService = app(IdempotencyService::class);
+                $idempotencyService->execute(
+                    'stock_dispatch',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    $request->all(),
+                    function () use ($saleId, $warehouseId, $userId, $userName) {
+                        return $this->stockService->dispatchUnsuppliedSale($saleId, $warehouseId, $userId, $userName);
+                    }
+                );
+            } else {
+                $this->stockService->dispatchUnsuppliedSale($saleId, $warehouseId, $userId, $userName);
+            }
 
             return back()->with('success', '✓ Goods officially handed over to customer! Physical closing stock updated.');
         } catch (\Throwable $e) {
@@ -670,33 +717,45 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Storekeeper';
 
-        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? (string) Str::uuid();
+        $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
         try {
-            $idempotencyService = app(IdempotencyService::class);
-            $idempotencyService->execute(
-                'stock_adjustment',
-                (string) $idempotencyKey,
-                (string) $tenantId,
-                (string) $userId,
-                $request->all(),
-                function () use ($request, $warehouseId, $userId, $userName) {
-                    return $this->stockService->recordStockAdjustment(
-                        $request->product_id,
-                        $warehouseId,
-                        $request->type,
-                        (int) $request->quantity,
-                        $request->reason,
-                        $userId,
-                        $userName
-                    );
-                }
-            );
+            if (!empty($idempotencyKey)) {
+                $idempotencyService = app(IdempotencyService::class);
+                $idempotencyService->execute(
+                    'stock_adjustment',
+                    (string) $idempotencyKey,
+                    (string) $tenantId,
+                    (string) $userId,
+                    $request->all(),
+                    function () use ($request, $warehouseId, $userId, $userName) {
+                        return $this->stockService->recordStockAdjustment(
+                            $request->product_id,
+                            $warehouseId,
+                            $request->type,
+                            (int) $request->quantity,
+                            $request->reason,
+                            $userId,
+                            $userName
+                        );
+                    }
+                );
+            } else {
+                $this->stockService->recordStockAdjustment(
+                    $request->product_id,
+                    $warehouseId,
+                    $request->type,
+                    (int) $request->quantity,
+                    $request->reason,
+                    $userId,
+                    $userName
+                );
+            }
 
-            return redirect()->route('stock.adjustments')->with('success', "✓ Stock adjustment recorded and deducted from physical shelf count.");
+            return redirect()->route('stock.adjustments')->with('success', '✓ Stock Adjustment logged successfully! Audit trail updated.');
         } catch (\Throwable $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => $e->getMessage()])->withInput();
         }
     }
 }

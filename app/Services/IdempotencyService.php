@@ -24,9 +24,9 @@ class IdempotencyService
      */
     public function execute(string $operation, string $idempotencyKey, string $tenantId, string $userId, array $payload, \Closure $callback): mixed
     {
-        $cleanKey = trim($idempotencyKey);
+        $cleanKey = trim($idempotencyKey ?? '');
         if (empty($cleanKey)) {
-            return $callback();
+            throw new \InvalidArgumentException("Idempotency key is required for operation '{$operation}'.");
         }
 
         // Normalize payload: remove volatile session/CSRF tokens

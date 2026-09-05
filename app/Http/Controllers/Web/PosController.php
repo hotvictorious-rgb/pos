@@ -279,30 +279,32 @@ class PosController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key') ?? $request->input('sale_id');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
-            if ($idempotencyKey) {
-                $idempotencyService = app(\App\Services\IdempotencyService::class);
-                $sale = $idempotencyService->execute(
-                    'pos_checkout',
-                    (string) $idempotencyKey,
-                    (string) $tenantId,
-                    (string) $userId,
-                    [
-                        'warehouse_id' => $warehouseId,
-                        'items' => $request->items,
-                        'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
-                        'cashAmount' => (float) ($request->cashAmount ?? 0),
-                        'posAmount' => (float) ($request->posAmount ?? 0),
-                        'transferAmount' => (float) ($request->transferAmount ?? 0),
-                        'customerId' => $customerId,
-                        'is_supplied' => $isSuppliedNow,
-                    ],
-                    function () use ($saleData, $request, $warehouseId, $isSuppliedNow, $userId, $userName) {
-                        return $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
-                    }
-                );
-            } else {
-                $sale = $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
-            }
+        $idempotencyPayload = [
+            'warehouse_id' => $warehouseId,
+            'items' => $request->items,
+            'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
+            'cashAmount' => (float) ($request->cashAmount ?? 0),
+            'posAmount' => (float) ($request->posAmount ?? 0),
+            'transferAmount' => (float) ($request->transferAmount ?? 0),
+            'customerId' => $customerId,
+            'is_supplied' => $isSuppliedNow,
+        ];
+
+        if (!empty($idempotencyKey)) {
+            $idempotencyService = app(\App\Services\IdempotencyService::class);
+            $sale = $idempotencyService->execute(
+                'pos_checkout',
+                (string) $idempotencyKey,
+                (string) $tenantId,
+                (string) $userId,
+                $idempotencyPayload,
+                function () use ($saleData, $request, $warehouseId, $isSuppliedNow, $userId, $userName) {
+                    return $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
+                }
+            );
+        } else {
+            $sale = $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
+        }
 
             if ($request->wantsJson()) {
                 return response()->json([
@@ -464,20 +466,22 @@ class PosController extends Controller
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
 
+        $idempotencyPayload = [
+            'sale_id' => $request->sale_id,
+            'warehouse_id' => $warehouseId,
+            'items' => $request->items,
+            'refund_method' => $request->refund_method,
+        ];
+
         try {
-            if ($idempotencyKey) {
+            if (!empty($idempotencyKey)) {
                 $idempotencyService = app(\App\Services\IdempotencyService::class);
                 $salesReturn = $idempotencyService->execute(
                     'pos_return',
                     (string) $idempotencyKey,
                     (string) $tenantId,
                     (string) $userId,
-                    [
-                        'sale_id' => $request->sale_id,
-                        'warehouse_id' => $warehouseId,
-                        'items' => $request->items,
-                        'refund_method' => $request->refund_method,
-                    ],
+                    $idempotencyPayload,
                     function () use ($request, $warehouseId, $userId, $userName) {
                         return $this->stockService->recordSaleReturn(
                             $request->sale_id,

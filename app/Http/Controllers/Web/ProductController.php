@@ -10,6 +10,7 @@ use App\Models\Activity;
 use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
@@ -272,7 +273,13 @@ class ProductController extends Controller
 
         $header = fgetcsv($handle);
         if (!$header) {
+            fclose($handle);
             return redirect()->route('products.index')->with('error', 'Uploaded CSV file is empty or invalid.');
+        }
+
+        if (count($header) > 20) {
+            fclose($handle);
+            return redirect()->route('products.index')->with('error', 'Uploaded CSV has too many columns. Maximum allowed is 20 columns.');
         }
 
         // Normalize header keys
@@ -282,102 +289,113 @@ class ProductController extends Controller
             $headerMap[$cleaned] = $index;
         }
 
+        $rows = [];
+        $rowCount = 0;
+        while (($row = fgetcsv($handle)) !== false) {
+            if (empty(array_filter($row))) continue; // Skip empty rows
+            $rowCount++;
+            if ($rowCount > 500) {
+                fclose($handle);
+                return redirect()->route('products.index')->with('error', 'Uploaded CSV exceeds maximum limit of 500 rows per batch import.');
+            }
+            $rows[] = $row;
+        }
+        fclose($handle);
+
         $importedCount = 0;
         $updatedCount = 0;
 
-        while (($row = fgetcsv($handle)) !== false) {
-            if (empty(array_filter($row))) continue; // Skip empty rows
+        DB::transaction(function () use ($rows, $headerMap, $warehouseId, &$importedCount, &$updatedCount) {
+            foreach ($rows as $row) {
+                $name = $row[$headerMap['name'] ?? -1] ?? null;
+                if (!$name) continue;
 
-            $name = $row[$headerMap['name'] ?? -1] ?? null;
-            if (!$name) continue;
-
-            $code = $row[$headerMap['code'] ?? $headerMap['sku'] ?? -1] ?? null;
-            if (!$code) {
-                $code = 'SKU-' . strtoupper(Str::random(6));
-            } else {
-                $code = strtoupper(trim($code));
-            }
-
-            $category = $row[$headerMap['category'] ?? -1] ?? 'General Provisions';
-            $brand = $row[$headerMap['brand'] ?? -1] ?? null;
-            $size = $row[$headerMap['size'] ?? -1] ?? null;
-            $unitPrice = (float) ($row[$headerMap['unitprice'] ?? $headerMap['price'] ?? -1] ?? 0);
-            $minStock = (int) ($row[$headerMap['minstocklevel'] ?? $headerMap['minstock'] ?? -1] ?? 5);
-            $initialStock = (int) ($row[$headerMap['initialstock'] ?? $headerMap['stock'] ?? $headerMap['quantity'] ?? -1] ?? 0);
-
-            // Check if product exists by code
-            $product = Product::where('code', $code)->first();
-            if ($product) {
-                $product->update([
-                    'name' => $name,
-                    'category' => $category,
-                    'brand' => $brand,
-                    'size' => $size,
-                    'unitPrice' => $unitPrice > 0 ? $unitPrice : $product->unitPrice,
-                    'minStockLevel' => $minStock,
-                    'archived' => false,
-                ]);
-
-                if ($initialStock > 0) {
-                    $stockService = app(\App\Services\StockService::class);
-                    $stockService->recordStockIn(
-                        $product->id,
-                        $warehouseId,
-                        $initialStock,
-                        'CSV Stock In',
-                        Auth::id() ?? 'ADMIN',
-                        Auth::user()->name ?? 'Manager / Admin',
-                        "Bulk CSV Import Additional Stock for {$product->name}"
-                    );
-                }
-
-                $updatedCount++;
-            } else {
-                $productId = (string) Str::uuid();
-                $newProduct = Product::create([
-                    'id' => $productId,
-                    'name' => $name,
-                    'code' => $code,
-                    'category' => $category,
-                    'brand' => $brand,
-                    'size' => $size,
-                    'unitPrice' => $unitPrice,
-                    'currentStock' => 0, // Canonical stock updated authoritatively by StockService
-                    'minStockLevel' => $minStock,
-                    'archived' => false,
-                    'updatedAt' => now()->toIso8601String(),
-                ]);
-
-                $stockService = app(\App\Services\StockService::class);
-                if ($initialStock > 0) {
-                    $stockService->recordStockIn(
-                        $newProduct->id,
-                        $warehouseId,
-                        $initialStock,
-                        'CSV Initial Balance',
-                        Auth::id() ?? 'ADMIN',
-                        Auth::user()->name ?? 'Manager / Admin',
-                        "Bulk CSV Import Initial Stock for {$newProduct->name}"
-                    );
+                $code = $row[$headerMap['code'] ?? $headerMap['sku'] ?? -1] ?? null;
+                if (!$code) {
+                    $code = 'SKU-' . strtoupper(Str::random(6));
                 } else {
-                    $stockService->ensureStockLevelForAuthorizedMutation($newProduct->id, $warehouseId, false);
+                    $code = strtoupper(trim($code));
                 }
 
-                $importedCount++;
+                $category = $row[$headerMap['category'] ?? -1] ?? 'General Provisions';
+                $brand = $row[$headerMap['brand'] ?? -1] ?? null;
+                $size = $row[$headerMap['size'] ?? -1] ?? null;
+                $unitPrice = (float) ($row[$headerMap['unitprice'] ?? $headerMap['price'] ?? -1] ?? 0);
+                $minStock = (int) ($row[$headerMap['minstocklevel'] ?? $headerMap['minstock'] ?? -1] ?? 5);
+                $initialStock = (int) ($row[$headerMap['initialstock'] ?? $headerMap['stock'] ?? $headerMap['quantity'] ?? -1] ?? 0);
+
+                // Check if product exists by code
+                $product = Product::where('code', $code)->first();
+                if ($product) {
+                    $product->update([
+                        'name' => $name,
+                        'category' => $category,
+                        'brand' => $brand,
+                        'size' => $size,
+                        'unitPrice' => $unitPrice > 0 ? $unitPrice : $product->unitPrice,
+                        'minStockLevel' => $minStock,
+                        'archived' => false,
+                    ]);
+
+                    if ($initialStock > 0) {
+                        $stockService = app(\App\Services\StockService::class);
+                        $stockService->recordStockIn(
+                            $product->id,
+                            $warehouseId,
+                            $initialStock,
+                            'CSV Stock In',
+                            Auth::id() ?? 'ADMIN',
+                            Auth::user()->name ?? 'Manager / Admin',
+                            "Bulk CSV Import Additional Stock for {$product->name}"
+                        );
+                    }
+
+                    $updatedCount++;
+                } else {
+                    $productId = (string) Str::uuid();
+                    $newProduct = Product::create([
+                        'id' => $productId,
+                        'name' => $name,
+                        'code' => $code,
+                        'category' => $category,
+                        'brand' => $brand,
+                        'size' => $size,
+                        'unitPrice' => $unitPrice,
+                        'currentStock' => 0, // Canonical stock updated authoritatively by StockService
+                        'minStockLevel' => $minStock,
+                        'archived' => false,
+                        'updatedAt' => now()->toIso8601String(),
+                    ]);
+
+                    $stockService = app(\App\Services\StockService::class);
+                    if ($initialStock > 0) {
+                        $stockService->recordStockIn(
+                            $newProduct->id,
+                            $warehouseId,
+                            $initialStock,
+                            'CSV Initial Balance',
+                            Auth::id() ?? 'ADMIN',
+                            Auth::user()->name ?? 'Manager / Admin',
+                            "Bulk CSV Import Initial Stock for {$newProduct->name}"
+                        );
+                    } else {
+                        $stockService->ensureStockLevelForAuthorizedMutation($newProduct->id, $warehouseId, false);
+                    }
+
+                    $importedCount++;
+                }
             }
-        }
 
-        fclose($handle);
-
-        $userName = Auth::user()->name ?? 'Manager / Admin';
-        Activity::create([
-            'id' => (string) Str::uuid(),
-            'type' => 'CSV_PRODUCTS_IMPORT',
-            'description' => "{$userName} imported {$importedCount} new products and updated {$updatedCount} products via CSV bulk upload.",
-            'userId' => Auth::id() ?? 'ADMIN',
-            'userName' => $userName,
-            'timestamp' => now()->toIso8601String(),
-        ]);
+            $userName = Auth::user()->name ?? 'Manager / Admin';
+            Activity::create([
+                'id' => (string) Str::uuid(),
+                'type' => 'CSV_PRODUCTS_IMPORT',
+                'description' => "{$userName} imported {$importedCount} new products and updated {$updatedCount} products via CSV bulk upload.",
+                'userId' => Auth::id() ?? 'ADMIN',
+                'userName' => $userName,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        });
 
         return redirect()->route('products.index')->with('success', "✓ Bulk import complete! Added {$importedCount} new products, updated {$updatedCount} existing items.");
     }
