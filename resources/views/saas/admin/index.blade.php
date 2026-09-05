@@ -60,8 +60,12 @@
             <h1>SaaS Master Platform Control Suite</h1>
             <p>Global multi-tenant platform oversight, revenue metrics, and configuration engine</p>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; align-items: center;">
             <a href="/" class="btn btn-secondary">🏠 POS Dashboard</a>
+            <form action="{{ route('logout') }}" method="POST" style="display: inline; margin: 0;">
+                @csrf
+                <button type="submit" class="btn btn-danger">🚪 Logout</button>
+            </form>
         </div>
     </div>
 

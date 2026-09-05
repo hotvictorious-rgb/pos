@@ -10,48 +10,125 @@ use App\Models\StockLevel;
 use App\Models\Supplier;
 use App\Models\Customer;
 use App\Models\Setting;
+use App\Models\Tenant;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed the application's database.
+     * Seed the application's database with complete tenant and user details.
      */
     public function run(): void
     {
-        $adminEmail = strtolower(trim(config('saas.super_admin_email', 'admin@hysamventures.com')));
-        $adminPassword = env('SUPER_ADMIN_PASSWORD', 'changeme123');
+        $superAdminEmail = strtolower(trim(config('saas.super_admin_email', 'admin@hysamventures.com')));
+        $superAdminPassword = env('SUPER_ADMIN_PASSWORD', 'changeme123');
 
-        // 1. Seed Admin & Staff
-        User::updateOrCreate(
-            ['id' => 'admin-user-1'],
-            [
-                'name' => 'Auditor / Super Admin',
-                'email' => $adminEmail,
-                'password' => Hash::make($adminPassword),
+        // 1. Seed Master Platform Tenant (default-tenant for Super Admin)
+        $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant')
+            ?? Tenant::create([
+                'id' => 'default-tenant',
+                'name' => 'Platform Master HQ',
+                'owner_email' => $superAdminEmail,
+                'owner_phone' => '08000000000',
+                'plan' => 'enterprise',
+                'status' => 'active',
+                'max_branches' => 999,
+                'max_users' => 999,
+            ]);
+
+        // 2. Seed Business Tenant (Hysam Ventures HQ)
+        $tenant = Tenant::withoutGlobalScopes()->find('tenant-1')
+            ?? Tenant::create([
+                'id' => 'tenant-1',
+                'name' => 'Hysam Ventures HQ',
+                'owner_email' => 'tenantadmin@hysam.com',
+                'owner_phone' => '08011112222',
+                'plan' => 'enterprise',
+                'status' => 'active',
+                'max_branches' => 10,
+                'max_users' => 50,
+            ]);
+
+        // 3. Seed Platform Super Admin User (Super-Admin Console: /super-admin/login)
+        $existingSuperAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
+        if ($existingSuperAdmin) {
+            $existingSuperAdmin->update([
+                'tenant_id' => 'default-tenant',
+                'name' => 'Platform Super Admin',
+                'password' => Hash::make($superAdminPassword),
                 'role' => 'admin',
                 'disabled' => false,
                 'permissions' => json_encode(['all' => true]),
-            ]
-        );
+            ]);
+        } else {
+            User::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => 'default-tenant',
+                'name' => 'Platform Super Admin',
+                'email' => $superAdminEmail,
+                'password' => Hash::make($superAdminPassword),
+                'role' => 'admin',
+                'disabled' => false,
+                'permissions' => json_encode(['all' => true]),
+            ]);
+        }
 
-        User::updateOrCreate(
-            ['id' => 'staff-user-1'],
-            [
+        // 4. Seed Business Tenant Admin User (Tenant Admin Portal: /tenant/login)
+        $tenantAdminEmail = 'tenantadmin@hysam.com';
+        $existingTenantAdmin = User::withoutGlobalScopes()->where('email', $tenantAdminEmail)->first();
+        if ($existingTenantAdmin) {
+            $existingTenantAdmin->update([
+                'tenant_id' => $tenant->id,
+                'name' => 'Business Owner / Admin',
+                'password' => Hash::make('admin123'),
+                'role' => 'admin',
+                'disabled' => false,
+                'permissions' => json_encode(['all' => true]),
+            ]);
+        } else {
+            User::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenant->id,
+                'name' => 'Business Owner / Admin',
+                'email' => $tenantAdminEmail,
+                'password' => Hash::make('admin123'),
+                'role' => 'admin',
+                'disabled' => false,
+                'permissions' => json_encode(['all' => true]),
+            ]);
+        }
+
+        // 5. Seed Business Tenant Staff User (Employee Portal: /tenant-employee/login)
+        $staffEmail = 'staff@hysam.com';
+        $existingStaff = User::withoutGlobalScopes()->where('email', $staffEmail)->first();
+        if ($existingStaff) {
+            $existingStaff->update([
+                'tenant_id' => $tenant->id,
                 'name' => 'Sales Officer 1',
-                'email' => 'staff@hysam.com',
                 'password' => Hash::make('staff123'),
                 'role' => 'staff',
                 'disabled' => false,
                 'permissions' => json_encode(['pos' => true, 'stockIn' => true]),
-            ]
-        );
+            ]);
+        } else {
+            User::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenant->id,
+                'name' => 'Sales Officer 1',
+                'email' => $staffEmail,
+                'password' => Hash::make('staff123'),
+                'role' => 'staff',
+                'disabled' => false,
+                'permissions' => json_encode(['pos' => true, 'stockIn' => true]),
+            ]);
+        }
 
-        // 2. Seed Default Settings
-        Setting::updateOrCreate(
-            ['id' => 1],
-            [
+        // 6. Seed Default Settings
+        $setting = Setting::withoutGlobalScopes()->find(1);
+        if ($setting) {
+            $setting->update([
+                'tenant_id' => $tenant->id,
                 'businessName' => 'VMARKET POS',
                 'businessAddress' => '12 Commercial Avenue, Lagos, Nigeria',
                 'businessPhone' => '+234 800 000 0000',
@@ -61,36 +138,56 @@ class DatabaseSeeder extends Seeder
                 'lowStockThreshold' => 5,
                 'transactionEditLimitDays' => 0,
                 'fontFamily' => 'Inter',
-            ]
-        );
+            ]);
+        } else {
+            Setting::create([
+                'id' => 1,
+                'tenant_id' => $tenant->id,
+                'businessName' => 'VMARKET POS',
+                'businessAddress' => '12 Commercial Avenue, Lagos, Nigeria',
+                'businessPhone' => '+234 800 000 0000',
+                'businessEmail' => 'info@vmarketpos.com',
+                'currency' => '₦',
+                'categories' => json_encode(['Electronics', 'Groceries', 'Beverages', 'Hardware', 'Household']),
+                'lowStockThreshold' => 5,
+                'transactionEditLimitDays' => 0,
+                'fontFamily' => 'Inter',
+            ]);
+        }
 
-        // 3. Seed Warehouses / Branch Locations
-        $shop1 = Warehouse::firstOrCreate(
-            ['code' => 'SHOP-01'],
-            ['name' => 'Main Store / Shop 1', 'address' => 'HQ Ground Floor', 'phone' => '08011111111', 'manager_name' => 'Shop Manager A']
-        );
+        // 7. Seed Warehouses / Branch Locations
+        $shop1 = Warehouse::withoutGlobalScopes()->where('code', 'SHOP-01')->first()
+            ?? Warehouse::create(['tenant_id' => $tenant->id, 'code' => 'SHOP-01', 'name' => 'Main Store / Shop 1', 'address' => 'HQ Ground Floor', 'phone' => '08011111111', 'manager_name' => 'Shop Manager A']);
 
-        $shop2 = Warehouse::firstOrCreate(
-            ['code' => 'SHOP-02'],
-            ['name' => 'Branch Store / Shop 2', 'address' => 'Ikeja Branch', 'phone' => '08022222222', 'manager_name' => 'Shop Manager B']
-        );
+        $shop2 = Warehouse::withoutGlobalScopes()->where('code', 'SHOP-02')->first()
+            ?? Warehouse::create(['tenant_id' => $tenant->id, 'code' => 'SHOP-02', 'name' => 'Branch Store / Shop 2', 'address' => 'Ikeja Branch', 'phone' => '08022222222', 'manager_name' => 'Shop Manager B']);
 
-        $warehouse = Warehouse::firstOrCreate(
-            ['code' => 'WH-01'],
-            ['name' => 'Central Depot / Warehouse', 'address' => 'Industrial Estate', 'phone' => '08033333333', 'manager_name' => 'Warehouse Lead']
-        );
+        $warehouse = Warehouse::withoutGlobalScopes()->where('code', 'WH-01')->first()
+            ?? Warehouse::create(['tenant_id' => $tenant->id, 'code' => 'WH-01', 'name' => 'Central Depot / Warehouse', 'address' => 'Industrial Estate', 'phone' => '08033333333', 'manager_name' => 'Warehouse Lead']);
 
-        // 4. Seed Suppliers
-        Supplier::firstOrCreate(['name' => 'Dangote Sugar & Flour Refinery'], ['contact_info' => 'dangote@supply.com', 'lead_time' => 3]);
-        Supplier::firstOrCreate(['name' => 'Golden Penny Mills Plc'], ['contact_info' => 'golden@supply.com', 'lead_time' => 5]);
-        Supplier::firstOrCreate(['name' => 'Nestle Food Distributors'], ['contact_info' => 'nestle@supply.com', 'lead_time' => 2]);
+        // 8. Seed Suppliers
+        foreach ([
+            ['name' => 'Dangote Sugar & Flour Refinery', 'contact_info' => 'dangote@supply.com', 'lead_time' => 3],
+            ['name' => 'Golden Penny Mills Plc', 'contact_info' => 'golden@supply.com', 'lead_time' => 5],
+            ['name' => 'Nestle Food Distributors', 'contact_info' => 'nestle@supply.com', 'lead_time' => 2],
+        ] as $sup) {
+            if (!Supplier::withoutGlobalScopes()->where('name', $sup['name'])->exists()) {
+                Supplier::create(array_merge($sup, ['tenant_id' => $tenant->id]));
+            }
+        }
 
-        // 5. Seed Demo Customers
-        Customer::firstOrCreate(['name' => 'Alhaji Ibrahim & Sons'], ['phone' => '08099887766', 'total_debt' => 45000, 'credit_limit' => 200000]);
-        Customer::firstOrCreate(['name' => 'Mama Chinedu Provisions'], ['phone' => '08055443322', 'total_debt' => 12000, 'credit_limit' => 50000]);
-        Customer::firstOrCreate(['name' => 'Grace Supermarket'], ['phone' => '08011223344', 'total_debt' => 0, 'credit_limit' => 500000]);
+        // 9. Seed Demo Customers
+        foreach ([
+            ['name' => 'Alhaji Ibrahim & Sons', 'phone' => '08099887766', 'total_debt' => 45000, 'credit_limit' => 200000],
+            ['name' => 'Mama Chinedu Provisions', 'phone' => '08055443322', 'total_debt' => 12000, 'credit_limit' => 50000],
+            ['name' => 'Grace Supermarket', 'phone' => '08011223344', 'total_debt' => 0, 'credit_limit' => 500000],
+        ] as $cust) {
+            if (!Customer::withoutGlobalScopes()->where('name', $cust['name'])->exists()) {
+                Customer::create(array_merge($cust, ['tenant_id' => $tenant->id]));
+            }
+        }
 
-        // 6. Seed Sample Products & Physical Stock
+        // 10. Seed Sample Products & Physical Stock
         $sampleProducts = [
             ['code' => 'PROD-001', 'name' => 'Bag of Rice (50kg)', 'category' => 'Groceries', 'unitPrice' => 85000, 'stock1' => 40, 'stock2' => 15],
             ['code' => 'PROD-002', 'name' => 'Refined Vegetable Oil (25L)', 'category' => 'Groceries', 'unitPrice' => 52000, 'stock1' => 25, 'stock2' => 10],
@@ -101,10 +198,12 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($sampleProducts as $pData) {
-            $product = Product::firstOrCreate(
-                ['code' => $pData['code']],
-                [
+            $product = Product::withoutGlobalScopes()->where('code', $pData['code'])->first();
+            if (!$product) {
+                $product = Product::create([
                     'id' => (string) Str::uuid(),
+                    'code' => $pData['code'],
+                    'tenant_id' => $tenant->id,
                     'name' => $pData['name'],
                     'category' => $pData['category'],
                     'unitPrice' => $pData['unitPrice'],
@@ -112,20 +211,24 @@ class DatabaseSeeder extends Seeder
                     'minStockLevel' => 5,
                     'archived' => false,
                     'updatedAt' => now()->toIso8601String(),
-                ]
-            );
+                ]);
+            }
 
             // Stock at Shop 1
-            StockLevel::updateOrCreate(
-                ['product_id' => $product->id, 'warehouse_id' => $shop1->id],
-                ['physical_stock' => $pData['stock1'], 'allocated_stock' => 0, 'min_stock_alert' => 5]
-            );
+            $st1 = StockLevel::withoutGlobalScopes()->where(['product_id' => $product->id, 'warehouse_id' => $shop1->id])->first();
+            if ($st1) {
+                $st1->update(['tenant_id' => $tenant->id, 'physical_stock' => $pData['stock1']]);
+            } else {
+                StockLevel::create(['tenant_id' => $tenant->id, 'product_id' => $product->id, 'warehouse_id' => $shop1->id, 'physical_stock' => $pData['stock1'], 'allocated_stock' => 0, 'min_stock_alert' => 5]);
+            }
 
             // Stock at Shop 2
-            StockLevel::updateOrCreate(
-                ['product_id' => $product->id, 'warehouse_id' => $shop2->id],
-                ['physical_stock' => $pData['stock2'], 'allocated_stock' => 0, 'min_stock_alert' => 5]
-            );
+            $st2 = StockLevel::withoutGlobalScopes()->where(['product_id' => $product->id, 'warehouse_id' => $shop2->id])->first();
+            if ($st2) {
+                $st2->update(['tenant_id' => $tenant->id, 'physical_stock' => $pData['stock2']]);
+            } else {
+                StockLevel::create(['tenant_id' => $tenant->id, 'product_id' => $product->id, 'warehouse_id' => $shop2->id, 'physical_stock' => $pData['stock2'], 'allocated_stock' => 0, 'min_stock_alert' => 5]);
+            }
         }
     }
 }
