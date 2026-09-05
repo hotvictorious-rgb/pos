@@ -212,28 +212,22 @@ class ProductionHardeningPass13Test extends TestCase
                 @unlink($markerPath);
             }
 
-            // Test Case A: APP_INSTALLED=true blocks installer with redirect to /
-            putenv('APP_INSTALLED=true');
-            $_ENV['APP_INSTALLED'] = 'true';
+            // Test Case A: config('app.installed') => true blocks installer with redirect to /
+            config(['app.installed' => true, 'app.installer_enabled' => true]);
 
             $response = $this->get('/install');
             $response->assertRedirect('/');
             $response->assertSessionHas('info', 'The application is already installed.');
 
-            // Test Case B: When APP_INSTALLED=false but APP_INSTALLER_ENABLED=false
-            putenv('APP_INSTALLED=false');
-            $_ENV['APP_INSTALLED'] = 'false';
-            putenv('APP_INSTALLER_ENABLED=false');
-            $_ENV['APP_INSTALLER_ENABLED'] = 'false';
+            // Test Case B: When app.installed => false but app.installer_enabled => false
+            config(['app.installed' => false, 'app.installer_enabled' => false]);
 
             $response2 = $this->get('/install');
             $response2->assertStatus(403);
         } finally {
             // Guarantee storage/installed is restored so subsequent test suites aren't impacted
             file_put_contents($markerPath, date('Y-m-d H:i:s'));
-            putenv('APP_INSTALLED');
-            putenv('APP_INSTALLER_ENABLED');
-            unset($_ENV['APP_INSTALLED'], $_ENV['APP_INSTALLER_ENABLED']);
+            config(['app.installed' => false, 'app.installer_enabled' => true]);
         }
     }
 

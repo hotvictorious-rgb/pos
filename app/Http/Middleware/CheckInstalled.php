@@ -15,11 +15,11 @@ class CheckInstalled
     public function handle(Request $request, Closure $next): Response
     {
         $installedMarker   = file_exists(storage_path('installed'));
-        $installedEnv      = filter_var(env('APP_INSTALLED', false), FILTER_VALIDATE_BOOLEAN);
-        $installed         = $installedMarker || $installedEnv;
+        $installedConfig   = (bool) config('app.installed', false);
+        $installed         = $installedMarker || $installedConfig;
 
-        // In production, the installer is disabled by default unless explicitly permitted via APP_INSTALLER_ENABLED=true
-        $installerEnabled  = filter_var(env('APP_INSTALLER_ENABLED', !app()->environment('production')), FILTER_VALIDATE_BOOLEAN);
+        // In production, the installer is disabled by default unless explicitly permitted via config('app.installer_enabled')
+        $installerEnabled  = (bool) config('app.installer_enabled', !app()->environment('production'));
         $isInstaller       = $request->is('install') || $request->is('install/*');
 
         // Fail-Closed Guard 1: Any attempt to reach the installer when already installed

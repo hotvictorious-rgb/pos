@@ -123,4 +123,22 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Application Installation & Setup Wizard Locks
+    |--------------------------------------------------------------------------
+    |
+    | 'installed' declares whether the system has been provisioned.
+    | 'installer_enabled' locks the /install wizard. In production, this fails
+    | closed by default to prevent unauthorized reconfiguration.
+    |
+    */
+
+    'installed' => filter_var(env('APP_INSTALLED', false), FILTER_VALIDATE_BOOLEAN),
+
+    'installer_enabled' => filter_var(
+        env('APP_INSTALLER_ENABLED', env('APP_ENV') !== 'production'),
+        FILTER_VALIDATE_BOOLEAN
+    ),
+
 ];
