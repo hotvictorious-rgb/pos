@@ -138,4 +138,11 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 - **Backup Tamper Resistance**: All backup archives feature SHA-256 HMAC cryptographic signatures and payload manifests that are verified before initiating transactional restoration.
 - **Zero Double-Counting in Cash Drawer Math**: The cashier drawer expected cash equation cleanly distinguishes checkout sale cash from debt repayments, ensuring physical cash in drawer matches net cash sales plus unlinked debt recoveries minus cash refunds with zero duplicate additions.
 
+### VM-021: Relational Warehouse Restore & Branch-Isolated Debt
+- **Warehouse ID Remapping on Restore**: When restoring a tenant backup, warehouses are restored first to construct a complete `$oldWhId => $newWhId` mapping. All dependent models (`User`, `Sale`, `Transfer` [source and destination], `StockLevel`, `StockAdjustment`, `StockReservation`, `InventoryLog`) are remapped to new warehouse IDs.
+- **Pure Financial Event Authority**: Invoice balance computation is strictly derived from `Payment` financial events (`amount > 0` and `method != 'REFUND_CASH'`) and `SalesReturn` events. Fallbacks to materialized `Sale.paidAmount` are strictly forbidden.
+- **Zero Branch Debt Leakage**: Debt calculation and debtor dashboards for branch-scoped users are derived strictly from open sales originating at the assigned warehouse. Branch workers cannot view customer debts incurred at other branches.
+- **Single Canonical Inventory Mutation Path**: All physical stock additions, including catalog initial stock creation and CSV imports, must route through the canonical `StockService::recordStockIn()` engine to guarantee transactional row locking and audit logging.
+
+
 

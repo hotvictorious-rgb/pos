@@ -8,11 +8,13 @@ use App\Models\Warehouse;
 use App\Models\Product;
 use App\Models\StockLevel;
 use App\Models\Sale;
+use App\Models\Payment;
 use App\Models\Customer;
 use App\Models\Transfer;
 use App\Models\TransferItem;
 use App\Services\StockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class BusinessLogicFinancialSecurityAuditTest extends TestCase
@@ -378,6 +380,17 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
             'deliveryStatus' => 'DELIVERED',
             'userId' => $this->cashier->id,
             'userName' => $this->cashier->name,
+            'createdAt' => now()->toIso8601String(),
+        ]);
+
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'saleId' => $sale->id,
+            'amount' => 40000.00,
+            'method' => 'CASH',
+            'timestamp' => now()->toIso8601String(),
+            'recordedBy' => $this->cashier->name,
             'createdAt' => now()->toIso8601String(),
         ]);
 

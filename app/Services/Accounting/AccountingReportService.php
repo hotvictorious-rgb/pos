@@ -177,12 +177,11 @@ class AccountingReportService
 
         $netInvoice = max(0.0, round($grossInvoice - $returnCredits, 2));
 
-        $paymentRecordsSum = (float) Payment::where('saleId', $sale->id)
+        // Authoritative financial events: Materialized Payment records are the sole source of truth
+        $inflowPayments = (float) Payment::where('saleId', $sale->id)
             ->where('amount', '>', 0)
+            ->where('method', '!=', 'REFUND_CASH')
             ->sum('amount');
-
-        // Materialized payment records take precedence, falling back to sale.paidAmount for direct/legacy entries
-        $inflowPayments = max($paymentRecordsSum, (float) ($sale->paidAmount ?? 0.0));
 
         $cashRefunds = abs((float) Payment::where('saleId', $sale->id)
             ->where('method', 'REFUND_CASH')
@@ -678,15 +677,42 @@ class AccountingReportService
             $newDebtCreated += $invBalance;
         }
 
+        $user = Auth::user();
+        $scopedWarehouseId = null;
+        if ($user && $user->isBranchScoped()) {
+            $scopedWarehouseId = (int) $user->warehouse_id;
+        } elseif (!empty($filters['warehouse_id'])) {
+            $scopedWarehouseId = (int) $filters['warehouse_id'];
+        }
+
         // Debt recovered in period (CustomerLedger records debt payments with type='PAYMENT')
         $debtPaymentsQuery = CustomerLedger::where('type', 'PAYMENT')
             ->whereBetween('created_at', [$dateInfo['start'], $dateInfo['end']]);
+
+        if ($scopedWarehouseId) {
+            $debtPaymentsQuery->where(function ($q) use ($scopedWarehouseId) {
+                $q->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $scopedWarehouseId))
+                  ->orWhereNull('sale_id');
+            });
+        }
 
         $debtRecovered = (float) $debtPaymentsQuery->sum('amount');
         $cashDebtRecovered = (float) (clone $debtPaymentsQuery)->where('payment_method', 'CASH')->sum('amount');
         $posDebtRecovered  = (float) (clone $debtPaymentsQuery)->where('payment_method', 'POS')->sum('amount');
 
-        $currentOutstanding = (float) Customer::sum('total_debt');
+        if ($scopedWarehouseId) {
+            // Branch-isolated debt liability: strictly derive from open sales originating at this branch
+            $openSalesBranch = Sale::where('warehouse_id', $scopedWarehouseId)
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->get();
+            $branchOutstanding = 0.0;
+            foreach ($openSalesBranch as $os) {
+                $branchOutstanding += $this->calculateInvoiceBalance($os);
+            }
+            $currentOutstanding = round($branchOutstanding, 2);
+        } else {
+            $currentOutstanding = (float) Customer::sum('total_debt');
+        }
 
         // 5. Stock & Inventory Valuation
         $user = Auth::user();

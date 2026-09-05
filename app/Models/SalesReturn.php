@@ -51,4 +51,9 @@ class SalesReturn extends Model
             }
         });
     }
+
+    public function sale(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Sale::class, 'saleId', 'id');
+    }
 }

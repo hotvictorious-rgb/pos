@@ -330,7 +330,16 @@ class SaaSController extends Controller
             \App\Models\Activity::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\Setting::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             \App\Models\IdempotencyRecord::where('tenant_id', $id)->delete();
+
+            // Physically delete tenant backup archive files from disk storage
+            $tenantBackups = \App\Models\Backup::where('tenant_id', $id)->get();
+            foreach ($tenantBackups as $tb) {
+                if (!empty($tb->filename)) {
+                    \Illuminate\Support\Facades\Storage::disk('local')->delete('backups/' . $tb->filename);
+                }
+            }
             \App\Models\Backup::where('tenant_id', $id)->delete();
+
             \App\Models\User::withoutGlobalScopes()->where('tenant_id', $id)->delete();
             Tenant::where('id', $id)->delete();
         });

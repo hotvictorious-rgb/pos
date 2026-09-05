@@ -8,6 +8,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 3 (Warehouse Relational Restore, Platform Verification, Branch Isolation, and Canonical Inventory Mutations)**:
+  - **Warehouse Backup & Restore with Complete Foreign Key Remapping**:
+    - Restores warehouses FIRST to construct a bidirectional `$warehouseIdMap` (`$oldWhId => $newWhId`).
+    - Remaps foreign keys across all dependent entities: `User.warehouse_id`, `Sale.warehouse_id`, `Transfer.source_warehouse_id` & `Transfer.destination_warehouse_id`, `StockLevel.warehouse_id`, `StockAdjustment.warehouse_id`, `StockReservation.warehouse_id`, and `InventoryLog.warehouse_id`.
+    - Restores `Transfer` and `TransferItem` records, cleanly updating active restoring user's assigned warehouse if mapped.
+    - Pre-wipe invokes `Warehouse::withTrashed()->where('tenant_id', $targetTenantId)->forceDelete()` to eliminate soft-deleted code collisions.
+  - **Platform Backup Restore & HMAC Verification**:
+    - `restorePlatformFromJson()` validates HMAC SHA-256 signature against `config('app.key')`, detecting tampered or corrupted platform backups.
+    - Non-destructively restores tenants via `Tenant::updateOrCreate(['id' => $t['id']], ...)` to protect active tenant databases.
+    - Restores `CustomRole` (preserving string UUIDs and permissions), platform settings, and platform activities in an atomic transaction.
+  - **Elimination of `Sale.paidAmount` Fallback**:
+    - `AccountingReportService::calculateInvoiceBalance(Sale $sale)` derives balances strictly from `Payment` financial events (`amount > 0` and `method != 'REFUND_CASH'`) and `SalesReturn` events.
+    - Completely removed legacy fallback `max($paymentRecordsSum, $sale->paidAmount)`. `Sale.paidAmount` is strictly an eventual cached representation.
+  - **Branch-Isolated Debt & Scoped Financial Summaries**:
+    - In `AuditorController::index()`: Displayed debtor totals and customer debt amounts are calculated strictly from open sales originating at `$assignedWarehouseId` for branch-scoped users, eliminating cross-branch customer debt visibility.
+    - In `AccountingReportService::getPeriodSummary()`: Branch-scoped users and explicit `warehouse_id` filters strictly constrain `debtPaymentsQuery` and derived `currentOutstanding` liabilities to the active branch.
+    - Added `SalesReturn::sale()` BelongsTo relationship to allow branch scoping on returns.
+  - **Strict Branch-Locked CSV Catalog Imports**:
+    - `ProductController::importCsv()` asserts `assertTenantWarehouse()` on user's branch and locks branch-scoped staff strictly to `$user->warehouse_id`, preventing cross-branch stock assignment via CSV uploads.
+  - **Canonical Inventory Mutation Engine**:
+    - Refactored `ProductController::store()` to route initial catalog stock additions through the canonical `StockService::recordStockIn()`, guaranteeing centralized audit logs and preventing double-path inventory discrepancies.
+  - **Physical Backup File Deletion on Tenant Purge**:
+    - In `SaaSController::deleteTenant()`: Physically deletes all tenant backup JSON files from `storage/app/backups/` disk storage before removing database records.
+  - **Added `ProductionHardeningPass3Test`**: 8 comprehensive feature tests bringing the total automated suite to **228 passed tests (1,329 assertions, 0 errors, 0 failures)** across 29 test suites.
 - **Production Hardening Pass 2 (17 Structural Invariants & Relational Integrity)**:
   - **Schema & Type Alignment**: Aligned `StockReservation.product_id` to string UUID matching `Product.id`. Added migration `2026_09_05_020000_fix_stock_reservations_product_id_type` and updated `StockReservation` model cast.
   - **Complete Tenant Backup & Relational Restore**: Included `StockReservation`, `CustomerLedger`, and `StockAdjustment` in tenant backups. Transactionally restores customers first, maps `$oldId => $newId`, and remaps all foreign keys across `Sale.customerId`, `CustomerLedger.customer_id`, and `StockReservation.customer_id`.

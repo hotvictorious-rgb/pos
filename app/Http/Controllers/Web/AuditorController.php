@@ -61,9 +61,30 @@ class AuditorController extends Controller
             $debtorQuery->whereHas('sales', function ($q) use ($assignedWarehouseId) {
                 $q->where('warehouse_id', $assignedWarehouseId);
             });
+            $rawDebtors = $debtorQuery->get();
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            $branchDebtors = [];
+            $totalCustomerDebt = 0.0;
+            foreach ($rawDebtors as $c) {
+                $branchSales = Sale::where('customerId', $c->id)
+                    ->where('warehouse_id', $assignedWarehouseId)
+                    ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                    ->get();
+                $branchDebt = 0.0;
+                foreach ($branchSales as $bs) {
+                    $branchDebt += $accountingService->calculateInvoiceBalance($bs);
+                }
+                if ($branchDebt > 0.001) {
+                    $c->total_debt = round($branchDebt, 2);
+                    $branchDebtors[] = $c;
+                    $totalCustomerDebt += $branchDebt;
+                }
+            }
+            $debtors = collect($branchDebtors)->sortByDesc('total_debt')->values();
+        } else {
+            $debtors = $debtorQuery->orderBy('total_debt', 'desc')->get();
+            $totalCustomerDebt = (float) $debtors->sum('total_debt');
         }
-        $debtors = $debtorQuery->orderBy('total_debt', 'desc')->get();
-        $totalCustomerDebt = (float) $debtors->sum('total_debt');
 
         // 4. Undelivered / Unsupplied Sales Liability
         $unsuppliedQuery = Sale::with('items')->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);

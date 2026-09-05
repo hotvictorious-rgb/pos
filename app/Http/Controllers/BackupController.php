@@ -530,14 +530,68 @@ class BackupController extends Controller
 
         $data = $backupContent['data'];
 
+        // Strict HMAC Cryptographic Checksum Integrity Validation
+        if (!empty($backupContent['checksum'])) {
+            $expectedChecksum = hash_hmac('sha256', json_encode($data), config('app.key') ?: 'vmarket-backup-secret-key');
+            if (!hash_equals($expectedChecksum, $backupContent['checksum'])) {
+                return ['error' => 'Platform backup integrity verification failed (checksum mismatch). The backup payload may be corrupted or tampered with.'];
+            }
+        }
+
         try {
             DB::transaction(function () use ($data) {
+                // 1. Restore Tenants (Non-destructive updateOrCreate to protect active tenant integrity)
+                if (isset($data['tenants']) && is_array($data['tenants'])) {
+                    foreach ($data['tenants'] as $t) {
+                        Tenant::updateOrCreate(
+                            ['id' => $t['id']],
+                            [
+                                'name' => $t['name'],
+                                'owner_email' => $t['owner_email'] ?? null,
+                                'owner_phone' => $t['owner_phone'] ?? null,
+                                'plan' => $t['plan'] ?? 'basic',
+                                'status' => $t['status'] ?? 'active',
+                                'trial_ends_at' => $t['trial_ends_at'] ?? null,
+                                'max_branches' => $t['max_branches'] ?? 1,
+                                'max_users' => $t['max_users'] ?? 5,
+                            ]
+                        );
+                    }
+                }
+
+                // 2. Restore Custom Roles
+                if (isset($data['custom_roles']) && is_array($data['custom_roles'])) {
+                    \App\Models\CustomRole::query()->delete();
+                    foreach ($data['custom_roles'] as $cr) {
+                        if (empty($cr['id'])) {
+                            $cr['id'] = (string) \Illuminate\Support\Str::uuid();
+                        }
+                        if (is_array($cr['permissions'] ?? null)) {
+                            $cr['permissions'] = json_encode($cr['permissions']);
+                        }
+                        \App\Models\CustomRole::create($cr);
+                    }
+                }
+
+                // 3. Restore Platform Settings
                 if (isset($data['platform_settings']) && is_array($data['platform_settings'])) {
                     Setting::whereNull('tenant_id')->delete();
                     foreach ($data['platform_settings'] as $set) {
                         unset($set['id']);
                         $set['tenant_id'] = null;
                         Setting::create($set);
+                    }
+                }
+
+                // 4. Restore Platform Activities
+                if (isset($data['platform_activities']) && is_array($data['platform_activities'])) {
+                    Activity::whereNull('tenant_id')->delete();
+                    foreach ($data['platform_activities'] as $act) {
+                        $act['tenant_id'] = null;
+                        if (is_array($act['metadata'] ?? null)) {
+                            $act['metadata'] = json_encode($act['metadata']);
+                        }
+                        Activity::create($act);
                     }
                 }
             });
@@ -588,10 +642,32 @@ class BackupController extends Controller
                 InventoryLog::where('tenant_id', $targetTenantId)->delete();
                 \App\Models\Customer::withTrashed()->where('tenant_id', $targetTenantId)->forceDelete();
                 \App\Models\StockLevel::where('tenant_id', $targetTenantId)->delete();
+                \App\Models\Warehouse::withTrashed()->where('tenant_id', $targetTenantId)->forceDelete();
                 Activity::where('tenant_id', $targetTenantId)->delete();
                 Setting::where('tenant_id', $targetTenantId)->delete();
 
-                // Restore Customers FIRST to establish old -> new ID mapping
+                // 1. Restore Warehouses FIRST to establish old -> new Warehouse ID mapping
+                $warehouseIdMap = [];
+                if (isset($data['warehouses']) && is_array($data['warehouses'])) {
+                    foreach ($data['warehouses'] as $wh) {
+                        $oldWhId = $wh['id'] ?? null;
+                        $wh['tenant_id'] = $targetTenantId;
+                        unset($wh['id']);
+                        $newWh = \App\Models\Warehouse::create($wh);
+                        if ($oldWhId !== null) {
+                            $warehouseIdMap[(string)$oldWhId] = $newWh->id;
+                            $warehouseIdMap[(int)$oldWhId] = $newWh->id;
+                        }
+                    }
+                }
+
+                // If the active restoring user was bound to a warehouse, remap their assignment
+                if (!empty($user->warehouse_id) && isset($warehouseIdMap[$user->warehouse_id])) {
+                    $user->warehouse_id = $warehouseIdMap[$user->warehouse_id];
+                    $user->save();
+                }
+
+                // 2. Restore Customers to establish old -> new Customer ID mapping
                 $customerIdMap = [];
                 if (isset($data['customers']) && is_array($data['customers'])) {
                     foreach ($data['customers'] as $c) {
@@ -607,7 +683,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Users
+                // 3. Restore Users with remapped Warehouse IDs
                 if (isset($data['users']) && is_array($data['users'])) {
                     foreach ($data['users'] as $u) {
                         if (isset($u['id']) && $u['id'] === $user->id) {
@@ -617,6 +693,9 @@ class BackupController extends Controller
                             $u['permissions'] = json_encode($u['permissions']);
                         }
                         $u['tenant_id'] = $targetTenantId;
+                        if (!empty($u['warehouse_id'])) {
+                            $u['warehouse_id'] = $warehouseIdMap[$u['warehouse_id']] ?? $warehouseIdMap[(int)$u['warehouse_id']] ?? null;
+                        }
                         if (($u['role'] ?? '') === 'super_admin') {
                             $u['role'] = 'admin';
                         }
@@ -624,7 +703,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Products
+                // 4. Restore Products
                 if (isset($data['products']) && is_array($data['products'])) {
                     foreach ($data['products'] as $p) {
                         $p['tenant_id'] = $targetTenantId;
@@ -632,13 +711,16 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Sales & Sale Items with remapped Customer IDs
+                // 5. Restore Sales & Sale Items with remapped Customer & Warehouse IDs
                 $restoredSaleIds = [];
                 if (isset($data['sales']) && is_array($data['sales'])) {
                     foreach ($data['sales'] as $s) {
                         $s['tenant_id'] = $targetTenantId;
                         if (!empty($s['customerId'])) {
                             $s['customerId'] = $customerIdMap[$s['customerId']] ?? $customerIdMap[(int)$s['customerId']] ?? null;
+                        }
+                        if (!empty($s['warehouse_id'])) {
+                            $s['warehouse_id'] = $warehouseIdMap[$s['warehouse_id']] ?? $warehouseIdMap[(int)$s['warehouse_id']] ?? null;
                         }
                         $createdSale = Sale::create($s);
                         $restoredSaleIds[$createdSale->id] = true;
@@ -655,7 +737,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Payments
+                // 6. Restore Payments
                 if (isset($data['payments']) && is_array($data['payments'])) {
                     foreach ($data['payments'] as $pay) {
                         if (!empty($pay['saleId']) && !isset($restoredSaleIds[$pay['saleId']])) {
@@ -666,7 +748,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Returns
+                // 7. Restore Returns
                 if (isset($data['sales_returns']) && is_array($data['sales_returns'])) {
                     foreach ($data['sales_returns'] as $ret) {
                         if (!empty($ret['saleId']) && !isset($restoredSaleIds[$ret['saleId']])) {
@@ -677,11 +759,17 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Transfers
+                // 8. Restore Transfers with remapped source & destination warehouse IDs
                 $restoredTransferIds = [];
                 if (isset($data['transfers']) && is_array($data['transfers'])) {
                     foreach ($data['transfers'] as $trf) {
                         $trf['tenant_id'] = $targetTenantId;
+                        if (!empty($trf['source_warehouse_id'])) {
+                            $trf['source_warehouse_id'] = $warehouseIdMap[$trf['source_warehouse_id']] ?? $warehouseIdMap[(int)$trf['source_warehouse_id']] ?? null;
+                        }
+                        if (!empty($trf['destination_warehouse_id'])) {
+                            $trf['destination_warehouse_id'] = $warehouseIdMap[$trf['destination_warehouse_id']] ?? $warehouseIdMap[(int)$trf['destination_warehouse_id']] ?? null;
+                        }
                         $createdTrf = \App\Models\Transfer::create($trf);
                         $restoredTransferIds[$createdTrf->id] = true;
                     }
@@ -697,15 +785,18 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Inventory Logs
+                // 9. Restore Inventory Logs with remapped Warehouse IDs
                 if (isset($data['inventory_logs']) && is_array($data['inventory_logs'])) {
                     foreach ($data['inventory_logs'] as $log) {
                         $log['tenant_id'] = $targetTenantId;
+                        if (!empty($log['warehouse_id'])) {
+                            $log['warehouse_id'] = $warehouseIdMap[$log['warehouse_id']] ?? $warehouseIdMap[(int)$log['warehouse_id']] ?? null;
+                        }
                         InventoryLog::create($log);
                     }
                 }
 
-                // Restore Activities
+                // 10. Restore Activities
                 if (isset($data['activities']) && is_array($data['activities'])) {
                     foreach ($data['activities'] as $act) {
                         if (is_array($act['metadata'] ?? null)) {
@@ -716,7 +807,7 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Settings
+                // 11. Restore Settings
                 if (isset($data['settings']) && is_array($data['settings'])) {
                     foreach ($data['settings'] as $set) {
                         if (is_array($set['categories'] ?? null)) {
@@ -728,16 +819,19 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Stock Levels
+                // 12. Restore Stock Levels with remapped Warehouse IDs
                 if (isset($data['stock_levels']) && is_array($data['stock_levels'])) {
                     foreach ($data['stock_levels'] as $sl) {
                         $sl['tenant_id'] = $targetTenantId;
+                        if (!empty($sl['warehouse_id'])) {
+                            $sl['warehouse_id'] = $warehouseIdMap[$sl['warehouse_id']] ?? $warehouseIdMap[(int)$sl['warehouse_id']] ?? null;
+                        }
                         unset($sl['id']);
                         \App\Models\StockLevel::create($sl);
                     }
                 }
 
-                // Restore Customer Ledgers with remapped Customer IDs
+                // 13. Restore Customer Ledgers with remapped Customer IDs
                 if (isset($data['customer_ledgers']) && is_array($data['customer_ledgers'])) {
                     foreach ($data['customer_ledgers'] as $cl) {
                         $cl['tenant_id'] = $targetTenantId;
@@ -749,21 +843,27 @@ class BackupController extends Controller
                     }
                 }
 
-                // Restore Stock Adjustments
+                // 14. Restore Stock Adjustments with remapped Warehouse IDs
                 if (isset($data['stock_adjustments']) && is_array($data['stock_adjustments'])) {
                     foreach ($data['stock_adjustments'] as $sa) {
                         $sa['tenant_id'] = $targetTenantId;
+                        if (!empty($sa['warehouse_id'])) {
+                            $sa['warehouse_id'] = $warehouseIdMap[$sa['warehouse_id']] ?? $warehouseIdMap[(int)$sa['warehouse_id']] ?? null;
+                        }
                         unset($sa['id']);
                         \App\Models\StockAdjustment::create($sa);
                     }
                 }
 
-                // Restore Stock Reservations with remapped Customer IDs
+                // 15. Restore Stock Reservations with remapped Customer & Warehouse IDs
                 if (isset($data['stock_reservations']) && is_array($data['stock_reservations'])) {
                     foreach ($data['stock_reservations'] as $sr) {
                         $sr['tenant_id'] = $targetTenantId;
                         if (!empty($sr['customer_id'])) {
                             $sr['customer_id'] = (string) ($customerIdMap[$sr['customer_id']] ?? $customerIdMap[(int)$sr['customer_id']] ?? $sr['customer_id']);
+                        }
+                        if (!empty($sr['warehouse_id'])) {
+                            $sr['warehouse_id'] = $warehouseIdMap[$sr['warehouse_id']] ?? $warehouseIdMap[(int)$sr['warehouse_id']] ?? null;
                         }
                         \App\Models\StockReservation::create($sr);
                     }

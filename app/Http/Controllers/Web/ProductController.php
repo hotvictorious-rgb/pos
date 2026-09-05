@@ -7,12 +7,19 @@ use App\Models\Product;
 use App\Models\Warehouse;
 use App\Models\StockLevel;
 use App\Models\Activity;
+use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
+    protected StockService $stockService;
+
+    public function __construct(StockService $stockService)
+    {
+        $this->stockService = $stockService;
+    }
     /**
      * Display all products with multi-criteria filters & stock breakdown across all shops.
      */
@@ -125,41 +132,38 @@ class ProductController extends Controller
             'updatedAt' => now()->toIso8601String(),
         ]);
 
-        // Initialize stock level for this warehouse
-        StockLevel::create([
-            'tenant_id' => $tenantId,
-            'product_id' => $product->id,
-            'warehouse_id' => $warehouse->id,
-            'physical_stock' => $initialStock,
-            'allocated_stock' => 0,
-            'min_stock_alert' => (int) ($request->minStockLevel ?? 5),
-        ]);
-
         $userName = Auth::user()->name ?? 'Auditor / Admin';
+        $userId = Auth::id() ?? 'ADMIN';
+
+        // Initialize stock level record with 0 allocated stock and user-defined min_stock_alert
+        StockLevel::firstOrCreate(
+            ['product_id' => $product->id, 'warehouse_id' => $warehouse->id],
+            [
+                'tenant_id' => $tenantId,
+                'physical_stock' => 0,
+                'allocated_stock' => 0,
+                'min_stock_alert' => (int) ($request->minStockLevel ?? 5),
+            ]
+        );
 
         if ($initialStock > 0) {
-            \App\Models\InventoryLog::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'warehouse_id' => $warehouse->id,
-                'productId' => $product->id,
-                'productCode' => $product->code,
-                'productName' => $product->name,
-                'quantity' => $initialStock,
-                'type' => 'INITIAL_STOCK',
-                'notes' => 'Initial catalog registration stock',
-                'description' => 'Initial catalog registration stock',
-                'userId' => Auth::id() ?? 'ADMIN',
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            // Authoritatively route physical stock addition through canonical StockService
+            $this->stockService->recordStockIn(
+                $product->id,
+                $warehouse->id,
+                $initialStock,
+                'INITIAL_STOCK',
+                $userId,
+                $userName,
+                'Initial catalog registration stock'
+            );
         }
 
         Activity::create([
             'id' => (string) Str::uuid(),
             'type' => 'PRODUCT_CREATED',
             'description' => "{$userName} created product '{$product->name}' ({$product->code}) with initial stock: {$initialStock} units",
-            'userId' => Auth::id() ?? 'ADMIN',
+            'userId' => $userId,
             'userName' => $userName,
             'timestamp' => now()->toIso8601String(),
         ]);
@@ -248,16 +252,21 @@ class ProductController extends Controller
             'warehouse_id' => 'nullable|numeric',
         ]);
 
-        if ($request->filled('warehouse_id')) {
+        $user = Auth::user();
+        if ($user && $user->isBranchScoped()) {
+            $warehouseId = (int) $user->warehouse_id;
+        } elseif ($request->filled('warehouse_id')) {
             $wh = Warehouse::find($request->warehouse_id);
             if (!$wh) {
                 return redirect()->route('products.index')->with('error', 'Selected branch location does not exist.');
             }
-            $warehouseId = $wh->id;
+            $warehouseId = (int) $wh->id;
         } else {
             $wh = Warehouse::first();
-            $warehouseId = $wh ? $wh->id : 1;
+            $warehouseId = $wh ? (int) $wh->id : 1;
         }
+
+        $this->stockService->assertTenantWarehouse($warehouseId);
         $file = $request->file('csv_file');
         $handle = fopen($file->getRealPath(), 'r');
 
