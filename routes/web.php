@@ -165,12 +165,10 @@ Route::prefix('auditor')->name('auditor.')->middleware(['capability:settings.man
     Route::get('/',             [AuditorController::class, 'index'])->name('index');
 });
 
-// 6. Debt & Part-Payment Recovery Hub
+// 6. Debt & Part-Payment Recovery Hub (Strict Canonical Endpoint)
 Route::prefix('debts')->name('debts.')->group(function () {
-    Route::get('/',              [DebtController::class, 'index'])->middleware('capability:debt.view')->name('index');
-    Route::post('/pay/{id}',     [DebtController::class, 'recordPayment'])->middleware('capability:debt.pay')->name('pay');
-    // Backward-compatibility alias for legacy frontend debt payment forms
-    Route::post('/{id}/payment', [DebtController::class, 'recordPayment'])->middleware('capability:debt.pay')->name('payment');
+    Route::get('/',          [DebtController::class, 'index'])->middleware('capability:debt.view')->name('index');
+    Route::post('/pay/{id}', [DebtController::class, 'recordPayment'])->middleware('capability:debt.pay')->name('pay');
 });
 
 
