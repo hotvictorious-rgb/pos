@@ -330,6 +330,11 @@ class StockService
                 'createdAt' => now()->toIso8601String(),
             ]);
 
+            // Sort line items deterministically by product ID to guarantee monotonic lock acquisition and eliminate database deadlocks
+            usort($validatedItems, function ($a, $b) {
+                return strcmp((string)$a['product']->id, (string)$b['product']->id);
+            });
+
             // Process line items & stock impact
             foreach ($validatedItems as $vItem) {
                 $product = $vItem['product'];
@@ -727,6 +732,13 @@ class StockService
             if (empty($items)) {
                 throw new \InvalidArgumentException("Cannot dispatch transfer: Must specify at least one product item.");
             }
+
+            // Sort transfer items deterministically by product ID to guarantee monotonic lock acquisition
+            usort($items, function ($a, $b) {
+                $idA = (string)($a['productId'] ?? $a['product_id'] ?? '');
+                $idB = (string)($b['productId'] ?? $b['product_id'] ?? '');
+                return strcmp($idA, $idB);
+            });
 
             $validatedItems = [];
             foreach ($items as $index => $item) {
@@ -1274,6 +1286,13 @@ class StockService
             $totalRefundAmount = 0;
             $firstProduct = null;
             $itemWasDelivered = [];
+
+            // Sort return items deterministically by product ID to guarantee monotonic lock acquisition
+            usort($returnItems, function ($a, $b) {
+                $idA = (string)($a['productId'] ?? $a['product_id'] ?? '');
+                $idB = (string)($b['productId'] ?? $b['product_id'] ?? '');
+                return strcmp($idA, $idB);
+            });
 
             foreach ($returnItems as $item) {
                 $productId = $item['productId'] ?? $item['product_id'] ?? null;

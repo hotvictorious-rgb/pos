@@ -134,8 +134,12 @@ class AccountingReportService
         $retainedCash = max(0.0, round($cashTendered - $changeAmount, 2));
         $retainedPos  = $posTendered;
 
-        // Invariant check: Retained Cash + Retained POS MUST equal Paid
-        if (abs(($retainedCash + $retainedPos) - $paidAmount) > 0.01) {
+        // Authoritative integer kobo precision check (strictly prevents IEEE 754 floating point inaccuracies)
+        $retainedCashKobo = (int) round($retainedCash * 100);
+        $retainedPosKobo  = (int) round($retainedPos * 100);
+        $paidAmountKobo   = (int) round($paidAmount * 100);
+
+        if (($retainedCashKobo + $retainedPosKobo) !== $paidAmountKobo) {
             throw new \InvalidArgumentException("Accounting ledger error: Retained cash and POS do not sum to net paid amount.");
         }
 

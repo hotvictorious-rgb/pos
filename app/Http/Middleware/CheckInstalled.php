@@ -14,17 +14,31 @@ class CheckInstalled
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $installed    = file_exists(storage_path('installed'));
-        $isInstaller  = $request->is('install') || $request->is('install/*');
+        $installedMarker   = file_exists(storage_path('installed'));
+        $installedEnv      = filter_var(env('APP_INSTALLED', false), FILTER_VALIDATE_BOOLEAN);
+        $installed         = $installedMarker || $installedEnv;
 
-        if (!$installed && !$isInstaller) {
-            // App not installed – send user to the installer
-            return redirect()->route('installer.welcome');
+        // In production, the installer is disabled by default unless explicitly permitted via APP_INSTALLER_ENABLED=true
+        $installerEnabled  = filter_var(env('APP_INSTALLER_ENABLED', !app()->environment('production')), FILTER_VALIDATE_BOOLEAN);
+        $isInstaller       = $request->is('install') || $request->is('install/*');
+
+        // Fail-Closed Guard 1: Any attempt to reach the installer when already installed
+        if ($installed && $isInstaller) {
+            return redirect('/')->with('info', 'The application is already installed.');
         }
 
-        if ($installed && $isInstaller) {
-            // Already installed – block access to installer
-            return redirect('/')->with('info', 'The application is already installed.');
+        // Fail-Closed Guard 2: Any attempt to reach the installer when explicitly disabled in production
+        if ($isInstaller && !$installerEnabled) {
+            abort(403, 'Web installer wizard is disabled in this environment for security.');
+        }
+
+        // Redirect uninstalled instances to the wizard ONLY if installer is enabled
+        if (!$installed && !$isInstaller) {
+            if ($installerEnabled) {
+                return redirect()->route('installer.welcome');
+            }
+            // If installer disabled and no marker, assume manual/API deployment
+            return $next($request);
         }
 
         return $next($request);
