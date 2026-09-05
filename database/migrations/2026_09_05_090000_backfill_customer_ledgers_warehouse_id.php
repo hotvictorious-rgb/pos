@@ -15,7 +15,9 @@ return new class extends Migration
             return;
         }
 
-        // 1. Backfill customer_ledgers with direct sale_id linkage
+        // 1. Backfill customer_ledgers with direct deterministic sale_id linkage
+        // Unlinked historical ledgers without a sale_id remain warehouse_id = NULL (legacy unattributed)
+        // to prevent false or inaccurate branch attribution.
         DB::statement("
             UPDATE customer_ledgers
             SET warehouse_id = (
@@ -27,32 +29,6 @@ return new class extends Migration
             WHERE customer_ledgers.warehouse_id IS NULL
               AND customer_ledgers.sale_id IS NOT NULL
         ");
-
-        // 2. For remaining ledgers where sale_id IS NULL, infer from customer's latest sale or first tenant warehouse
-        $unassignedLedgers = DB::table('customer_ledgers')
-            ->whereNull('warehouse_id')
-            ->get(['id', 'customer_id', 'tenant_id']);
-
-        foreach ($unassignedLedgers as $ledger) {
-            $inferredWarehouseId = DB::table('sales')
-                ->where('customerId', $ledger->customer_id)
-                ->whereNotNull('warehouse_id')
-                ->orderBy('created_at', 'desc')
-                ->value('warehouse_id');
-
-            if (!$inferredWarehouseId) {
-                $inferredWarehouseId = DB::table('warehouses')
-                    ->where('tenant_id', $ledger->tenant_id ?? 'default-tenant')
-                    ->orderBy('id', 'asc')
-                    ->value('id');
-            }
-
-            if ($inferredWarehouseId) {
-                DB::table('customer_ledgers')
-                    ->where('id', $ledger->id)
-                    ->update(['warehouse_id' => $inferredWarehouseId]);
-            }
-        }
     }
 
     /**

@@ -360,7 +360,7 @@ class ProductController extends Controller
                         "Bulk CSV Import Initial Stock for {$newProduct->name}"
                     );
                 } else {
-                    $stockService->getStockLevel($newProduct->id, $warehouseId, false);
+                    $stockService->ensureStockLevelForAuthorizedMutation($newProduct->id, $warehouseId, false);
                 }
 
                 $importedCount++;

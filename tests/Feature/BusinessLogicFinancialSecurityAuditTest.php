@@ -370,6 +370,7 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
         $sale = Sale::create([
             'id' => 'SALE-PARTIAL-001',
             'tenant_id' => $this->tenant->id,
+            'warehouse_id' => $this->warehouse->id,
             'customerName' => $customer->name,
             'customerId' => $customer->id,
             'totalAmount' => 50000.00,

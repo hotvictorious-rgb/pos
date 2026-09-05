@@ -21,6 +21,7 @@ class CapabilityService
         // Debts & Part-Payment Recovery
         'debt.view',
         'debt.pay',
+        'debt.correct',
 
         // Returns & Refunds
         'returns.view',
@@ -102,7 +103,7 @@ class CapabilityService
         'admin' => [
             'pos.view', 'pos.checkout',
             'customer.read', 'customer.write',
-            'debt.view', 'debt.pay',
+            'debt.view', 'debt.pay', 'debt.correct',
             'returns.view', 'returns.process',
             'products.view', 'products.write',
             'stock.view', 'stock.in', 'stock.transfer', 'stock.receive', 'stock.recall', 'stock.adjust',

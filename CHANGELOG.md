@@ -8,6 +8,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 8 (Stock-Level Mutation Safety, Absolute Service Actor Closure, Deterministic Ledgers, and Report Debt Containment)**:
+  - **Mutation-Safe `getStockLevel()` Separation (`StockService`)**:
+    - Converted `StockService::getStockLevel(string $productId, int $warehouseId, bool $lockForUpdate = false): ?StockLevel` into a strictly non-mutating query. It never creates records (`firstOrCreate`) or issues implicit writes.
+    - Introduced authoritative `ensureStockLevelForAuthorizedMutation(string $productId, int $warehouseId, bool $lockForUpdate = true): StockLevel`, which strictly asserts `assertUserWarehouseAuthority($warehouseId)` before creating or locking stock records.
+    - Replaced mutating invocations across all stock mutation pipelines: `recordStockIn`, `recordSale`, `dispatchUnsuppliedSale`, `fulfillStockReservation`, `initiateTransfer`, `receiveTransfer`, `recallTransfer`, `recordStockAdjustment`, `recordSaleReturn`, and `ProductController::importCsv`.
+  - **Absolute Service Actor Authorization Closure**:
+    - Hardened `StockService::assertUserWarehouseAuthority()` to ignore caller-supplied `$actor` overrides during HTTP route execution, strictly deriving authority from `Auth::user()`.
+    - Hardened `StockService::assertUserCapability()` to derive strictly from authenticated `Auth::user()`, completely eliminating caller `$userId` database lookup fallbacks (`User::withoutGlobalScopes()->find($userId)`).
+    - Enforced `assertUserWarehouseAuthority($transfer->source_warehouse_id)` in `recallTransfer()`, preventing non-originating branch staff from recalling transfers.
+  - **Universal Branch Debt Containment Across Web, CSV, and JSON Reports (`ReportController`)**:
+    - In `ReportController::index()`, updated debt aging to compute branch-originating debt from open sales (`sum(calculateInvoiceBalance(branch sales))`) and sanitize `Customer.total_debt` to `branch_debt` for branch employees.
+    - In `ReportController::exportCsv('debtors')`, output branch debt for branch employees, preventing global customer liabilities from leaking into CSV exports.
+    - In `ReportController::exportJson('debtors')`, sanitized both `total_debt` and `branch_debt` payload attributes to the customer's branch debt.
+  - **Null-Warehouse Invoice Exclusion in Branch Debt Recovery (`StockService`)**:
+    - In `StockService::recordCustomerPayment()`, removed `orWhereNull('warehouse_id')` from open sales matching. Branch employees can only allocate debt recovery against open sales strictly matching `warehouse_id = $warehouseId`. Legacy unassigned sales (`warehouse_id IS NULL`) are reserved exclusively for tenant administrators.
+  - **Deterministic Customer Ledger Backfill (`2026_09_05_090000_backfill_customer_ledgers_warehouse_id`)**:
+    - Removed non-deterministic Stage 2 fallback guessing. Historical customer ledgers are strictly linked to `warehouse_id` via deterministic 1-to-1 sale relationships (`sales.id = customer_ledgers.sale_id`). Unlinked legacy ledgers safely remain `warehouse_id = NULL`.
+  - **Modernized Customer Debt Correction Security (`AccountingReportService`)**:
+    - Registered `'debt.correct'` capability in `CapabilityService` and assigned it to tenant admins.
+    - Rebuilt `correctCustomerDebt()` with modern authentication assertions: rejects unauthenticated requests, rejects platform users, validates tenant boundary, strictly blocks branch-scoped employees, and enforces `'debt.correct'` capability and tenant admin privileges.
+  - **Added `ProductionHardeningPass8Test`**: 7 comprehensive feature tests verifying mutation safety, actor closure, debt export sanitization, null-warehouse invoice protection, transfer recall authority, and debt correction enforcement. Total test suite expanded to **268 passed tests (1,489 assertions, 0 errors, 0 failures)** across 34 test suites.
 - **Production Hardening Pass 7 (Service-Layer WHAT + WHERE Authority Enforcement, Actor Separation, Debt UI Isolation, and Strict HMAC Guarantees)**:
   - **Service-Level Warehouse Authority Enforcement (`StockService`)**:
     - Implemented `assertUserWarehouseAuthority(int $warehouseId, ?User $actor = null): Warehouse` enforcing the complete WHAT + WHERE security contract at the service layer:

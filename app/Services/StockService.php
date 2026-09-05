@@ -61,7 +61,11 @@ class StockService
     {
         $wh = $this->assertTenantWarehouse($warehouseId);
 
-        $user = Auth::user() ?? $actor;
+        // Authoritative actor resolution:
+        // In HTTP route contexts, authorization derives strictly from the authenticated session (Auth::user()).
+        // Caller-supplied $actor is ignored during HTTP requests to prevent privilege spoofing.
+        $isHttp = (request()->route() !== null || (!app()->runningInConsole() && !app()->runningUnitTests()));
+        $user = $isHttp ? Auth::user() : (Auth::user() ?? $actor);
 
         if ($user) {
             if ($user->isPlatformUser()) {
@@ -89,8 +93,8 @@ class StockService
             return $wh;
         }
 
-        // Fail-closed authorization: Reject execution when no authenticated actor exists in an HTTP route context
-        if (request()->route() !== null) {
+        // Fail-closed authorization: Reject execution when no authenticated actor exists in an HTTP context
+        if ($isHttp) {
             throw new AuthorizationException(
                 "Unauthorized: No authenticated actor provided for warehouse #{$warehouseId} operation."
             );
@@ -102,17 +106,14 @@ class StockService
     /**
      * Authoritatively assert that the acting user holds the required capability.
      * Fails closed: rejects execution if no authenticated actor or resolved user exists.
-     * Derives actor strictly from Auth::user() in HTTP route contexts.
+     * Derives actor strictly from authenticated session in HTTP route contexts.
      *
      * @throws AuthorizationException
      */
     public function assertUserCapability(string $capability, ?string $userId = null): void
     {
-        // Authoritative actor separation: In HTTP route contexts, derive strictly from authenticated session
+        // Authoritative actor separation: Derive strictly from authenticated session
         $user = Auth::user();
-        if (!$user && !empty($userId) && request()->route() === null && !app()->runningUnitTests()) {
-            $user = \App\Models\User::withoutGlobalScopes()->find($userId);
-        }
 
         if ($user) {
             if (!$user->hasCapability($capability)) {
@@ -124,7 +125,7 @@ class StockService
         }
 
         // Fail-closed authorization: Reject execution when no authenticated actor exists in an HTTP route context
-        if (request()->route() !== null) {
+        if (request()->route() !== null || (!app()->runningInConsole() && !app()->runningUnitTests())) {
             throw new AuthorizationException(
                 "Unauthorized: No authenticated actor provided for '{$capability}' operation."
             );
@@ -132,11 +133,29 @@ class StockService
     }
 
     /**
-     * Get or create stock level record for a product at a warehouse with optional row-level locking.
+     * Read-only stock level query for a product at a warehouse.
+     * Guaranteed non-mutating: does NOT create database records if stock level is missing.
      */
-    public function getStockLevel(string $productId, int $warehouseId, bool $lockForUpdate = false): StockLevel
+    public function getStockLevel(string $productId, int $warehouseId, bool $lockForUpdate = false): ?StockLevel
     {
         $this->assertTenantWarehouse($warehouseId);
+
+        $query = StockLevel::where('product_id', $productId)->where('warehouse_id', $warehouseId);
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+        return $query->first();
+    }
+
+    /**
+     * Authoritatively ensure a stock level record exists with row-level locking for authorized mutations.
+     * Strictly enforces WHAT + WHERE warehouse authorization before creating or locking stock records.
+     *
+     * @throws AuthorizationException
+     */
+    public function ensureStockLevelForAuthorizedMutation(string $productId, int $warehouseId, bool $lockForUpdate = true): StockLevel
+    {
+        $this->assertUserWarehouseAuthority($warehouseId);
 
         $query = StockLevel::where('product_id', $productId)->where('warehouse_id', $warehouseId);
         if ($lockForUpdate) {
@@ -184,7 +203,7 @@ class StockService
             }
 
             $product = Product::findOrFail($productId);
-            $stock = $this->getStockLevel($productId, $warehouseId, true);
+            $stock = $this->ensureStockLevelForAuthorizedMutation($productId, $warehouseId, true);
             $stock->physical_stock += $quantity;
             $stock->save();
 
@@ -330,7 +349,7 @@ class StockService
                     'productCode' => $product->code,
                 ]);
 
-                $stock = $this->getStockLevel($product->id, $warehouseId, true);
+                $stock = $this->ensureStockLevelForAuthorizedMutation($product->id, $warehouseId, true);
 
                 if ($isSuppliedNow) {
                     // Core Invariant: Physical sale requires physical_stock >= Q ONLY.
@@ -496,7 +515,7 @@ class StockService
             }
 
             foreach ($sale->items as $item) {
-                $stock = $this->getStockLevel($item->productId, $warehouseId, true);
+                $stock = $this->ensureStockLevelForAuthorizedMutation($item->productId, $warehouseId, true);
                 $qty = (int) $item->quantity;
 
                 if ($stock->allocated_stock < $qty || $stock->physical_stock < $qty) {
@@ -594,7 +613,7 @@ class StockService
                 throw new \InvalidArgumentException("Cross-branch reservation fulfillment rejected: Sale #{$saleId} was reserved at Branch #{$sale->warehouse_id} and cannot be fulfilled from Branch #{$warehouseId}.");
             }
 
-            $stock = $this->getStockLevel($productId, $warehouseId, true);
+            $stock = $this->ensureStockLevelForAuthorizedMutation($productId, $warehouseId, true);
             if ($stock->allocated_stock < $qty || $stock->physical_stock < $qty) {
                 $product = Product::find($productId);
                 $pName = $product ? $product->name : $productId;
@@ -727,7 +746,7 @@ class StockService
                 }
 
                 // Row-level lock on source stock to prevent overdraft of available unallocated stock
-                $stock = $this->getStockLevel($product->id, $sourceWarehouseId, true);
+                $stock = $this->ensureStockLevelForAuthorizedMutation($product->id, $sourceWarehouseId, true);
                 $availableStock = (int) ($stock->physical_stock - $stock->allocated_stock);
                 if ($availableStock < $qty) {
                     throw new InsufficientStockException(
@@ -860,7 +879,7 @@ class StockService
                 }
 
                 // Add counted physical stock to destination warehouse with row locking
-                $destStock = $this->getStockLevel($transferItem->product_id, $transfer->destination_warehouse_id, true);
+                $destStock = $this->ensureStockLevelForAuthorizedMutation($transferItem->product_id, $transfer->destination_warehouse_id, true);
                 $destStock->physical_stock += $countedQty;
                 $destStock->save();
 
@@ -923,6 +942,8 @@ class StockService
         return DB::transaction(function () use ($transferId, $userId, $userName, $reason) {
             $transfer = Transfer::with(['items', 'source', 'destination'])->where('id', $transferId)->lockForUpdate()->firstOrFail();
 
+            $this->assertUserWarehouseAuthority($transfer->source_warehouse_id);
+
             if ($transfer->status !== 'DISPATCHED') {
                 throw new \Exception("Transfer #{$transfer->transfer_no} cannot be recalled: Current status is '{$transfer->status}' (only in-transit 'DISPATCHED' transfers can be recalled).");
             }
@@ -931,7 +952,7 @@ class StockService
                 $qty = (int) $item->dispatched_qty;
 
                 // Restore stock back to source warehouse with row locking
-                $stock = $this->getStockLevel($item->product_id, $transfer->source_warehouse_id, true);
+                $stock = $this->ensureStockLevelForAuthorizedMutation($item->product_id, $transfer->source_warehouse_id, true);
                 $stock->physical_stock += $qty;
                 $stock->save();
 
@@ -1040,10 +1061,7 @@ class StockService
                     ->whereNotIn('status', ['CANCELLED', 'RETURNED']);
 
                 if ($warehouseId !== null) {
-                    $openSalesQuery->where(function ($q) use ($warehouseId) {
-                        $q->where('warehouse_id', $warehouseId)
-                          ->orWhereNull('warehouse_id');
-                    });
+                    $openSalesQuery->where('warehouse_id', $warehouseId);
                 }
 
                 $openSales = $openSalesQuery->orderBy('createdAt', 'asc')->lockForUpdate()->get();
@@ -1161,7 +1179,7 @@ class StockService
             }
 
             $product = Product::findOrFail($productId);
-            $stock = $this->getStockLevel($productId, $warehouseId, true);
+            $stock = $this->ensureStockLevelForAuthorizedMutation($productId, $warehouseId, true);
 
             $available = (int) ($stock->physical_stock - $stock->allocated_stock);
             if ($available < $quantity) {
@@ -1292,7 +1310,7 @@ class StockService
                 }
 
                 // Restore physical closing stock or release allocation with row locking
-                $stock = $this->getStockLevel($product->id, $warehouseId, true);
+                $stock = $this->ensureStockLevelForAuthorizedMutation($product->id, $warehouseId, true);
 
                 $reservation = \App\Models\StockReservation::where('sale_id', $saleId)
                     ->where('product_id', $product->id)

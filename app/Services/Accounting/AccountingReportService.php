@@ -231,21 +231,37 @@ class AccountingReportService
 
     /**
      * Explicit, authorized administrative correction of customer total debt with audit logging.
-     * Requires capability 'debt.correct' (or role admin/manager) and mandatory business justification.
+     * Requires capability 'debt.correct' (or tenant admin) and mandatory business justification.
+     * Enforces tenant boundary, blocks platform users and branch-scoped personnel from unilaterally altering customer liability.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException|\InvalidArgumentException
      */
     public function correctCustomerDebt(Customer $customer, float $newDebt, string $reason, string $userId, string $userName): array
     {
-        $user = User::find($userId);
-        $hasPermission = false;
-        if ($user) {
-            if (method_exists($user, 'hasPermission') && $user->hasPermission('debt.correct')) {
-                $hasPermission = true;
-            } elseif (in_array(strtoupper($user->role ?? ''), ['ADMIN', 'MANAGER', 'SUPERADMIN', 'SUPER_ADMIN'])) {
-                $hasPermission = true;
+        $isHttp = (request()->route() !== null || (!app()->runningInConsole() && !app()->runningUnitTests()));
+        $actingUser = $isHttp ? Auth::user() : (Auth::user() ?? User::withoutGlobalScopes()->find($userId));
+
+        if (!$actingUser) {
+            throw new \Illuminate\Auth\Access\AuthorizationException("Unauthorized: No authenticated actor provided for debt correction.");
+        }
+
+        if ($actingUser->isPlatformUser()) {
+            throw new \Illuminate\Auth\Access\AuthorizationException("Security Violation: Platform users cannot modify tenant customer debt records.");
+        }
+
+        if (config('saas.enabled')) {
+            $activeTenantId = session('tenant_id') ?? $actingUser->tenant_id;
+            if ($activeTenantId && $customer->tenant_id !== $activeTenantId) {
+                throw new \Illuminate\Auth\Access\AuthorizationException("Security Violation: Customer #{$customer->id} does not belong to active tenant '{$activeTenantId}'.");
             }
         }
 
-        if (!$hasPermission) {
+        if ($actingUser->isBranchScoped()) {
+            throw new \Illuminate\Auth\Access\AuthorizationException("Security Violation: Branch-scoped employees are not authorized to unilaterally modify company-wide customer debt. Modifying customer debt requires 'debt.correct' capability and tenant-wide administrator authority.");
+        }
+
+        $hasCapability = $actingUser->hasCapability('debt.correct') || $actingUser->isTenantAdmin();
+        if (!$hasCapability) {
             throw new \Illuminate\Auth\Access\AuthorizationException("Unauthorized: Modifying customer debt requires 'debt.correct' capability.");
         }
 
@@ -259,7 +275,7 @@ class AccountingReportService
 
         Activity::create([
             'id'          => (string) Str::uuid(),
-            'tenant_id'   => session('tenant_id') ?? null,
+            'tenant_id'   => session('tenant_id') ?? $customer->tenant_id ?? null,
             'type'        => 'DEBT_CORRECTION',
             'description' => "Customer '{$customer->name}' debt corrected from ₦" . number_format($oldDebt, 2) . " to ₦" . number_format($customer->total_debt, 2) . " by {$userName}. Reason: {$reason}",
             'userId'      => $userId,

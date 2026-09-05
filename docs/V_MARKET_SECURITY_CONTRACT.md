@@ -209,9 +209,25 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
     - Debt bracket filtering (`HIGH`, `MEDIUM`, `LOW`) and `$highRiskDebtorsCount` evaluate the customer's branch debt rather than tenant-wide liability.
 - **Customer Ledger Branch Traceability Backfill**:
   - Database migration `2026_09_05_090000_backfill_customer_ledgers_warehouse_id` backfills `warehouse_id` on historical `customer_ledgers` using `sales.warehouse_id` and customer branch sale history.
-- **Event-Authoritative Top Staff Analytics**:
-  - In `ReportController`: `topStaff` collection figures derive from event-authoritative payments (`inflowPayments - cashRefunds`) rather than cached `paidAmount`.
 - **Strict Cryptographic Backup Envelope Guarantee**:
   - For backup payloads version 2.0 and above, envelope HMAC validation is strictly enforced; fallback to data-only HMAC is forbidden if envelope metadata or table manifests have been tampered with.
+
+### VM-026: Stock-Level Mutation Safety, Absolute Service Actor Closure, Deterministic Ledgers, and Report Debt Containment
+- **`getStockLevel()` Mutation Safety Separation**:
+  - `StockService::getStockLevel(string $productId, int $warehouseId, bool $lockForUpdate = false): ?StockLevel` is strictly read-only and non-mutating. If no stock record exists for the product/warehouse pair, it returns `null` and never executes an implicit write (`firstOrCreate`).
+  - Mutating operations (`recordStockIn`, `recordSale`, `dispatchUnsuppliedSale`, `fulfillStockReservation`, `initiateTransfer`, `receiveTransfer`, `recallTransfer`, `recordStockAdjustment`, `recordSaleReturn`, and CSV product imports) must call `ensureStockLevelForAuthorizedMutation(string $productId, int $warehouseId, bool $lockForUpdate = true): StockLevel`, which strictly asserts `assertUserWarehouseAuthority($warehouseId)` before creating or locking stock records.
+- **Absolute Service Actor Closure (Caller Override Immunity)**:
+  - In HTTP route execution contexts, service-layer authorization and capability checks (`assertUserWarehouseAuthority`, `assertUserCapability`) strictly derive from `Auth::user()`.
+  - Caller-supplied `$actor` parameter overrides are completely ignored in HTTP contexts.
+  - Caller-supplied `$userId` fallback database queries (`User::withoutGlobalScopes()->find($userId)`) are completely removed from capability validation. If unauthenticated, the service immediately fails closed with `AuthorizationException`.
+- **Universal Branch Debt Containment Across Web, CSV, and JSON Reports**:
+  - In `ReportController`, branch-scoped personnel (`$user->isBranchScoped()`) are strictly restricted to branch-originating debt.
+  - Web views (`/reports`), CSV exports (`/reports/export-csv/debtors`), and AI JSON data exports (`/reports/export-json/debtors`) calculate `branchDebt = sum(calculateInvoiceBalance(branch sales))` and sanitize customer debt so `Customer.total_debt` is never leaked to branch staff.
+- **Null-Warehouse Invoice Exclusion in Branch Debt Recovery**:
+  - In `StockService::recordCustomerPayment()`, branch employees can only allocate payments against open sales strictly matching `sale.warehouse_id = $warehouseId`. Legacy unassigned sales (`warehouse_id IS NULL`) are excluded from branch recovery and can only be settled by tenant administrators.
+- **Deterministic Customer Ledger Backfill**:
+  - Migration `2026_09_05_090000_backfill_customer_ledgers_warehouse_id` restricts backfill strictly to deterministic 1-to-1 links (`sales.id = customer_ledgers.sale_id`). Unlinked legacy ledgers without a deterministic sale reference remain `warehouse_id = NULL` rather than guessing from non-deterministic sale distributions or fallback warehouses.
+- **Modernized Customer Debt Correction Contract**:
+  - `AccountingReportService::correctCustomerDebt()` asserts modern actor authentication, blocks platform users, validates tenant boundaries, rejects branch-scoped personnel, and enforces the dedicated `debt.correct` capability.
 
 

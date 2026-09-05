@@ -248,16 +248,46 @@ class ReportController extends Controller
             }
         }
 
-        // 5. Debt Aging Analysis
-        $debtorsQuery = Customer::where('total_debt', '>', 0);
-        if ($isBranchScoped && $sales->isNotEmpty()) {
-            $debtorsQuery->whereIn('id', $sales->pluck('customerId')->filter());
+        // 5. Debt Aging Analysis (Branch-Isolated)
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        if ($isBranchScoped) {
+            $branchSales = Sale::where('warehouse_id', $authUser->warehouse_id)
+                ->whereNotNull('customerId')
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->get();
+
+            $customerBranchDebts = [];
+            foreach ($branchSales as $bs) {
+                $cId = $bs->customerId;
+                $bal = $accountingService->calculateInvoiceBalance($bs);
+                if ($bal > 0) {
+                    $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                }
+            }
+
+            $debtors = Customer::whereIn('id', array_keys($customerBranchDebts))
+                ->get()
+                ->map(function ($c) use ($customerBranchDebts) {
+                    $daysOld = $c->updated_at ? Carbon::parse($c->updated_at)->diffInDays(now()) : 0;
+                    $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
+                    $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
+                    $c->branch_debt = $bDebt;
+                    $c->total_debt = $bDebt; // Never expose tenant-wide total_debt to branch personnel
+                    return $c;
+                })
+                ->sortByDesc('branch_debt')
+                ->values();
+        } else {
+            $debtors = Customer::where('total_debt', '>', 0)
+                ->orderBy('total_debt', 'desc')
+                ->get()
+                ->map(function ($c) {
+                    $daysOld = $c->updated_at ? Carbon::parse($c->updated_at)->diffInDays(now()) : 0;
+                    $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
+                    $c->branch_debt = $c->total_debt;
+                    return $c;
+                });
         }
-        $debtors = $debtorsQuery->orderBy('total_debt', 'desc')->get()->map(function ($c) {
-            $daysOld = $c->updated_at ? Carbon::parse($c->updated_at)->diffInDays(now()) : 0;
-            $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
-            return $c;
-        });
 
         // 6. Damaged Goods Write-offs
         $adjustmentsQuery = StockAdjustment::with('warehouse');
@@ -417,13 +447,29 @@ class ReportController extends Controller
                 }
             } elseif ($type === 'debtors') {
                 fputcsv($handle, ['Customer Name', 'Phone Number', 'Address / Market Location', 'Total Debt Owed (NGN)', 'Last Updated']);
-                $debtorsQuery = Customer::where('total_debt', '>', 0);
                 if ($isBranchScoped) {
-                    $branchSaleCustomerIds = Sale::where('warehouse_id', $branchWarehouseId)->pluck('customerId')->filter();
-                    $debtorsQuery->whereIn('id', $branchSaleCustomerIds);
-                }
-                foreach ($debtorsQuery->cursor() as $c) {
-                    fputcsv($handle, [$c->name, $c->phone, $c->address, $c->total_debt, $c->updated_at]);
+                    $branchSales = Sale::where('warehouse_id', $branchWarehouseId)
+                        ->whereNotNull('customerId')
+                        ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                        ->get();
+                    $customerBranchDebts = [];
+                    foreach ($branchSales as $bs) {
+                        $cId = $bs->customerId;
+                        $bal = $accountingService->calculateInvoiceBalance($bs);
+                        if ($bal > 0) {
+                            $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                        }
+                    }
+                    $debtors = Customer::whereIn('id', array_keys($customerBranchDebts))->get();
+                    foreach ($debtors as $c) {
+                        $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
+                        fputcsv($handle, [$c->name, $c->phone, $c->address, $bDebt, $c->updated_at]);
+                    }
+                } else {
+                    $debtorsQuery = Customer::where('total_debt', '>', 0)->orderBy('total_debt', 'desc');
+                    foreach ($debtorsQuery->cursor() as $c) {
+                        fputcsv($handle, [$c->name, $c->phone, $c->address, $c->total_debt, $c->updated_at]);
+                    }
                 }
             } elseif ($type === 'damages') {
                 fputcsv($handle, ['Date & Time', 'Shop Location', 'SKU', 'Product Name', 'Incident Category', 'Quantity Deducted', 'Reason / Notes', 'Staff Responsible']);
@@ -490,15 +536,30 @@ class ReportController extends Controller
         $returnsQuery = $accountingService->buildReturnsQuery($filters);
         $damagesQuery = $accountingService->buildStockMovementsQuery($filters);
 
-        $debtorsQuery = Customer::where('total_debt', '>', 0);
         if ($isBranchScoped) {
-            $branchSaleCustomerIds = Sale::where('warehouse_id', $branchWarehouseId)
+            $branchSales = Sale::where('warehouse_id', $branchWarehouseId)
                 ->whereNotNull('customerId')
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->pluck('customerId')
-                ->filter()
-                ->unique();
-            $debtorsQuery->whereIn('id', $branchSaleCustomerIds);
+                ->get();
+            $customerBranchDebts = [];
+            foreach ($branchSales as $bs) {
+                $cId = $bs->customerId;
+                $bal = $accountingService->calculateInvoiceBalance($bs);
+                if ($bal > 0) {
+                    $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                }
+            }
+            $debtorsData = Customer::whereIn('id', array_keys($customerBranchDebts))
+                ->get()
+                ->map(function ($c) use ($customerBranchDebts) {
+                    $arr = $c->toArray();
+                    $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
+                    $arr['total_debt'] = $bDebt;
+                    $arr['branch_debt'] = $bDebt;
+                    return $arr;
+                });
+        } else {
+            $debtorsData = Customer::where('total_debt', '>', 0)->orderBy('total_debt', 'desc')->get();
         }
 
         $activitiesQuery = Activity::orderBy('timestamp', 'desc');
@@ -531,7 +592,7 @@ class ReportController extends Controller
             'debtors' => [
                 'meta' => ['report' => 'Debtors Ledger & Credit Exposure', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Debtors Ledger & Credit Exposure', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => $debtorsQuery->get()
+                'data' => $debtorsData
             ],
             'damages' => [
                 'meta' => ['report' => 'Damaged Goods & Loss Audit Trail', 'generated_at' => now()->toIso8601String()],
