@@ -291,9 +291,8 @@
                 <div class="form-group">
                     <label>Payment Method</label>
                     <select name="payment_method" id="payMethod" required>
-                        <option value="CASH">Cash</option>
-                        <option value="POS">POS Terminal</option>
-                        <option value="TRANSFER">Bank Transfer</option>
+                        <option value="CASH">💵 Cash</option>
+                        <option value="POS">💳 POS Terminal / Card</option>
                     </select>
                 </div>
 
@@ -345,7 +344,7 @@ function openPaymentModal(custId, custName, currentDebt) {
     document.getElementById('payCurrentDebt').value = '₦' + Math.round(currentDebt).toLocaleString('en-US');
     document.getElementById('payAmount').max = currentDebt;
     document.getElementById('payAmount').value = '';
-    document.getElementById('paymentForm').action = '/debts/' + custId + '/payment';
+    document.getElementById('paymentForm').action = '/debts/pay/' + custId;
     openModal('modalPayment');
 }
 
