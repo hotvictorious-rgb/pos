@@ -394,12 +394,12 @@ class UserController extends Controller
     }
 
     /**
-     * Reset worker password.
+     * Reset worker password with mandatory audit trail.
      */
     public function resetPassword(Request $request, $id)
     {
         $request->validate([
-            'new_password' => 'required|min:6',
+            'new_password' => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
         $user = User::findOrFail($id);
@@ -417,6 +417,17 @@ class UserController extends Controller
 
         $user->password = Hash::make($request->new_password);
         $user->save();
+
+        $actingUserName = $authUser->name ?? 'System Administrator';
+        Activity::create([
+            'id'          => (string) Str::uuid(),
+            'tenant_id'   => session('tenant_id') ?? $user->tenant_id ?? null,
+            'type'        => 'PASSWORD_RESET',
+            'description' => "Password reset for worker '{$user->name}' ({$user->email}, Role: {$user->role}, Branch: #{$user->warehouse_id}) by {$actingUserName}.",
+            'userId'      => Auth::id(),
+            'userName'    => $actingUserName,
+            'timestamp'   => now()->toIso8601String(),
+        ]);
 
         return redirect()->route('users.index')->with('success', "✓ Password for {$user->name} updated successfully.");
     }

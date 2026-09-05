@@ -829,9 +829,10 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
         $response->assertSessionHas('success');
         $successMsg = session('success');
 
-        // Verify known default 'password123' is NOT used
+        // Verify known default 'password123' is NOT used and credentials are never exposed in browser session
         $this->assertStringNotContainsString('password123', $successMsg);
-        $this->assertStringContainsString('Generated one-time temporary password', $successMsg);
+        $this->assertStringNotContainsString('temporary password', strtolower($successMsg));
+        $this->assertStringContainsString('created successfully', strtolower($successMsg));
 
         $createdUser = User::withoutGlobalScopes()->where('email', 'musa@randommart.ng')->first();
         $this->assertNotNull($createdUser);

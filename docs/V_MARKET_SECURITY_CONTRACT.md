@@ -254,5 +254,23 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
   - In `BelongsToTenant`, a `static::updating()` model hook prevents mutation of `tenant_id` on all persisted tenant records across the application.
   - Any attempt to alter `tenant_id` via direct assignment, mass-assignment (`$model->update(['tenant_id' => ...])`), or service invocation immediately aborts with `App\Exceptions\SecurityException`.
 
+### VM-028: Bulk Immutability Closure, Registration Abuse Prevention, Credential Privacy, and Privileged Audit Trail
+- **Universal Query-Level `tenant_id` Immutability (`BelongsToTenant`)**:
+  - `BelongsToTenant` overrides `newEloquentBuilder($query)` to intercept bulk update queries (`Model::query()->where(...)->update(['tenant_id' => ...])`).
+  - Any direct query builder attempt to mutate `tenant_id` without an individual persisted model instance throws `App\Exceptions\SecurityException`, completely closing ORM-level bypasses of model lifecycle events.
+  - On single-model persistence (`$model->save()`), if `tenant_id` is re-submitted with its existing original value, it is safely permitted; any change to a different tenant ID throws `SecurityException`.
+- **Public Tenant Registration Abuse Prevention (`/saas/register`)**:
+  - Strict rate limiting (`throttle:5,1`) is enforced on the registration endpoint to prevent tenant spamming and denial-of-service.
+  - Bot honeypot protection is embedded via a hidden form field (`registration_hp_check`); requests populating the honeypot are rejected with 422 Unprocessable Entity.
+  - Strong password requirements are enforced: minimum 8 characters, requiring at least one uppercase letter, one lowercase letter, and one number.
+- **Complete Eradication of Temporary Passwords in Web Responses**:
+  - In `SaaSController::storeTenant()`, generated temporary passwords are never rendered or flashed in HTTP session messages, HTML bodies, or URL query strings.
+  - Success notifications strictly confirm tenant provisioning and out-of-band credential delivery without displaying credential secrets.
+- **Strict Validation of Tenant Status Mutations (`SaaSController::toggleStatus`)**:
+  - The status transition endpoint strictly validates `status` against an approved enum whitelist (`in:active,trial,suspended`). Unvalidated strings or arbitrary state inputs are rejected with 422 Unprocessable Entity.
+- **Privileged Password Reset Audit Trail (`UserController::resetPassword`)**:
+  - Privileged password resets by Tenant Admins create an authoritative, immutable `Activity` audit log (`type = 'PASSWORD_RESET'`) recording the acting administrator, targeted staff member, and client IP.
+  - Privileged password resets enforce strong password requirements: minimum 8 characters with letters and numbers.
+
 
 

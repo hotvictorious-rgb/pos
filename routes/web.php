@@ -72,7 +72,7 @@ Route::match(['get', 'post'], '/super-admin-employee/logout', [AuthController::c
 // ─────────────────────────────────────────────────────────
 Route::prefix('saas')->name('saas.')->group(function () {
     Route::get('/register',      [\App\Http\Controllers\SaaS\SaaSController::class, 'registerForm'])->name('register');
-    Route::post('/register',     [\App\Http\Controllers\SaaS\SaaSController::class, 'processRegister'])->name('register.post');
+    Route::post('/register',     [\App\Http\Controllers\SaaS\SaaSController::class, 'processRegister'])->middleware('throttle:5,1')->name('register.post');
     Route::get('/suspended',     [\App\Http\Controllers\SaaS\SaaSController::class, 'suspended'])->name('suspended');
 
     // Super Admin Master SaaS Control Panel

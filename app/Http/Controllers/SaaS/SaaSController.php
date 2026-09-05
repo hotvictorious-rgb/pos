@@ -45,12 +45,17 @@ class SaaSController extends Controller
             return back()->withInput()->with('error', 'New merchant registrations are currently paused by the platform administrator.');
         }
 
+        // Anti-abuse honeypot check: reject bots submitting hidden honeypot field
+        if ($request->filled('registration_hp_check')) {
+            abort(422, 'Spam bot submission detected.');
+        }
+
         $request->validate([
             'business_name' => 'required|string|max:255',
             'owner_name'    => 'required|string|max:255',
             'owner_email'   => 'required|email|unique:users,email|unique:tenants,owner_email',
             'owner_phone'   => 'required|string|max:20',
-            'password'      => 'required|min:6',
+            'password'      => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
             'plan'          => 'required|in:basic,pro,enterprise',
         ]);
 
@@ -305,14 +310,18 @@ class SaaSController extends Controller
             'permissions'  => ['all' => true],
         ]);
 
-        return back()->with('success', "✓ New Business Tenant '{$tenant->name}' created successfully! Generated one-time temporary password: {$temporaryPassword} (Provide this to the business owner).");
+        return back()->with('success', "✓ New Business Tenant '{$tenant->name}' created successfully! An account activation notice has been recorded for {$request->owner_email}. (Credentials are strictly delivered out-of-band and never exposed in browser responses).");
     }
 
     /** Toggle Tenant Status */
     public function toggleStatus(Request $request, $id)
     {
+        $request->validate([
+            'status' => 'required|string|in:active,trial,suspended',
+        ]);
+
         $tenant = Tenant::findOrFail($id);
-        $tenant->status = $request->input('status', 'active');
+        $tenant->status = $request->input('status');
         $tenant->save();
 
         return back()->with('success', "✓ Tenant status for '{$tenant->name}' updated to '{$tenant->status}'.");

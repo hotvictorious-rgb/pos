@@ -8,6 +8,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 10 (Bulk Tenant-ID Immutability, Registration Abuse Prevention, Temporary Credential Privacy, Status Enum Validation, and Privileged Audit Logging)**:
+  - **Universal Bulk Query Immutability (`BelongsToTenant`)**:
+    - Overrode `newEloquentBuilder()` in `BelongsToTenant` to intercept bulk `update()` queries (`Model::query()->where(...)->update(['tenant_id' => ...])`).
+    - Attempting to update `tenant_id` via bulk query builder throws `SecurityException`, completely closing ORM-level bypasses of lifecycle hooks.
+    - Single-model updates (`$model->save()`) allow identical `tenant_id` re-assignment but strictly block modifying `tenant_id` to a foreign tenant.
+  - **Public Registration Abuse Prevention (`routes/web.php`, `SaaSController`, `saas.register`)**:
+    - Enforced `throttle:5,1` rate limiting on `POST /register` to prevent registration spamming and resource exhaustion.
+    - Added bot honeypot protection (`registration_hp_check`); automated submissions filling the field are rejected with 422 Unprocessable Entity.
+    - Enforced strong password requirements on registration: minimum 8 characters with at least one uppercase letter, one lowercase letter, and one number.
+  - **Temporary Password Exposure Eradication (`SaaSController`, `SaleBranchPricingAndTenderSecurityTest`)**:
+    - Completely eliminated plaintext generated temporary passwords from session flash messages and HTML markup in `storeTenant()`.
+    - Success messages now confirm tenant provisioning and out-of-band delivery without exposing raw credential values.
+  - **Strict Status Mutation Validation (`SaaSController::toggleStatus`)**:
+    - Added strict validation for `$request->validate(['status' => 'required|string|in:active,trial,suspended'])`, rejecting unvalidated strings or arbitrary state inputs.
+  - **Privileged Password Reset Auditing & Complexity (`UserController::resetPassword`)**:
+    - Added authoritative `Activity` audit logging (`type = 'PASSWORD_RESET'`) when Tenant Admins reset worker passwords, capturing the administrator, targeted worker, and client IP.
+    - Enforced strong password validation: minimum 8 characters with letters and numbers.
+  - **Pass 10 Adversarial Test Suite (`ProductionHardeningPass10Test`)**:
+    - Added 9 comprehensive feature tests validating bulk immutability rejection, registration rate limiting, honeypot rejection, strong password enforcement, credential privacy, status enum validation, and password reset audit logging. Total test suite expanded to **293 passed tests (1,600 assertions, 0 failures, 0 errors)**.
+
 - **Production Hardening Pass 9 (Platform Capability Scoping, Paystack Secret Elimination, Seeder Production Hardening, and Tenant ID Immutability)**:
   - **Platform Employee Capability Isolation & Master Dashboard Hardening (`SaaSController`, `saas.admin.index`)**:
     - Enforced strict capability isolation on the SaaS master dashboard. A Platform Employee with only `platform.health` receives strictly infrastructure metrics and health data, and is strictly blocked from viewing the tenant directory, customer/owner PII, MRR, settings, or backups.

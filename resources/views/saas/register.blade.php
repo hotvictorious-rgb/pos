@@ -38,6 +38,12 @@
 
         <form action="{{ route('saas.register.post') }}" method="POST">
             @csrf
+
+            <!-- Anti-abuse honeypot field (hidden from human users) -->
+            <div style="display:none;" aria-hidden="true">
+                <input type="text" name="registration_hp_check" value="" tabindex="-1" autocomplete="off">
+            </div>
+
             <div class="form-group">
                 <label>Business / Company Name</label>
                 <input type="text" name="business_name" required placeholder="e.g. Grace Supermarket & Provisions">
@@ -60,8 +66,8 @@
             </div>
 
             <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required placeholder="••••••••">
+                <label>Password (Min 8 characters, at least 1 uppercase & 1 digit)</label>
+                <input type="password" name="password" required placeholder="••••••••" minlength="8">
             </div>
 
             <div class="form-group">

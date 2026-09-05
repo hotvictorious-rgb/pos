@@ -79,4 +79,31 @@ trait BelongsToTenant
     {
         return $this->belongsTo(Tenant::class, 'tenant_id');
     }
+
+    /**
+     * Create a new Eloquent query builder for the model that intercepts bulk updates on tenant_id.
+     */
+    public function newEloquentBuilder($query)
+    {
+        return new class($query) extends \Illuminate\Database\Eloquent\Builder {
+            public function update(array $values)
+            {
+                if (config('saas.enabled') && array_key_exists('tenant_id', $values)) {
+                    if ($this->model && $this->model->exists) {
+                        $originalTenantId = $this->model->getOriginal('tenant_id');
+                        if (!empty($originalTenantId) && $originalTenantId !== $values['tenant_id']) {
+                            throw new \App\Exceptions\SecurityException(
+                                "Cross-Tenant Security Violation: Immutable attribute 'tenant_id' cannot be altered on persisted record " . get_class($this->model) . " [{$this->model->getKey()}]."
+                            );
+                        }
+                    } else {
+                        throw new \App\Exceptions\SecurityException(
+                            "Cross-Tenant Security Violation: Bulk query mutation of immutable attribute 'tenant_id' is strictly forbidden."
+                        );
+                    }
+                }
+                return parent::update($values);
+            }
+        };
+    }
 }
