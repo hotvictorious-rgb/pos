@@ -84,9 +84,8 @@ class ReportController extends Controller
         }
 
         // Authoritative event-based financial calculation subqueries:
-        $hasPaymentsSql = "(SELECT COUNT(*) FROM payments WHERE payments.saleId = sales.id)";
         $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method != 'REFUND_CASH'), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method = 'REFUND_CASH'), 0)";
-        $netPaidSql = "CASE WHEN {$hasPaymentsSql} > 0 THEN ({$eventNetPaidSql}) ELSE sales.paidAmount END";
+        $netPaidSql = "({$eventNetPaidSql})";
         $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
         $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$netPaidSql}))";
 
@@ -137,19 +136,14 @@ class ReportController extends Controller
         // 2. High-Level Aggregates (Event-Authoritative)
         $totalRevenue = (float) $sales->sum('totalAmount');
         $saleIds = $sales->pluck('id');
-        $hasPayments = \App\Models\Payment::whereIn('saleId', $saleIds)->exists();
-        if ($hasPayments) {
-            $inflows = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
-                ->where('amount', '>', 0)
-                ->where('method', '!=', 'REFUND_CASH')
-                ->sum('amount');
-            $cashRefunds = abs((float) \App\Models\Payment::whereIn('saleId', $saleIds)
-                ->where('method', 'REFUND_CASH')
-                ->sum('amount'));
-            $totalCollected = max(0.0, round($inflows - $cashRefunds, 2));
-        } else {
-            $totalCollected = (float) $sales->sum('paidAmount');
-        }
+        $inflows = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->where('amount', '>', 0)
+            ->where('method', '!=', 'REFUND_CASH')
+            ->sum('amount');
+        $cashRefunds = abs((float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->where('method', 'REFUND_CASH')
+            ->sum('amount'));
+        $totalCollected = max(0.0, round($inflows - $cashRefunds, 2));
         $returnCredits = (float) \App\Models\SalesReturn::whereIn('saleId', $saleIds)->sum('refundAmount');
         $netPayable = max(0.0, round($totalRevenue - $returnCredits, 2));
         $totalDebtCreated = max(0.0, round($netPayable - $totalCollected, 2));
@@ -185,19 +179,14 @@ class ReportController extends Controller
         // Top Staff by Sales Volume (Event-Authoritative)
         $topStaff = $sales->groupBy('userName')->map(function ($group, $name) {
             $groupSaleIds = $group->pluck('id');
-            $hasGroupPayments = \App\Models\Payment::whereIn('saleId', $groupSaleIds)->exists();
-            if ($hasGroupPayments) {
-                $inflows = (float) \App\Models\Payment::whereIn('saleId', $groupSaleIds)
-                    ->where('amount', '>', 0)
-                    ->where('method', '!=', 'REFUND_CASH')
-                    ->sum('amount');
-                $refunds = abs((float) \App\Models\Payment::whereIn('saleId', $groupSaleIds)
-                    ->where('method', 'REFUND_CASH')
-                    ->sum('amount'));
-                $collected = max(0.0, round($inflows - $refunds, 2));
-            } else {
-                $collected = (float) $group->sum('paidAmount');
-            }
+            $inflows = (float) \App\Models\Payment::whereIn('saleId', $groupSaleIds)
+                ->where('amount', '>', 0)
+                ->where('method', '!=', 'REFUND_CASH')
+                ->sum('amount');
+            $refunds = abs((float) \App\Models\Payment::whereIn('saleId', $groupSaleIds)
+                ->where('method', 'REFUND_CASH')
+                ->sum('amount'));
+            $collected = max(0.0, round($inflows - $refunds, 2));
 
             return [
                 'name' => $name,
@@ -405,14 +394,16 @@ class ReportController extends Controller
                 fputcsv($handle, ['SALE ID', 'DATE', 'CUSTOMER', 'BRANCH', 'TOTAL AMOUNT', 'PAID AMOUNT', 'DEBT BALANCE', 'DELIVERY STATUS', 'CASHIER']);
                 $salesQuery = $accountingService->buildSalesQuery($filters);
                 foreach ($salesQuery->cursor() as $s) {
-                    $debt = max(0, $s->totalAmount - $s->paidAmount);
+                    $debt = $accountingService->calculateInvoiceBalance($s);
+                    $returnCredits = (float) \App\Models\SalesReturn::where('saleId', $s->id)->sum('refundAmount');
+                    $paid = max(0.0, round((float) $s->totalAmount - $returnCredits - $debt, 2));
                     fputcsv($handle, [
                         $s->id,
                         $s->createdAt,
                         $s->customerName,
                         $s->warehouse->name ?? 'Main Branch',
                         $s->totalAmount,
-                        $s->paidAmount,
+                        $paid,
                         $debt,
                         $s->deliveryStatus,
                         $s->userName
@@ -572,7 +563,16 @@ class ReportController extends Controller
             'sales' => [
                 'meta' => ['report' => 'Sales & Revenue Analysis', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Sales & Revenue Analysis', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => $salesQuery->get()
+                'data' => $salesQuery->get()->map(function ($s) use ($accountingService) {
+                    $arr = $s->toArray();
+                    $debt = $accountingService->calculateInvoiceBalance($s);
+                    $returnCredits = (float) \App\Models\SalesReturn::where('saleId', $s->id)->sum('refundAmount');
+                    $paid = max(0.0, round((float) $s->totalAmount - $returnCredits - $debt, 2));
+                    $arr['paidAmount'] = $paid;
+                    $arr['event_paid_amount'] = $paid;
+                    $arr['invoice_balance'] = $debt;
+                    return $arr;
+                })
             ],
             'inventory' => [
                 'meta' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],

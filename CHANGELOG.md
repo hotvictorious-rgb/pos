@@ -30,11 +30,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
     - Rebuilt `correctCustomerDebt()` with modern authentication assertions: rejects unauthenticated requests, rejects platform users, validates tenant boundary, strictly blocks branch-scoped employees, and enforces `'debt.correct'` capability and tenant admin privileges. Completely eliminated caller `$userId` database lookup fallbacks.
   - **Scope-Narrowing Query Invariant (`AccountingReportService`)**:
     - Enforced that request filters in `buildSalesQuery`, `buildPaymentsQuery`, `buildReturnsQuery`, `buildStockMovementsQuery`, and `buildTransfersQuery` can narrow an authorized scope, but can NEVER widen or switch it. When branch-scoped staff request foreign warehouse filters, the query returns an empty set (`1 = 0`).
+  - **100% Event-Authoritative Reporting (`ReportController`)**:
+    - Eradicated all reliance on the mutable cached `paidAmount` column on `sales`.
+    - Dashboard metrics (`$totalCollected`, `$totalDebtCreated`), staff collections (`topStaff`), sales CSV exports, and AI JSON exports compute collected revenue, customer balances, and staff performance strictly from `Payment` and `SalesReturn` transaction events.
   - **Verifiable GitHub Actions CI & Status Automation**:
-    - Overhauled `.github/workflows/ci.yml` for PHP 8.3 with SQLite environment initialization.
-    - Enabled `use RefreshDatabase` in `ExampleTest.php` so root landing page tests pass in CI.
-    - Added automated GitHub Commit Status publishing (`context: ci/laravel-tests`) in addition to GitHub Checks, ensuring verification is visible across GitHub interfaces and APIs.
-  - **Added `ProductionHardeningPass8Test`**: 9 comprehensive feature tests verifying mutation safety, actor closure, debt export sanitization, null-warehouse invoice protection, transfer recall authority, debt correction enforcement, and query scope intersection invariants. Total test suite expanded to **270 passed tests (1,496 assertions, 0 errors, 0 failures)** across 34 test suites.
+    - Overhauled `.github/workflows/ci.yml` for PHP 8.3 with SQLite environment initialization, workflow step summaries, and test artifact uploads.
+    - Enabled `use RefreshDatabase` in `ExampleTest.php` so root landing page tests pass cleanly in CI.
+    - Added safe automated GitHub Commit Status publishing (`context: ci/laravel-tests`) alongside GitHub Checks.
+  - **Added `ProductionHardeningPass8Test`**: 10 comprehensive feature tests verifying mutation safety, actor closure, debt export sanitization, null-warehouse invoice protection, transfer recall authority, debt correction enforcement, query scope intersection invariants, and 100% event-authoritative reporting. Total test suite expanded to **271 passed tests (1,511 assertions, 0 errors, 0 failures)** across 34 test suites.
 - **Production Hardening Pass 7 (Service-Layer WHAT + WHERE Authority Enforcement, Actor Separation, Debt UI Isolation, and Strict HMAC Guarantees)**:
   - **Service-Level Warehouse Authority Enforcement (`StockService`)**:
     - Implemented `assertUserWarehouseAuthority(int $warehouseId, ?User $actor = null): Warehouse` enforcing the complete WHAT + WHERE security contract at the service layer:

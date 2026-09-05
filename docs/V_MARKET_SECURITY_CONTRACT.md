@@ -231,7 +231,10 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
   - `AccountingReportService::correctCustomerDebt()` asserts modern actor authentication (`Auth::user() ?? $actor`), blocks platform users, validates tenant boundaries, rejects branch-scoped personnel, and enforces the dedicated `debt.correct` capability. All fallback lookups from arbitrary caller `$userId` strings have been completely removed.
 - **Reporting Scope-Narrowing Invariant (Branch A ∩ Filter B = Empty)**:
   - In `AccountingReportService` query builders (`buildSalesQuery`, `buildPaymentsQuery`, `buildReturnsQuery`, `buildStockMovementsQuery`, `buildTransfersQuery`), request filters may narrow an authorized scope, but can NEVER widen or switch it. If a branch-scoped employee requests a foreign branch filter, the intersection evaluates to an empty result set (`1 = 0`).
+- **100% Event-Authoritative Reporting (Zero Reliance on Cached `paidAmount`)**:
+  - All financial calculations in `ReportController` (dashboard totals, debt creation, top staff collections, sales CSV exports, and AI JSON exports) derive strictly from materialized `Payment` and `SalesReturn` transaction events.
+  - The mutable cached `paidAmount` column on the `sales` table has been completely eradicated as an authoritative source across all reporting layers.
 - **Verifiable GitHub Actions CI & Commit Status Automation**:
-  - CI test workflow (`ci.yml`) executes the full test suite against PHP 8.3 with SQLite environment bootstrapping and automatically writes GitHub Commit Statuses (`context: ci/laravel-tests`) alongside GitHub Checks, providing full independent verification directly within the GitHub commit graph and REST APIs.
+  - CI test workflow (`ci.yml`) executes the full test suite against PHP 8.3 with SQLite environment bootstrapping, archives full test logs as artifacts, outputs Markdown step summaries, and safely writes GitHub Commit Statuses (`context: ci/laravel-tests`) alongside GitHub Checks, providing full independent verification directly within the GitHub commit graph and REST APIs.
 
 

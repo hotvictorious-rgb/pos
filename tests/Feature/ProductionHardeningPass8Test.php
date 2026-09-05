@@ -515,4 +515,101 @@ class ProductionHardeningPass8Test extends TestCase
             $this->tenantAdmin->name
         );
     }
+
+    /**
+     * Test 10: All report endpoints derive financial revenue, debt, and staff collections strictly from Payment events, ignoring tampered cached paidAmount.
+     */
+    public function test_report_endpoints_derive_revenue_debt_and_staff_collections_strictly_from_payment_events_ignoring_cached_paidAmount(): void
+    {
+        $this->actingAs($this->tenantAdmin);
+
+        $customer = Customer::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Event Authority Debtor',
+            'phone' => '08098765432',
+            'total_debt' => 25000.00,
+        ]);
+
+        // Create Sale with artificially tampered cached paidAmount = ₦99,999.00
+        $sale = Sale::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'warehouse_id' => $this->warehouseA->id,
+            'customerId' => $customer->id,
+            'customerName' => $customer->name,
+            'userId' => $this->tenantAdmin->id,
+            'userName' => 'Audited Admin',
+            'totalAmount' => 50000.00,
+            'paidAmount' => 99999.00, // Tampered cached column!
+            'cashAmount' => 99999.00,
+            'posAmount' => 0.00,
+            'paymentMethod' => 'CASH',
+            'status' => 'PARTIAL',
+            'deliveryStatus' => 'DELIVERED',
+            'createdAt' => now()->toIso8601String(),
+        ]);
+
+        // Genuine financial event: Inflow payment of ₦20,000.00
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'saleId' => $sale->id,
+            'amount' => 20000.00,
+            'method' => 'CASH',
+            'timestamp' => now()->toIso8601String(),
+            'recordedBy' => 'Audited Admin',
+        ]);
+
+        // Genuine financial event: SalesReturn credit of ₦5,000.00
+        \App\Models\SalesReturn::create([
+            'id' => (string) Str::uuid(),
+            'code' => 'RET-P8-001',
+            'tenant_id' => $this->tenant->id,
+            'saleId' => $sale->id,
+            'productId' => $this->productA->id,
+            'productName' => $this->productA->name,
+            'productCode' => $this->productA->code,
+            'quantity' => 1,
+            'refundAmount' => 5000.00,
+            'refundType' => 'DEBT_REDUCTION',
+            'reason' => 'Defective packaging returned',
+            'userId' => $this->tenantAdmin->id,
+            'userName' => 'Audited Admin',
+            'createdAt' => now()->toIso8601String(),
+        ]);
+
+        // Expected authoritative values:
+        // Net Payable: 50,000 - 5,000 = 45,000
+        // Net Collected: 20,000
+        // Authoritative Debt Balance: 45,000 - 20,000 = 25,000
+
+        // 1. Web Report Dashboard View
+        $responseWeb = $this->get(route('reports.index'));
+        $responseWeb->assertOk();
+        $this->assertEquals(20000.00, $responseWeb->viewData('totalCollected'), "Total collected must be strictly derived from Payment events (₦20,000), ignoring tampered ₦99,999!");
+        $this->assertEquals(25000.00, $responseWeb->viewData('totalDebtCreated'), "Total debt created must be strictly derived from authoritative balance (₦25,000)!");
+        $topStaff = $responseWeb->viewData('topStaff');
+        $adminStaff = $topStaff->firstWhere('name', 'Audited Admin');
+        $this->assertNotNull($adminStaff);
+        $this->assertEquals(20000.00, $adminStaff['collected'], "Top staff collected must derive from Payment events (₦20,000)!");
+
+        // 2. CSV Export for Sales
+        $responseCsv = $this->get(route('reports.export.csv', ['type' => 'sales']));
+        $responseCsv->assertOk();
+        $csvContent = $responseCsv->streamedContent();
+        $this->assertStringContainsString('20000', $csvContent, "CSV must contain authoritative paid amount ₦20,000");
+        $this->assertStringContainsString('25000', $csvContent, "CSV must contain authoritative debt balance ₦25,000");
+        $this->assertStringNotContainsString('99999', $csvContent, "CSV must NEVER output tampered cached paidAmount ₦99,999!");
+
+        // 3. JSON Export for Sales
+        $responseJson = $this->get(route('reports.export.json', ['type' => 'sales']));
+        $responseJson->assertOk();
+        $jsonSales = $responseJson->json()['data'];
+        $this->assertNotEmpty($jsonSales);
+        $matchedSale = collect($jsonSales)->firstWhere('id', $sale->id);
+        $this->assertNotNull($matchedSale);
+        $this->assertEquals(20000.00, $matchedSale['paidAmount'], "JSON paidAmount must be event-authoritative (₦20,000)");
+        $this->assertEquals(25000.00, $matchedSale['invoice_balance'], "JSON invoice_balance must be authoritative (₦25,000)");
+        $this->assertNotEquals(99999.00, $matchedSale['paidAmount']);
+    }
 }
