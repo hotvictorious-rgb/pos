@@ -217,14 +217,12 @@ export const storage = {
     return data ? JSON.parse(data) : [];
   },
 
-  saveData: <T>(key: string, data: T[]) => {
-    localStorage.setItem(key, JSON.stringify(data));
-    notifyDataUpdated();
+  saveData: <T>(_key: string, _data: T[]) => {
+    throw new Error("DEPRECATED & DISABLED: Direct client-side storage writes are disabled.");
   },
 
   forceSync: async () => {
-    storage.setSyncPending(true);
-    await storage.sync();
+    // No-op in online-only architecture
   },
 
   getProducts: () => storage.getData<Product>(STORAGE_KEYS.PRODUCTS),
@@ -277,14 +275,8 @@ export const storage = {
     throw new Error("DEPRECATED & DISABLED: Client-side settings modifications are disabled. Update business settings via authoritative /settings endpoints.");
   },
 
-  logActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => {
-    const activities = storage.getActivities();
-    const newActivity: Activity = {
-      ...activity,
-      id: Math.random().toString(36).substr(2, 9),
-      timestamp: new Date().toISOString()
-    };
-    storage.saveActivities([newActivity, ...activities]);
+  logActivity: (_activity: Omit<Activity, 'id' | 'timestamp'>) => {
+    // Disarmed: All activity audit trails are generated authoritatively by the Laravel backend
   },
 
   calculateClosingStock: (productId: string, startDate?: Date, endDate?: Date) => {

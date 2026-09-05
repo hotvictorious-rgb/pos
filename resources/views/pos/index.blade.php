@@ -331,6 +331,7 @@
 
         <form id="checkoutForm" method="POST" action="{{ route('pos.checkout') }}">
             @csrf
+            <input type="hidden" name="idempotency_key" id="idempotencyKeyInput" value="">
             <input type="hidden" name="warehouse_id" value="{{ $activeWarehouse->id }}">
             <input type="hidden" name="sale_type" id="saleTypeInput" value="RETAIL">
             <input type="hidden" name="totalAmount" id="hiddenTotal" value="0">
@@ -547,7 +548,23 @@
 let cart = [];
 let paymentMode = 'CASH';
 
+function ensureCheckoutIdempotencyKey() {
+    const input = document.getElementById('idempotencyKeyInput');
+    if (input && !input.value) {
+        input.value = 'pos_cart_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + '-' + Math.random().toString(36).substring(2)));
+    }
+    return input ? input.value : '';
+}
+
+function resetCheckoutIdempotencyKey() {
+    const input = document.getElementById('idempotencyKeyInput');
+    if (input) input.value = '';
+}
+
 function addToCart(id, name, price, stock) {
+    if (cart.length === 0) {
+        ensureCheckoutIdempotencyKey();
+    }
     const existing = cart.find(i => i.id === id);
     const numericStock = (typeof stock === 'number') ? stock : (parseInt(stock) || 0);
     if (existing) {
@@ -566,11 +583,15 @@ function updateQty(id, delta) {
     if (item.qty <= 0) {
         cart = cart.filter(i => i.id !== id);
     }
+    if (cart.length === 0) {
+        resetCheckoutIdempotencyKey();
+    }
     renderCart();
 }
 
 function clearCart() {
     cart = [];
+    resetCheckoutIdempotencyKey();
     renderCart();
 }
 
@@ -1058,6 +1079,12 @@ function closeSaleConfirm() {
 }
 
 function finalProceedSale() {
+    ensureCheckoutIdempotencyKey();
+    const btn = document.querySelector('#modalSaleConfirm button.btn-primary');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Processing Transaction...';
+    }
     document.getElementById('checkoutForm').submit();
 }
 
