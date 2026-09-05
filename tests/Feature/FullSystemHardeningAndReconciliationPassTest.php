@@ -463,6 +463,7 @@ class FullSystemHardeningAndReconciliationPassTest extends TestCase
         $this->assertEquals(99999.00, $this->customerAlhaji->total_debt, "reconcileCustomerDebt must be read-only!");
 
         // Unauthorized user cannot correct debt
+        $this->actingAs($this->cashierUser);
         try {
             $this->accountingService->correctCustomerDebt(
                 $this->customerAlhaji,
@@ -477,6 +478,7 @@ class FullSystemHardeningAndReconciliationPassTest extends TestCase
         }
 
         // Admin corrects debt with mandatory audit reason
+        $this->actingAs($this->adminUser);
         $correction = $this->accountingService->correctCustomerDebt(
             $this->customerAlhaji,
             0.00,

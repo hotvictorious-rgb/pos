@@ -27,8 +27,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
     - Removed non-deterministic Stage 2 fallback guessing. Historical customer ledgers are strictly linked to `warehouse_id` via deterministic 1-to-1 sale relationships (`sales.id = customer_ledgers.sale_id`). Unlinked legacy ledgers safely remain `warehouse_id = NULL`.
   - **Modernized Customer Debt Correction Security (`AccountingReportService`)**:
     - Registered `'debt.correct'` capability in `CapabilityService` and assigned it to tenant admins.
-    - Rebuilt `correctCustomerDebt()` with modern authentication assertions: rejects unauthenticated requests, rejects platform users, validates tenant boundary, strictly blocks branch-scoped employees, and enforces `'debt.correct'` capability and tenant admin privileges.
-  - **Added `ProductionHardeningPass8Test`**: 7 comprehensive feature tests verifying mutation safety, actor closure, debt export sanitization, null-warehouse invoice protection, transfer recall authority, and debt correction enforcement. Total test suite expanded to **268 passed tests (1,489 assertions, 0 errors, 0 failures)** across 34 test suites.
+    - Rebuilt `correctCustomerDebt()` with modern authentication assertions: rejects unauthenticated requests, rejects platform users, validates tenant boundary, strictly blocks branch-scoped employees, and enforces `'debt.correct'` capability and tenant admin privileges. Completely eliminated caller `$userId` database lookup fallbacks.
+  - **Scope-Narrowing Query Invariant (`AccountingReportService`)**:
+    - Enforced that request filters in `buildSalesQuery`, `buildPaymentsQuery`, `buildReturnsQuery`, `buildStockMovementsQuery`, and `buildTransfersQuery` can narrow an authorized scope, but can NEVER widen or switch it. When branch-scoped staff request foreign warehouse filters, the query returns an empty set (`1 = 0`).
+  - **Verifiable GitHub Actions CI & Status Automation**:
+    - Overhauled `.github/workflows/ci.yml` for PHP 8.3 with SQLite environment initialization.
+    - Enabled `use RefreshDatabase` in `ExampleTest.php` so root landing page tests pass in CI.
+    - Added automated GitHub Commit Status publishing (`context: ci/laravel-tests`) in addition to GitHub Checks, ensuring verification is visible across GitHub interfaces and APIs.
+  - **Added `ProductionHardeningPass8Test`**: 9 comprehensive feature tests verifying mutation safety, actor closure, debt export sanitization, null-warehouse invoice protection, transfer recall authority, debt correction enforcement, and query scope intersection invariants. Total test suite expanded to **270 passed tests (1,496 assertions, 0 errors, 0 failures)** across 34 test suites.
 - **Production Hardening Pass 7 (Service-Layer WHAT + WHERE Authority Enforcement, Actor Separation, Debt UI Isolation, and Strict HMAC Guarantees)**:
   - **Service-Level Warehouse Authority Enforcement (`StockService`)**:
     - Implemented `assertUserWarehouseAuthority(int $warehouseId, ?User $actor = null): Warehouse` enforcing the complete WHAT + WHERE security contract at the service layer:

@@ -228,6 +228,10 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 - **Deterministic Customer Ledger Backfill**:
   - Migration `2026_09_05_090000_backfill_customer_ledgers_warehouse_id` restricts backfill strictly to deterministic 1-to-1 links (`sales.id = customer_ledgers.sale_id`). Unlinked legacy ledgers without a deterministic sale reference remain `warehouse_id = NULL` rather than guessing from non-deterministic sale distributions or fallback warehouses.
 - **Modernized Customer Debt Correction Contract**:
-  - `AccountingReportService::correctCustomerDebt()` asserts modern actor authentication, blocks platform users, validates tenant boundaries, rejects branch-scoped personnel, and enforces the dedicated `debt.correct` capability.
+  - `AccountingReportService::correctCustomerDebt()` asserts modern actor authentication (`Auth::user() ?? $actor`), blocks platform users, validates tenant boundaries, rejects branch-scoped personnel, and enforces the dedicated `debt.correct` capability. All fallback lookups from arbitrary caller `$userId` strings have been completely removed.
+- **Reporting Scope-Narrowing Invariant (Branch A ∩ Filter B = Empty)**:
+  - In `AccountingReportService` query builders (`buildSalesQuery`, `buildPaymentsQuery`, `buildReturnsQuery`, `buildStockMovementsQuery`, `buildTransfersQuery`), request filters may narrow an authorized scope, but can NEVER widen or switch it. If a branch-scoped employee requests a foreign branch filter, the intersection evaluates to an empty result set (`1 = 0`).
+- **Verifiable GitHub Actions CI & Commit Status Automation**:
+  - CI test workflow (`ci.yml`) executes the full test suite against PHP 8.3 with SQLite environment bootstrapping and automatically writes GitHub Commit Statuses (`context: ci/laravel-tests`) alongside GitHub Checks, providing full independent verification directly within the GitHub commit graph and REST APIs.
 
 

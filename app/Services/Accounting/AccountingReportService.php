@@ -236,10 +236,9 @@ class AccountingReportService
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException|\InvalidArgumentException
      */
-    public function correctCustomerDebt(Customer $customer, float $newDebt, string $reason, string $userId, string $userName): array
+    public function correctCustomerDebt(Customer $customer, float $newDebt, string $reason, ?string $userId = null, ?string $userName = null, ?User $actor = null): array
     {
-        $isHttp = (request()->route() !== null || (!app()->runningInConsole() && !app()->runningUnitTests()));
-        $actingUser = $isHttp ? Auth::user() : (Auth::user() ?? User::withoutGlobalScopes()->find($userId));
+        $actingUser = Auth::user() ?? $actor;
 
         if (!$actingUser) {
             throw new \Illuminate\Auth\Access\AuthorizationException("Unauthorized: No authenticated actor provided for debt correction.");
@@ -273,13 +272,16 @@ class AccountingReportService
         $customer->total_debt = max(0.0, round($newDebt, 2));
         $customer->save();
 
+        $auditUserId = $actingUser->id;
+        $auditUserName = $actingUser->name;
+
         Activity::create([
             'id'          => (string) Str::uuid(),
             'tenant_id'   => session('tenant_id') ?? $customer->tenant_id ?? null,
             'type'        => 'DEBT_CORRECTION',
-            'description' => "Customer '{$customer->name}' debt corrected from ₦" . number_format($oldDebt, 2) . " to ₦" . number_format($customer->total_debt, 2) . " by {$userName}. Reason: {$reason}",
-            'userId'      => $userId,
-            'userName'    => $userName,
+            'description' => "Customer '{$customer->name}' debt corrected from ₦" . number_format($oldDebt, 2) . " to ₦" . number_format($customer->total_debt, 2) . " by {$auditUserName}. Reason: {$reason}",
+            'userId'      => $auditUserId,
+            'userName'    => $auditUserName,
             'timestamp'   => now()->toIso8601String(),
         ]);
 
@@ -289,7 +291,7 @@ class AccountingReportService
             'oldDebt'      => $oldDebt,
             'newDebt'      => (float) $customer->total_debt,
             'reason'       => $reason,
-            'correctedBy'  => $userName,
+            'correctedBy'  => $auditUserName,
             'timestamp'    => now()->toIso8601String(),
         ];
     }
@@ -445,10 +447,13 @@ class AccountingReportService
         // Date range on sale creation
         $query->whereBetween('createdAt', [$dates['startIso'], $dates['endIso']]);
 
-        // Branch scoping
+        // Branch scoping: user branch is immutable ceiling. Request filter may narrow, but never widen.
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
             $query->where('warehouse_id', $user->warehouse_id);
+            if (!empty($filters['warehouse_id']) && (int) $filters['warehouse_id'] !== (int) $user->warehouse_id) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif (!empty($filters['warehouse_id'])) {
             $query->where('warehouse_id', (int) $filters['warehouse_id']);
         }
@@ -515,12 +520,15 @@ class AccountingReportService
 
         $query->whereBetween('timestamp', [$dates['startIso'], $dates['endIso']]);
 
-        // Branch scoping via linked sale
+        // Branch scoping via linked sale: user branch is immutable ceiling
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
             $query->whereHas('sale', function ($sq) use ($user) {
                 $sq->where('warehouse_id', $user->warehouse_id);
             });
+            if (!empty($filters['warehouse_id']) && (int) $filters['warehouse_id'] !== (int) $user->warehouse_id) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif (!empty($filters['warehouse_id'])) {
             $whId = (int) $filters['warehouse_id'];
             $query->whereHas('sale', function ($sq) use ($whId) {
@@ -563,6 +571,9 @@ class AccountingReportService
             $query->whereHas('sale', function ($sq) use ($user) {
                 $sq->where('warehouse_id', $user->warehouse_id);
             });
+            if (!empty($filters['warehouse_id']) && (int) $filters['warehouse_id'] !== (int) $user->warehouse_id) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif (!empty($filters['warehouse_id'])) {
             $whId = (int) $filters['warehouse_id'];
             $query->whereHas('sale', function ($sq) use ($whId) {
@@ -609,6 +620,9 @@ class AccountingReportService
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
             $query->where('warehouse_id', (int) $user->warehouse_id);
+            if (!empty($filters['warehouse_id']) && (int) $filters['warehouse_id'] !== (int) $user->warehouse_id) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif (!empty($filters['warehouse_id'])) {
             $query->where('warehouse_id', (int) $filters['warehouse_id']);
         }
@@ -633,11 +647,19 @@ class AccountingReportService
 
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
-            $whId = $user->warehouse_id;
+            $whId = (int) $user->warehouse_id;
             $query->where(function ($q) use ($whId) {
                 $q->where('source_warehouse_id', $whId)
                   ->orWhere('destination_warehouse_id', $whId);
             });
+            if (!empty($filters['source_warehouse_id']) && (int) $filters['source_warehouse_id'] !== $whId) {
+                $query->where('destination_warehouse_id', $whId)
+                      ->where('source_warehouse_id', (int) $filters['source_warehouse_id']);
+            }
+            if (!empty($filters['destination_warehouse_id']) && (int) $filters['destination_warehouse_id'] !== $whId) {
+                $query->where('source_warehouse_id', $whId)
+                      ->where('destination_warehouse_id', (int) $filters['destination_warehouse_id']);
+            }
         } else {
             if (!empty($filters['source_warehouse_id'])) {
                 $query->where('source_warehouse_id', (int) $filters['source_warehouse_id']);

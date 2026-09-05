@@ -423,4 +423,96 @@ class ProductionHardeningPass8Test extends TestCase
 
         $this->stockService->recallTransfer($transfer->id, $this->cashierB->id, $this->cashierB->name, 'Unauthorized recall attempt');
     }
+
+    /**
+     * Test 8: Reporting query builders enforce scope-narrowing invariant: Branch A ∩ Branch B = Empty.
+     */
+    public function test_query_builders_enforce_scope_intersection_invariant(): void
+    {
+        // Sale at Lagos (warehouseA)
+        Sale::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'warehouse_id' => $this->warehouseA->id,
+            'customerName' => 'Lagos Buyer',
+            'userId' => $this->cashierA->id,
+            'userName' => $this->cashierA->name,
+            'totalAmount' => 10000.00,
+            'paidAmount' => 10000.00,
+            'cashAmount' => 10000.00,
+            'posAmount' => 0.00,
+            'paymentMethod' => 'CASH',
+            'status' => 'COMPLETED',
+            'deliveryStatus' => 'DELIVERED',
+            'createdAt' => now()->toIso8601String(),
+        ]);
+
+        // Sale at Abuja (warehouseB)
+        Sale::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'warehouse_id' => $this->warehouseB->id,
+            'customerName' => 'Abuja Buyer',
+            'userId' => $this->cashierB->id,
+            'userName' => $this->cashierB->name,
+            'totalAmount' => 25000.00,
+            'paidAmount' => 25000.00,
+            'cashAmount' => 25000.00,
+            'posAmount' => 0.00,
+            'paymentMethod' => 'CASH',
+            'status' => 'COMPLETED',
+            'deliveryStatus' => 'DELIVERED',
+            'createdAt' => now()->toIso8601String(),
+        ]);
+
+        // Acting as Lagos Cashier (warehouseA)
+        $this->actingAs($this->cashierA);
+
+        // 1. Filter specifying assigned branch returns matching records
+        $qA = $this->accountingService->buildSalesQuery(['warehouse_id' => $this->warehouseA->id]);
+        $this->assertEquals(1, $qA->count());
+
+        // 2. Filter specifying foreign branch MUST yield EMPTY set (Branch A ∩ Branch B = ∅)
+        $qB = $this->accountingService->buildSalesQuery(['warehouse_id' => $this->warehouseB->id]);
+        $this->assertEquals(0, $qB->count(), "Foreign warehouse filter must yield empty result set, never foreign branch data");
+
+        // 3. Payments query foreign branch filter yields EMPTY set
+        $qPayB = $this->accountingService->buildPaymentsQuery(['warehouse_id' => $this->warehouseB->id]);
+        $this->assertEquals(0, $qPayB->count());
+
+        // 4. Returns query foreign branch filter yields EMPTY set
+        $qRetB = $this->accountingService->buildReturnsQuery(['warehouse_id' => $this->warehouseB->id]);
+        $this->assertEquals(0, $qRetB->count());
+
+        // 5. Stock movements query foreign branch filter yields EMPTY set
+        $qMoveB = $this->accountingService->buildStockMovementsQuery(['warehouse_id' => $this->warehouseB->id]);
+        $this->assertEquals(0, $qMoveB->count());
+    }
+
+    /**
+     * Test 9: correctCustomerDebt strictly fails closed when no authenticated actor exists.
+     */
+    public function test_correctCustomerDebt_strictly_fails_closed_when_no_authenticated_user(): void
+    {
+        \Illuminate\Support\Facades\Auth::logout();
+        session()->flush();
+
+        $customer = Customer::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Ghost Target',
+            'phone' => '08077665544',
+            'total_debt' => 50000.00,
+        ]);
+
+        $this->expectException(AuthorizationException::class);
+        $this->expectExceptionMessage("No authenticated actor provided for debt correction");
+
+        $this->accountingService->correctCustomerDebt(
+            $customer,
+            20000.00,
+            'Unauthenticated adjustment attempt',
+            $this->tenantAdmin->id,
+            $this->tenantAdmin->name
+        );
+    }
 }
