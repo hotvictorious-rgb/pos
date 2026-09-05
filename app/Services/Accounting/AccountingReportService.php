@@ -25,6 +25,25 @@ use Illuminate\Support\Str;
 class AccountingReportService
 {
     /**
+     * Convert any Naira denomination (float, int, or string) strictly to integer kobo.
+     */
+    public static function toKobo(float|int|string|null $naira): int
+    {
+        if ($naira === null) {
+            return 0;
+        }
+        return (int) round(((float) $naira) * 100);
+    }
+
+    /**
+     * Convert integer kobo strictly back to standard two-decimal Naira representation.
+     */
+    public static function toNaira(int $kobo): float
+    {
+        return round($kobo / 100, 2);
+    }
+
+    /**
      * Authoritative calculation and validation for checkout pricing and multi-tender settlement.
      * Strictly limits payment options to CASH and POS.
      *
@@ -67,9 +86,9 @@ class AccountingReportService
             }
         }
 
-        // 2. Compute server-authoritative line totals and gross sale
+        // 2. Compute server-authoritative line totals and gross sale in pure integer kobo
         $validatedItems = [];
-        $grossTotal = 0.0;
+        $grossTotalKobo = 0;
 
         foreach ($consolidated as $pId => $cItem) {
             $product = Product::findOrFail($pId);
@@ -87,81 +106,91 @@ class AccountingReportService
                 throw new \InvalidArgumentException("Unit price for product '{$product->name}' cannot be negative.");
             }
 
-            $lineTotal = round($qty * $unitPrice, 2);
-            $grossTotal += $lineTotal;
+            $unitPriceKobo = self::toKobo($unitPrice);
+            $lineTotalKobo = $qty * $unitPriceKobo;
+            $grossTotalKobo += $lineTotalKobo;
 
             $validatedItems[] = [
-                'product' => $product,
-                'quantity' => $qty,
-                'unitPrice' => $unitPrice,
-                'totalPrice' => $lineTotal,
+                'product'        => $product,
+                'quantity'       => $qty,
+                'unitPrice'      => self::toNaira($unitPriceKobo),
+                'totalPrice'     => self::toNaira($lineTotalKobo),
+                'unitPriceKobo'  => $unitPriceKobo,
+                'totalPriceKobo' => $lineTotalKobo,
             ];
         }
 
-        $grossTotal = round($grossTotal, 2);
-
-        // 3. Tender Math: Strictly CASH and POS
-        $cashTendered = max(0.0, (float) ($tender['cashAmount'] ?? 0));
-        $posTendered  = max(0.0, (float) ($tender['posAmount'] ?? 0));
+        // 3. Tender Math: Strictly CASH and POS calculated in pure integer kobo
+        $cashTenderedKobo = max(0, self::toKobo($tender['cashAmount'] ?? 0));
+        $posTenderedKobo  = max(0, self::toKobo($tender['posAmount'] ?? 0));
 
         // Invariant: Electronic overpayment rejected! POS cannot exceed gross total
-        if ($posTendered > $grossTotal) {
+        if ($posTenderedKobo > $grossTotalKobo) {
+            $posNaira = self::toNaira($posTenderedKobo);
+            $grossNaira = self::toNaira($grossTotalKobo);
             throw new \InvalidArgumentException(
-                "Electronic payments (POS tender: ₦" . number_format($posTendered, 2) . 
-                ") cannot exceed sale total amount of ₦" . number_format($grossTotal, 2) . 
+                "Electronic payments (POS tender: ₦" . number_format($posNaira, 2) . 
+                ") cannot exceed sale total amount of ₦" . number_format($grossNaira, 2) . 
                 ". Cash change cannot be disbursed from card/transfer overpayment."
             );
         }
 
-        $totalTendered = round($cashTendered + $posTendered, 2);
+        $totalTenderedKobo = $cashTenderedKobo + $posTenderedKobo;
 
         // Invariant: Change calculation and cash source boundary
-        $changeAmount = 0.0;
-        if ($totalTendered > $grossTotal) {
-            $changeAmount = round($totalTendered - $grossTotal, 2);
-            if ($changeAmount > $cashTendered) {
+        $changeAmountKobo = 0;
+        if ($totalTenderedKobo > $grossTotalKobo) {
+            $changeAmountKobo = $totalTenderedKobo - $grossTotalKobo;
+            if ($changeAmountKobo > $cashTenderedKobo) {
+                $changeNaira = self::toNaira($changeAmountKobo);
+                $cashNaira = self::toNaira($cashTenderedKobo);
                 throw new \InvalidArgumentException(
-                    "Impossible change: Calculated change (₦" . number_format($changeAmount, 2) . 
-                    ") exceeds physical cash tendered (₦" . number_format($cashTendered, 2) . ")."
+                    "Impossible change: Calculated change (₦" . number_format($changeNaira, 2) . 
+                    ") exceeds physical cash tendered (₦" . number_format($cashNaira, 2) . ")."
                 );
             }
         }
 
         // Net paid amount applied to the invoice: Paid = Total Tendered - Change
-        $paidAmount = min($grossTotal, max(0.0, round($totalTendered - $changeAmount, 2)));
+        $paidAmountKobo = min($grossTotalKobo, max(0, $totalTenderedKobo - $changeAmountKobo));
 
         // Retained Cash in drawer: Cash Tendered - Change
-        $retainedCash = max(0.0, round($cashTendered - $changeAmount, 2));
-        $retainedPos  = $posTendered;
+        $retainedCashKobo = max(0, $cashTenderedKobo - $changeAmountKobo);
+        $retainedPosKobo  = $posTenderedKobo;
 
         // Authoritative integer kobo precision check (strictly prevents IEEE 754 floating point inaccuracies)
-        $retainedCashKobo = (int) round($retainedCash * 100);
-        $retainedPosKobo  = (int) round($retainedPos * 100);
-        $paidAmountKobo   = (int) round($paidAmount * 100);
-
         if (($retainedCashKobo + $retainedPosKobo) !== $paidAmountKobo) {
             throw new \InvalidArgumentException("Accounting ledger error: Retained cash and POS do not sum to net paid amount.");
         }
 
-        $outstandingDebt = max(0.0, round($grossTotal - $paidAmount, 2));
+        $outstandingDebtKobo = max(0, $grossTotalKobo - $paidAmountKobo);
 
-        $status = ($paidAmount >= $grossTotal) 
+        $status = ($paidAmountKobo >= $grossTotalKobo) 
             ? 'COMPLETED' 
-            : (($paidAmount > 0) ? 'PARTIAL' : 'PENDING');
+            : (($paidAmountKobo > 0) ? 'PARTIAL' : 'PENDING');
 
         return [
-            'grossTotal'      => $grossTotal,
-            'totalAmount'     => $grossTotal,
-            'validatedItems'  => $validatedItems,
-            'cashTendered'    => $cashTendered,
-            'posTendered'     => $posTendered,
-            'totalTendered'   => $totalTendered,
-            'changeAmount'    => $changeAmount,
-            'paidAmount'      => $paidAmount,
-            'retainedCash'    => $retainedCash,
-            'retainedPos'     => $retainedPos,
-            'outstandingDebt' => $outstandingDebt,
-            'status'          => $status,
+            'grossTotal'          => self::toNaira($grossTotalKobo),
+            'totalAmount'         => self::toNaira($grossTotalKobo),
+            'validatedItems'      => $validatedItems,
+            'cashTendered'        => self::toNaira($cashTenderedKobo),
+            'posTendered'         => self::toNaira($posTenderedKobo),
+            'totalTendered'       => self::toNaira($totalTenderedKobo),
+            'changeAmount'        => self::toNaira($changeAmountKobo),
+            'paidAmount'          => self::toNaira($paidAmountKobo),
+            'retainedCash'        => self::toNaira($retainedCashKobo),
+            'retainedPos'         => self::toNaira($retainedPosKobo),
+            'outstandingDebt'     => self::toNaira($outstandingDebtKobo),
+            'status'              => $status,
+            'grossTotalKobo'      => $grossTotalKobo,
+            'cashTenderedKobo'    => $cashTenderedKobo,
+            'posTenderedKobo'     => $posTenderedKobo,
+            'totalTenderedKobo'   => $totalTenderedKobo,
+            'changeAmountKobo'    => $changeAmountKobo,
+            'paidAmountKobo'      => $paidAmountKobo,
+            'retainedCashKobo'    => $retainedCashKobo,
+            'retainedPosKobo'     => $retainedPosKobo,
+            'outstandingDebtKobo' => $outstandingDebtKobo,
         ];
     }
 
@@ -173,27 +202,32 @@ class AccountingReportService
      */
     public function calculateInvoiceBalance(Sale $sale): float
     {
-        $grossInvoice = (float) $sale->totalAmount;
+        $grossInvoiceKobo = self::toKobo($sale->totalAmount);
 
         // Returns credited against this sale invoice
-        $returnCredits = (float) SalesReturn::where('saleId', $sale->id)
-            ->sum('refundAmount');
+        $returnCreditsKobo = self::toKobo(
+            SalesReturn::where('saleId', $sale->id)->sum('refundAmount')
+        );
 
-        $netInvoice = max(0.0, round($grossInvoice - $returnCredits, 2));
+        $netInvoiceKobo = max(0, $grossInvoiceKobo - $returnCreditsKobo);
 
         // Authoritative financial events: Materialized Payment records are the sole source of truth
-        $inflowPayments = (float) Payment::where('saleId', $sale->id)
-            ->where('amount', '>', 0)
-            ->where('method', '!=', 'REFUND_CASH')
-            ->sum('amount');
+        $inflowPaymentsKobo = self::toKobo(
+            Payment::where('saleId', $sale->id)
+                ->where('amount', '>', 0)
+                ->where('method', '!=', 'REFUND_CASH')
+                ->sum('amount')
+        );
 
-        $cashRefunds = abs((float) Payment::where('saleId', $sale->id)
-            ->where('method', 'REFUND_CASH')
-            ->sum('amount'));
+        $cashRefundsKobo = abs(self::toKobo(
+            Payment::where('saleId', $sale->id)
+                ->where('method', 'REFUND_CASH')
+                ->sum('amount')
+        ));
 
-        $netMoneyApplied = max(0.0, round($inflowPayments - $cashRefunds, 2));
+        $netMoneyAppliedKobo = max(0, $inflowPaymentsKobo - $cashRefundsKobo);
 
-        return max(0.0, round($netInvoice - $netMoneyApplied, 2));
+        return self::toNaira(max(0, $netInvoiceKobo - $netMoneyAppliedKobo));
     }
 
     /**
@@ -205,12 +239,12 @@ class AccountingReportService
             ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
             ->get();
 
-        $derivedDebt = 0.0;
+        $derivedDebtKobo = 0;
         foreach ($openSales as $sale) {
-            $derivedDebt += $this->calculateInvoiceBalance($sale);
+            $derivedDebtKobo += self::toKobo($this->calculateInvoiceBalance($sale));
         }
 
-        return round($derivedDebt, 2);
+        return self::toNaira($derivedDebtKobo);
     }
 
     /**

@@ -284,5 +284,33 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
   - Administrative mutations (`PASSWORD_RESET`, `USER_STATUS_CHANGED`, `USER_UPDATED`) record structured JSON telemetry into `activities.metadata`.
   - Stored forensic attributes include: client `ip`, `user_agent`, `target_user_id`, `request_id` (correlation ID), `action`, `tenant_id`, and `warehouse_id`.
 
+### VM-030: Global Lock-Order Contract, Customer Race Elimination, and Pure Integer Kobo Domain Engine
+- **Global Lock-Order Directed Acyclic Graph (DAG)**:
+  - All transactional workflows acquiring multi-entity locks strictly follow the global canonical hierarchy to guarantee zero deadlock cycles across competing background jobs, checkout workers, and return/payment handlers:
+    ```text
+    Level 1: Tenant Context (session-derived, immutable partition)
+       ↓
+    Level 2: Customer (lockForUpdate() acquired strictly when customer balance/debt is read or altered)
+       ↓
+    Level 3: Transaction Document Root (Sale, Transfer, StockAdjustment)
+       ↓
+    Level 4: StockLevel (monotonically ascending order by product_id)
+       ↓
+    Level 5: StockReservation (child of Sale and StockLevel)
+       ↓
+    Level 6: Immutable Event Records (Payment, CustomerLedger, InventoryLog, Activity)
+    ```
+  - **Walk-in Zero-Lock Optimization**: Retail cash checkouts without customer debt bypass Level 2 locking completely, preserving high-throughput point-of-sale operations.
+  - **Return & Debt Payment Symmetry**: In `recordSaleReturn()`, when `DEBT_REDUCTION` is selected, the Customer is locked at Level 2 *before* Sale (Level 3) and StockLevel (Level 4), directly mirroring `recordCustomerPayment()` (Level 2 -> Level 3) and eliminating the AB-BA lock inversion deadlock vector.
+  - **Multi-SKU Dispatch Monotonicity**: In `dispatchUnsuppliedSale()`, items are sorted monotonically ascending by `product_id` prior to acquiring inventory locks, identical to checkout, transfer, and return operations.
+- **Elimination of Read-Modify-Write Race on `Customer.total_debt`**:
+  - In `recordSale()`, when a part-payment creates or increases customer debt, the `Customer` record is acquired with `lockForUpdate()` at Level 2 at the transaction outset.
+  - `$customer->total_debt` is mutated exclusively on the locked model instance, preventing concurrent checkouts or simultaneous repayments from overwriting balances or dropping debt increments.
+- **Pure Integer Kobo Arithmetic Domain Layer (`AccountingReportService`)**:
+  - All currency calculations inside `AccountingReportService::calculateCheckout()`, `calculateInvoiceBalance()`, and `calculateCustomerDebt()` operate strictly in integer kobo using helper primitives `toKobo()` and `toNaira()`.
+  - Floating-point calculations are eradicated from line totals (`$qty * $unitPriceKobo`), gross totals, tendered cash, tendered POS, change, and net paid amounts.
+  - Authoritative conservation invariant: `($retainedCashKobo + $retainedPosKobo) === $paidAmountKobo` guarantees zero IEEE 754 precision drift across any invoice or payment split.
+
+
 
 

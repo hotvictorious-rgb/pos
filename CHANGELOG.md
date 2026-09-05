@@ -8,6 +8,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 14 (Global Lock-Order Contract, Customer Race Elimination, and Pure Integer Kobo Domain Engine)**:
+  - **Global Lock-Order Directed Acyclic Graph (DAG) (`StockService`, `StockReservation`)**:
+    - Established and enforced canonical multi-resource acquisition order: `Tenant Context (Level 1) -> Customer (Level 2) -> Sale/Transfer/StockAdjustment (Level 3) -> StockLevel (Level 4, sorted by product_id) -> StockReservation (Level 5) -> Immutable Event Records (Level 6)`.
+    - Eliminated AB-BA lock inversion deadlocks between debt repayment (`recordCustomerPayment`) and credit returns (`recordSaleReturn` with `DEBT_REDUCTION`) by acquiring Customer lock at Level 2 *prior* to locking Sale and inventory rows.
+    - Added deterministic monotonic product ID sorting on unsupplied sales fulfillment in `dispatchUnsuppliedSale()`, preventing inter-product deadlocks across concurrent warehouse dispatches.
+    - Preserved high-throughput anonymous point-of-sale operations via zero-lock optimization for walk-in cash sales without debt.
+  - **Elimination of Read-Modify-Write Race on `Customer.total_debt` (`StockService::recordSale`)**:
+    - Acquired exclusive row lock (`Customer::where('id', $customerId)->lockForUpdate()->first()`) at the start of transactions whenever customer credit is extended or customer balances are updated.
+    - Serialized debt updates directly on the locked model instance, preventing lost updates and debt corruption under concurrent checkouts or parallel debt repayments.
+  - **Pure Integer Kobo Arithmetic Domain Layer (`AccountingReportService`)**:
+    - Refactored `AccountingReportService::calculateCheckout()`, `calculateInvoiceBalance()`, and `calculateCustomerDebt()` to execute 100% in integer kobo arithmetic (`toKobo()` and `toNaira()`).
+    - Completely eliminated IEEE 754 floating-point drift across multi-item quantity multiplications, split cash/card tenders, change disbursements, and invoice balance derivations.
+    - Authoritative integer conservation invariant strictly enforces `($retainedCashKobo + $retainedPosKobo) === $paidAmountKobo`.
+  - **Pass 14 Concurrency & Kobo Test Suite (`ProductionHardeningPass14Test`)**:
+    - Added 6 comprehensive feature tests verifying pure integer kobo arithmetic, POS overpayment rejection, concurrent customer debt and payment serialization ($100k - $30k + $50k = $120k exact), return debt reduction symmetry, walk-in lock evasion, and monotonic multi-SKU unsupplied dispatches. Test suite expanded to **335 passed tests (1,838 assertions, 0 errors, 0 failures)**.
+
 - **Production Hardening Pass 11 (Real-Time Identity & Session Invalidation, Web/API Authorization Parity, Structured Security Telemetry, and HTTP Penetration Test Suite)**:
   - **Real-Time Stale Session Invalidation (`CheckWebAuth`, `EnsureTenantActive`)**:
     - Evaluates fresh user state from the database on every authenticated request cycle.

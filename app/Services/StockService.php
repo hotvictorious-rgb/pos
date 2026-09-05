@@ -287,10 +287,16 @@ class StockService
 
             $customerId = $saleData['customerId'] ?? null;
             $customerName = $saleData['customerName'] ?? 'Walk-in Customer';
+            $remainingDebt = max(0.0, round($totalAmount - $paidAmount, 2));
 
+            // Level 2 in Global Lock-Order Hierarchy: Customer Row Lock
+            // When a sale creates or alters customer debt or associates an existing customer account,
+            // acquire Customer with lockForUpdate() BEFORE Sale (Level 3) or StockLevel (Level 4).
+            // Anonymous walk-in transactions with zero debt do NOT acquire customer locks.
+            $customer = null;
             if (!empty($customerId)) {
                 $activeTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
-                $customer = Customer::withoutGlobalScopes()->find($customerId);
+                $customer = Customer::withoutGlobalScopes()->where('id', $customerId)->lockForUpdate()->first();
                 if (!$customer) {
                     throw new \InvalidArgumentException("Customer #{$customerId} does not exist.");
                 }
@@ -301,6 +307,10 @@ class StockService
                     throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} belongs to tenant '{$customer->tenant_id}', not active tenant '{$activeTenantId}'.");
                 }
                 $customerName = $customer->name;
+            } elseif ($remainingDebt > 0 && !empty($customerName) && $customerName !== 'Walk-in Customer') {
+                $customer = Customer::firstOrCreate(['name' => $customerName], ['phone' => $saleData['customerPhone'] ?? null]);
+                $customer = Customer::where('id', $customer->id)->lockForUpdate()->first();
+                $customerId = $customer->id;
             }
 
             $deliveryStatus = $isSuppliedNow ? 'DELIVERED' : 'UNSUPPLIED';
@@ -465,34 +475,24 @@ class StockService
 
 
             // Handle Customer Debt Ledger for Part Payments
-            $remainingDebt = max(0, $totalAmount - $paidAmount);
-            if ($remainingDebt > 0 || $customerId) {
-                $customer = null;
-                if ($customerId) {
-                    $customer = Customer::find($customerId);
-                }
-                if (!$customer && !empty($customerName) && $customerName !== 'Walk-in Customer') {
-                    $customer = Customer::firstOrCreate(['name' => $customerName], ['phone' => $saleData['customerPhone'] ?? null]);
-                }
+            if ($customer && $remainingDebt > 0) {
+                // Customer is already held under exclusive lockForUpdate() (Level 2)
+                $customer->total_debt = round((float)$customer->total_debt + $remainingDebt, 2);
+                $customer->save();
 
-                if ($customer) {
-                    $customer->total_debt += $remainingDebt;
-                    $customer->save();
-
-                    CustomerLedger::create([
-                        'tenant_id' => $tenantId,
-                        'customer_id' => $customer->id,
-                        'sale_id' => $saleId,
-                        'warehouse_id' => $warehouseId,
-                        'type' => 'INVOICE',
-                        'amount' => $remainingDebt,
-                        'balance_after' => $customer->total_debt,
-                        'payment_method' => 'DEBT_ISSUED',
-                        'reference_no' => $saleId,
-                        'recorded_by' => $userName,
-                        'notes' => "Invoice created. Paid: ₦{$paidAmount}, Debt balance: ₦{$remainingDebt}",
-                    ]);
-                }
+                CustomerLedger::create([
+                    'tenant_id' => $tenantId,
+                    'customer_id' => $customer->id,
+                    'sale_id' => $saleId,
+                    'warehouse_id' => $warehouseId,
+                    'type' => 'INVOICE',
+                    'amount' => $remainingDebt,
+                    'balance_after' => $customer->total_debt,
+                    'payment_method' => 'DEBT_ISSUED',
+                    'reference_no' => $saleId,
+                    'recorded_by' => $userName,
+                    'notes' => "Invoice created. Paid: ₦{$paidAmount}, Debt balance: ₦{$remainingDebt}",
+                ]);
             }
 
             return $sale;
@@ -519,7 +519,8 @@ class StockService
                 throw new \Exception('Sale has already been fully delivered/dispatched.');
             }
 
-            foreach ($sale->items as $item) {
+            $sortedItems = $sale->items->sortBy('productId');
+            foreach ($sortedItems as $item) {
                 $stock = $this->ensureStockLevelForAuthorizedMutation($item->productId, $warehouseId, true);
                 $qty = (int) $item->quantity;
 
@@ -1269,6 +1270,22 @@ class StockService
                 throw new \InvalidArgumentException("No items specified for return.");
             }
 
+            // Canonical Lock Hierarchy Enforcement (Level 2: Customer):
+            // If debt reduction is requested, lock Customer *before* Sale (Level 3) to prevent AB-BA deadlock with recordCustomerPayment
+            $customer = null;
+            if ($refundMethod === 'DEBT_REDUCTION') {
+                $saleMeta = Sale::select('id', 'customerId', 'customerName')->where('id', $saleId)->first();
+                if ($saleMeta) {
+                    $cId = $saleMeta->customerId;
+                    if ($cId) {
+                        $customer = Customer::where('id', $cId)->lockForUpdate()->first();
+                    } elseif ($saleMeta->customerName && $saleMeta->customerName !== 'Walk-in Customer') {
+                        $customer = Customer::where('name', $saleMeta->customerName)->lockForUpdate()->first();
+                    }
+                }
+            }
+
+            // Level 3: Transaction Document Root (Sale)
             $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
 
             // Branch isolation: Returns must be processed at the originating branch
@@ -1494,14 +1511,16 @@ class StockService
                 }
                 $sale->save();
 
-                $cId = $sale->customerId ?? $sale->customer_id ?? null;
-                $customer = $cId ? Customer::find($cId) : null;
-                if (!$customer && $sale->customerName) {
-                    $customer = Customer::where('name', $sale->customerName)->first();
+                if (!$customer) {
+                    $cId = $sale->customerId ?? $sale->customer_id ?? null;
+                    $customer = $cId ? Customer::find($cId) : null;
+                    if (!$customer && $sale->customerName) {
+                        $customer = Customer::where('name', $sale->customerName)->first();
+                    }
                 }
 
                 if ($customer) {
-                    $customer->total_debt = max(0.0, round($customer->total_debt - $totalRefundAmount, 2));
+                    $customer->total_debt = max(0.0, round((float)$customer->total_debt - $totalRefundAmount, 2));
                     $customer->save();
 
                     CustomerLedger::create([
