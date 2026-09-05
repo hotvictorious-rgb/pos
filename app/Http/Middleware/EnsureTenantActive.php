@@ -54,6 +54,11 @@ class EnsureTenantActive
 
         // Fail-closed: tenant is suspended or expired
         if (!$tenant->isActive()) {
+            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'warehouse_id', 'active_warehouse_id']);
+            if (\Illuminate\Support\Facades\Auth::check()) {
+                \Illuminate\Support\Facades\Auth::logout();
+            }
+
             if ($isApi) {
                 return response()->json([
                     'error' => 'Forbidden: Your business subscription has expired or been suspended.'

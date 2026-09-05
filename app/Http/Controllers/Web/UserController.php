@@ -226,6 +226,17 @@ class UserController extends Controller
             'userId' => Auth::id() ?? 'ADMIN',
             'userName' => $creatorName,
             'timestamp' => now()->toIso8601String(),
+            'metadata' => [
+                'ip'             => $clientIp,
+                'user_agent'     => substr((string) request()->userAgent(), 0, 500),
+                'target_user_id' => $user->id,
+                'target_name'    => $user->name,
+                'target_role'    => $user->role,
+                'action'         => $action,
+                'warehouse_id'   => $user->warehouse_id,
+                'tenant_id'      => session('tenant_id') ?? $user->tenant_id,
+                'request_id'     => request()->header('X-Request-ID') ?? (string) Str::uuid(),
+            ],
         ]);
 
         return redirect()->route('users.index')->with('success', "✓ Account for {$user->name} is now {$action}.");
@@ -390,6 +401,19 @@ class UserController extends Controller
             'userId' => Auth::id() ?? 'ADMIN',
             'userName' => $adminName,
             'timestamp' => now()->toIso8601String(),
+            'metadata' => [
+                'ip'             => $request->ip() ?? '127.0.0.1',
+                'user_agent'     => substr((string) $request->userAgent(), 0, 500),
+                'target_user_id' => $user->id,
+                'target_name'    => $user->name,
+                'old_role'       => $oldRole,
+                'new_role'       => $newRole,
+                'old_warehouse'  => $oldWarehouse,
+                'new_warehouse'  => $newWarehouseName,
+                'warehouse_id'   => $newWarehouseId,
+                'tenant_id'      => session('tenant_id') ?? $user->tenant_id,
+                'request_id'     => $request->header('X-Request-ID') ?? (string) Str::uuid(),
+            ],
         ]);
 
         return redirect()->route('users.index')->with('success', "✓ Worker account for {$user->name} updated successfully (Assigned to: {$newWarehouseName}).");
@@ -430,6 +454,17 @@ class UserController extends Controller
             'userId'      => Auth::id(),
             'userName'    => $actingUserName,
             'timestamp'   => now()->toIso8601String(),
+            'metadata'    => [
+                'ip'             => $clientIp,
+                'user_agent'     => substr((string) $request->userAgent(), 0, 500),
+                'target_user_id' => $user->id,
+                'target_name'    => $user->name,
+                'target_role'    => $user->role,
+                'action'         => 'PASSWORD_RESET',
+                'warehouse_id'   => $user->warehouse_id,
+                'tenant_id'      => session('tenant_id') ?? $user->tenant_id,
+                'request_id'     => $request->header('X-Request-ID') ?? (string) Str::uuid(),
+            ],
         ]);
 
         return redirect()->route('users.index')->with('success', "✓ Password for {$user->name} updated successfully.");

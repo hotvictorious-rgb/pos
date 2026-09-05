@@ -272,5 +272,17 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
   - Privileged password resets by Tenant Admins create an authoritative, immutable `Activity` audit log (`type = 'PASSWORD_RESET'`) recording the acting administrator, targeted staff member, and client IP.
   - Privileged password resets enforce strong password requirements: minimum 8 characters with letters and numbers.
 
+### VM-029: Real-Time Identity & Session Invalidation Pipeline, Web/API Parity, and Structured Security Telemetry
+- **Real-Time Stale Session Invalidation (`CheckWebAuth`)**:
+  - Every authenticated request evaluates fresh database state (`User::findForAuthenticationById()`).
+  - Account deactivation (`$user->disabled === true`) immediately purges all session keys (`user_id`, `user_name`, `user_role`, `tenant_id`, `warehouse_id`, `active_warehouse_id`), executes `Auth::logout()`, and terminates access (401 for API, redirect to `/login` for Web).
+  - Role modifications and demotions are synchronized to the session on the fly (`user_role = $user->role`), ensuring revoked capabilities trigger immediate 403 Forbidden without requiring manual user logout.
+  - Branch-scoped users (`$user->isBranchScoped()`) are forcefully clamped to their assigned database branch (`session(['warehouse_id' => $user->warehouse_id, 'active_warehouse_id' => $user->warehouse_id])`), completely eliminating stale session branch spoofing.
+- **Immediate Tenant Suspension Session Termination (`CheckWebAuth`, `EnsureTenantActive`)**:
+  - If a tenant is suspended mid-session, any subsequent authenticated request by a member of that tenant immediately purges session credentials, logs out the user, and redirects to `/saas/suspended` (or 403 JSON for API).
+- **Structured Security Telemetry (`Activity::recordSecurityEvent`, `activities.metadata`)**:
+  - Administrative mutations (`PASSWORD_RESET`, `USER_STATUS_CHANGED`, `USER_UPDATED`) record structured JSON telemetry into `activities.metadata`.
+  - Stored forensic attributes include: client `ip`, `user_agent`, `target_user_id`, `request_id` (correlation ID), `action`, `tenant_id`, and `warehouse_id`.
+
 
 

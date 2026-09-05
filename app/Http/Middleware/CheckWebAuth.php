@@ -67,7 +67,7 @@ class CheckWebAuth
         $user = $effectiveId ? User::findForAuthenticationById($effectiveId) : null;
 
         if (!$user || $user->disabled) {
-            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id']);
+            session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'warehouse_id', 'active_warehouse_id']);
             Auth::logout();
             if ($isApi) {
                 return response()->json(['error' => 'Your session has expired or your account is disabled.'], 401);
@@ -79,11 +79,25 @@ class CheckWebAuth
             Auth::login($user);
         }
 
+        // Real-Time Identity & Authority Synchronization
+        session([
+            'user_role' => $user->role,
+            'user_name' => $user->name,
+        ]);
+
+        // Real-Time Branch Assignment Clamping for Branch-Scoped Personnel
+        if ($user->isBranchScoped()) {
+            session([
+                'warehouse_id' => $user->warehouse_id,
+                'active_warehouse_id' => $user->warehouse_id,
+            ]);
+        }
+
         // Validate and synchronize tenant_id context securely
         if (config('saas.enabled')) {
             // If a normal tenant user has no valid tenant, deny access rather than assigning them to the platform tenant
             if (empty($user->tenant_id)) {
-                session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id']);
+                session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'warehouse_id', 'active_warehouse_id']);
                 Auth::logout();
                 if ($isApi) {
                     return response()->json(['error' => 'Forbidden: Account is not associated with an active tenant.'], 403);
@@ -93,6 +107,28 @@ class CheckWebAuth
 
             if (session('tenant_id') !== $user->tenant_id) {
                 session(['tenant_id' => $user->tenant_id]);
+            }
+
+            // Real-Time Tenant Existence & Suspension Check: terminate session if tenant was deleted or suspended mid-session
+            if ($user->tenant_id !== 'default-tenant') {
+                $tenant = \App\Models\Tenant::find($user->tenant_id);
+                if (!$tenant) {
+                    session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'warehouse_id', 'active_warehouse_id']);
+                    Auth::logout();
+                    if ($isApi) {
+                        return response()->json(['error' => 'Forbidden: Tenant business not found or has been deactivated.'], 403);
+                    }
+                    return redirect()->route('login')->with('error', 'Your business account was not found. Please contact support.');
+                }
+
+                if (!$tenant->isActive()) {
+                    session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'warehouse_id', 'active_warehouse_id']);
+                    Auth::logout();
+                    if ($isApi) {
+                        return response()->json(['error' => 'Forbidden: Your business subscription has expired or been suspended.'], 403);
+                    }
+                    return redirect()->route('saas.suspended')->with('error', 'Your business subscription has expired or been suspended. Please contact support or renew your subscription.');
+                }
             }
         } else {
             // Standalone mode: set default tenant context if not set

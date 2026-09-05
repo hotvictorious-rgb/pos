@@ -8,6 +8,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 11 (Real-Time Identity & Session Invalidation, Web/API Authorization Parity, Structured Security Telemetry, and HTTP Penetration Test Suite)**:
+  - **Real-Time Stale Session Invalidation (`CheckWebAuth`, `EnsureTenantActive`)**:
+    - Evaluates fresh user state from the database on every authenticated request cycle.
+    - Disabling a worker account (`$user->disabled = true`) mid-session instantly flushes all session credentials (`user_id`, `user_role`, `active_warehouse_id`), invokes `Auth::logout()`, and terminates access.
+    - Mid-session role demotions are synchronized to the active session immediately, preventing demoted workers from continuing to execute privileged operations without manual re-login.
+    - Mid-session tenant deactivation or suspension purges active sessions and immediately terminates access with 403 Forbidden (API) or redirection to `/saas/suspended` (Web).
+    - Branch-scoped workers (`$user->isBranchScoped()`) have their session active branch forcefully clamped to their assigned database branch, eliminating stale or spoofed branch parameters.
+  - **Structured Security Telemetry (`Activity`, `UserController`)**:
+    - Implemented `Activity::recordSecurityEvent()` capturing client IP, user agent, target user ID, action, tenant ID, warehouse ID, and correlation request ID (`X-Request-ID`).
+    - Enhanced `UserController::resetPassword()`, `UserController::toggleStatus()`, and `UserController::update()` to write structured JSON metadata to `activities.metadata`.
+  - **Comprehensive Pass 11 HTTP Penetration Suite (`ProductionHardeningPass11Test`)**:
+    - Added 10 extensive feature tests verifying cross-tenant resource containment, cross-branch BOLA boundaries, unassigned debt isolation, transfer dispatch/receive controls, price tampering immunity, real-time disabled user session termination, suspended tenant session invalidation, immediate role demotion enforcement, real-time branch assignment clamping, and structured security telemetry. Total test suite expanded to **320 passed tests (1,755 assertions, 0 errors, 0 failures)** across 30 test files.
+
 - **Production Hardening Pass 10 (Bulk Tenant-ID Immutability, Registration Abuse Prevention, Temporary Credential Privacy, Status Enum Validation, and Privileged Audit Logging)**:
   - **Universal Bulk Query Immutability (`BelongsToTenant`)**:
     - Overrode `newEloquentBuilder()` in `BelongsToTenant` to intercept bulk `update()` queries (`Model::query()->where(...)->update(['tenant_id' => ...])`).

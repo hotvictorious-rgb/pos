@@ -477,4 +477,158 @@ class ProductionHardeningPass11Test extends TestCase
         $this->assertEquals(25000.00, (float) $saleItem->unitPrice);
         $this->assertEquals(25000.00, (float) $saleItem->totalPrice);
     }
+
+    /**
+     * PASS 11: TEST 6 - Real-Time Stale Session Invalidation when User is Disabled.
+     */
+    public function test_real_time_session_invalidation_when_user_disabled(): void
+    {
+        // 1. Log in legitimately
+        $this->actingAs($this->cashierA1);
+        session([
+            'user_id' => $this->cashierA1->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            'active_warehouse_id' => $this->warehouseA1->id,
+        ]);
+
+        $res1 = $this->get(route('pos.index'));
+        $res1->assertOk();
+
+        // 2. Administrator disables account in database mid-session
+        $this->cashierA1->disabled = true;
+        $this->cashierA1->save();
+
+        // 3. Next immediate request must be rejected and session cleared
+        $res2 = $this->get(route('pos.index'));
+        $res2->assertRedirect(route('login'));
+        $this->assertNull(session('user_id'));
+        $this->assertNull(session('tenant_id'));
+        $this->assertFalse(\Illuminate\Support\Facades\Auth::check());
+    }
+
+    /**
+     * PASS 11: TEST 7 - Real-Time Stale Session Invalidation when Tenant is Suspended.
+     */
+    public function test_real_time_session_invalidation_when_tenant_suspended(): void
+    {
+        // 1. Log in legitimately with active tenant
+        $this->actingAs($this->cashierA1);
+        session([
+            'user_id' => $this->cashierA1->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            'active_warehouse_id' => $this->warehouseA1->id,
+        ]);
+
+        $res1 = $this->get(route('pos.index'));
+        $res1->assertOk();
+
+        // 2. Platform Administrator suspends tenant mid-session
+        $this->tenantA->status = 'suspended';
+        $this->tenantA->save();
+
+        // 3. Next immediate request must be blocked and redirected to saas.suspended
+        $res2 = $this->get(route('pos.index'));
+        $res2->assertRedirect(route('saas.suspended'));
+        $this->assertNull(session('user_id'));
+        $this->assertNull(session('tenant_id'));
+        $this->assertFalse(\Illuminate\Support\Facades\Auth::check());
+    }
+
+    /**
+     * PASS 11: TEST 8 - Real-Time Role Demotion Enforces Immediate Forbidden.
+     */
+    public function test_real_time_role_demotion_enforces_immediate_forbidden(): void
+    {
+        // 1. User starts as Admin with session access to users management
+        $this->actingAs($this->adminA);
+        session([
+            'user_id' => $this->adminA->id,
+            'user_role' => 'admin',
+            'tenant_id' => $this->tenantA->id,
+        ]);
+
+        $res1 = $this->get(route('users.index'));
+        $res1->assertOk();
+
+        // 2. Super admin demotes user to Cashier mid-session
+        $this->adminA->role = 'cashier';
+        $this->adminA->save();
+
+        // 3. Next immediate Web request to /users must be restricted and redirected without needing manual re-login
+        $res2 = $this->get(route('users.index'));
+        $res2->assertRedirect(route('dashboard'));
+        $res2->assertSessionHas('warning');
+
+        // And API/JSON access must immediately return 403 Forbidden
+        $resJson = $this->getJson(route('users.index'));
+        $resJson->assertForbidden();
+
+        // Session user_role must be updated to cashier on the fly
+        $this->assertEquals('cashier', session('user_role'));
+    }
+
+    /**
+     * PASS 11: TEST 9 - Real-Time Branch Assignment Clamping for Branch-Scoped User.
+     */
+    public function test_real_time_branch_assignment_clamping_for_branch_scoped_user(): void
+    {
+        // Cashier assigned to Branch 1
+        $this->actingAs($this->cashierA1);
+        session([
+            'user_id' => $this->cashierA1->id,
+            'user_role' => 'cashier',
+            'tenant_id' => $this->tenantA->id,
+            // Attacker sets stale or spoofed session active_warehouse_id to Branch 2
+            'active_warehouse_id' => $this->warehouseA2->id,
+            'warehouse_id' => $this->warehouseA2->id,
+        ]);
+
+        // Accessing any authenticated route must forcefully clamp session branch to Branch 1
+        $this->get(route('pos.index'));
+
+        $this->assertEquals($this->warehouseA1->id, session('active_warehouse_id'));
+        $this->assertEquals($this->warehouseA1->id, session('warehouse_id'));
+    }
+
+    /**
+     * PASS 11: TEST 10 - Structured Security Telemetry Captures Metadata JSON.
+     */
+    public function test_structured_security_telemetry_captures_metadata_json(): void
+    {
+        $this->actingAs($this->adminA);
+        session(['tenant_id' => $this->tenantA->id]);
+
+        // 1. Execute password reset with specific client headers
+        $this->withHeaders([
+            'X-Request-ID' => 'req-trace-pass11-999',
+            'User-Agent'   => 'AntigravitySecurityAudit/1.0',
+        ])->withServerVariables(['REMOTE_ADDR' => '172.16.0.42'])
+            ->post(route('users.reset.password', $this->cashierA1->id), [
+                'new_password' => 'Pass11VerifiedPassword99!',
+            ]);
+
+        $resetActivity = Activity::where('type', 'PASSWORD_RESET')->latest()->first();
+        $this->assertNotNull($resetActivity);
+        $this->assertIsArray($resetActivity->metadata);
+        $this->assertEquals('172.16.0.42', $resetActivity->metadata['ip']);
+        $this->assertEquals('AntigravitySecurityAudit/1.0', $resetActivity->metadata['user_agent']);
+        $this->assertEquals('req-trace-pass11-999', $resetActivity->metadata['request_id']);
+        $this->assertEquals($this->cashierA1->id, $resetActivity->metadata['target_user_id']);
+        $this->assertEquals('PASSWORD_RESET', $resetActivity->metadata['action']);
+
+        // 2. Execute status toggle
+        $this->withHeaders([
+            'X-Request-ID' => 'req-trace-toggle-123',
+        ])->withServerVariables(['REMOTE_ADDR' => '172.16.0.88'])
+            ->post(route('users.toggle', $this->cashierA1->id));
+
+        $toggleActivity = Activity::where('type', 'USER_STATUS_CHANGED')->latest()->first();
+        $this->assertNotNull($toggleActivity);
+        $this->assertIsArray($toggleActivity->metadata);
+        $this->assertEquals('172.16.0.88', $toggleActivity->metadata['ip']);
+        $this->assertEquals('req-trace-toggle-123', $toggleActivity->metadata['request_id']);
+        $this->assertEquals($this->cashierA1->id, $toggleActivity->metadata['target_user_id']);
+    }
 }
