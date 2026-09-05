@@ -14,6 +14,7 @@ use App\Models\TransferItem;
 use App\Models\InventoryLog;
 use App\Models\Activity;
 use App\Models\Warehouse;
+use App\Models\User;
 use App\Exceptions\InsufficientStockException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -48,15 +49,68 @@ class StockService
     }
 
     /**
+     * Authoritatively assert that the acting user possesses authority to operate on the specified warehouse.
+     * Enforces the complete WHAT + WHERE security contract at the service layer:
+     * - Tenant Admin: Authorized on any warehouse belonging to their active tenant.
+     * - Branch-Scoped Employee: Strictly restricted to their assigned warehouse_id.
+     * - Platform User: Strictly forbidden from performing tenant business warehouse operations.
+     *
+     * @throws AuthorizationException
+     */
+    public function assertUserWarehouseAuthority(int $warehouseId, ?User $actor = null): Warehouse
+    {
+        $wh = $this->assertTenantWarehouse($warehouseId);
+
+        $user = Auth::user() ?? $actor;
+
+        if ($user) {
+            if ($user->isPlatformUser()) {
+                throw new AuthorizationException(
+                    "Security Violation: Platform user '{$user->name}' cannot perform tenant business operations on Branch #{$warehouseId}."
+                );
+            }
+
+            if ($user->isBranchScoped()) {
+                if ((int) $user->warehouse_id !== (int) $warehouseId) {
+                    throw new AuthorizationException(
+                        "Security Violation: User '{$user->name}' assigned to Branch #{$user->warehouse_id} cannot operate on Branch #{$warehouseId}."
+                    );
+                }
+            }
+
+            if ($user->isTenantAdmin()) {
+                if (config('saas.enabled') && $wh->tenant_id !== $user->tenant_id) {
+                    throw new AuthorizationException(
+                        "Security Violation: Tenant admin cannot operate on foreign tenant warehouse #{$warehouseId}."
+                    );
+                }
+            }
+
+            return $wh;
+        }
+
+        // Fail-closed authorization: Reject execution when no authenticated actor exists in an HTTP route context
+        if (request()->route() !== null) {
+            throw new AuthorizationException(
+                "Unauthorized: No authenticated actor provided for warehouse #{$warehouseId} operation."
+            );
+        }
+
+        return $wh;
+    }
+
+    /**
      * Authoritatively assert that the acting user holds the required capability.
      * Fails closed: rejects execution if no authenticated actor or resolved user exists.
+     * Derives actor strictly from Auth::user() in HTTP route contexts.
      *
      * @throws AuthorizationException
      */
     public function assertUserCapability(string $capability, ?string $userId = null): void
     {
+        // Authoritative actor separation: In HTTP route contexts, derive strictly from authenticated session
         $user = Auth::user();
-        if (!$user && !empty($userId) && request()->route() !== null) {
+        if (!$user && !empty($userId) && request()->route() === null && !app()->runningUnitTests()) {
             $user = \App\Models\User::withoutGlobalScopes()->find($userId);
         }
 
@@ -122,7 +176,7 @@ class StockService
     public function recordStockIn(string $productId, int $warehouseId, int $quantity, ?string $supplierName, string $userId, string $userName, ?string $notes = null): StockLevel
     {
         $this->assertUserCapability('stock.in', $userId);
-        $this->assertTenantWarehouse($warehouseId);
+        $this->assertUserWarehouseAuthority($warehouseId);
 
         return DB::transaction(function () use ($productId, $warehouseId, $quantity, $supplierName, $userId, $userName, $notes) {
             if ($quantity <= 0) {
@@ -178,7 +232,7 @@ class StockService
     public function recordSale(array $saleData, array $items, int $warehouseId, bool $isSuppliedNow, string $userId, string $userName): Sale
     {
         $this->assertUserCapability('pos.checkout', $userId);
-        $this->assertTenantWarehouse($warehouseId);
+        $this->assertUserWarehouseAuthority($warehouseId);
 
         return DB::transaction(function () use ($saleData, $items, $warehouseId, $isSuppliedNow, $userId, $userName) {
             $saleId = $saleData['id'] ?? (string) Str::uuid();
@@ -427,7 +481,7 @@ class StockService
     public function dispatchUnsuppliedSale(string $saleId, int $warehouseId, string $userId, string $userName): Sale
     {
         $this->assertUserCapability('stock.transfer', $userId);
-        $this->assertTenantWarehouse($warehouseId);
+        $this->assertUserWarehouseAuthority($warehouseId);
 
         return DB::transaction(function () use ($saleId, $warehouseId, $userId, $userName) {
             $sale = Sale::with('items')->where('id', $saleId)->lockForUpdate()->firstOrFail();
@@ -527,7 +581,7 @@ class StockService
     public function fulfillStockReservation(string $saleId, string $productId, int $warehouseId, int $qty, string $userId, string $userName): \App\Models\StockReservation
     {
         $this->assertUserCapability('stock.transfer', $userId);
-        $this->assertTenantWarehouse($warehouseId);
+        $this->assertUserWarehouseAuthority($warehouseId);
 
         if ($qty <= 0) {
             throw new \InvalidArgumentException('Fulfillment quantity must be greater than zero.');
@@ -619,7 +673,7 @@ class StockService
     public function initiateTransfer(int $sourceWarehouseId, int $destWarehouseId, array $items, ?string $carrierName, string $userId, string $userName, ?string $notes = null): Transfer
     {
         $this->assertUserCapability('stock.transfer', $userId);
-        $this->assertTenantWarehouse($sourceWarehouseId);
+        $this->assertUserWarehouseAuthority($sourceWarehouseId);
         $this->assertTenantWarehouse($destWarehouseId);
 
         return DB::transaction(function () use ($sourceWarehouseId, $destWarehouseId, $items, $carrierName, $userId, $userName, $notes) {
@@ -772,6 +826,8 @@ class StockService
 
         return DB::transaction(function () use ($transferId, $countedItems, $userId, $userName, $discrepancyNotes) {
             $transfer = Transfer::with('items')->where('id', $transferId)->lockForUpdate()->firstOrFail();
+
+            $this->assertUserWarehouseAuthority($transfer->destination_warehouse_id);
 
             if ($transfer->status !== 'DISPATCHED') {
                 throw new \Exception("Transfer #{$transfer->transfer_no} cannot be received: Current status is '{$transfer->status}' (only in-transit 'DISPATCHED' transfers can be received).");
@@ -949,7 +1005,7 @@ class StockService
         }
 
         if ($warehouseId !== null) {
-            $this->assertTenantWarehouse($warehouseId);
+            $this->assertUserWarehouseAuthority($warehouseId);
         }
 
         return DB::transaction(function () use ($customerId, $amount, $cleanMethod, $refNo, $userId, $userName, $notes, $warehouseId) {
@@ -1097,7 +1153,7 @@ class StockService
     public function recordStockAdjustment(string $productId, int $warehouseId, string $type, int $quantity, string $reason, string $userId, string $userName): \App\Models\StockAdjustment
     {
         $this->assertUserCapability('stock.adjust', $userId);
-        $this->assertTenantWarehouse($warehouseId);
+        $this->assertUserWarehouseAuthority($warehouseId);
 
         return DB::transaction(function () use ($productId, $warehouseId, $type, $quantity, $reason, $userId, $userName) {
             if ($quantity <= 0) {
@@ -1172,7 +1228,7 @@ class StockService
     public function recordSaleReturn(string $saleId, array $returnItems, int $warehouseId, string $refundMethod, string $reason, string $userId, string $userName): \App\Models\SalesReturn
     {
         $this->assertUserCapability('returns.process', $userId);
-        $this->assertTenantWarehouse($warehouseId);
+        $this->assertUserWarehouseAuthority($warehouseId);
 
         if (!in_array($refundMethod, ['CASH_REFUND', 'DEBT_REDUCTION'], true)) {
             throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: CASH_REFUND, DEBT_REDUCTION.");

@@ -446,7 +446,7 @@ class ProductionHardeningPass4Test extends TestCase
         $badManifestData = json_decode($json, true);
         $badManifestData['manifest']['tenants'] = 999;
         $signingKey = config('app.key');
-        $badManifestData['checksum'] = hash_hmac('sha256', json_encode($badManifestData['data']), $signingKey);
+        $badManifestData['checksum'] = BackupController::computeEnvelopeChecksum($badManifestData, $signingKey);
         $failManifest = $refMethod->invoke($controller, json_encode($badManifestData), $this->platformAdmin);
         $this->assertArrayHasKey('error', $failManifest);
         $this->assertStringContainsString('Manifest count mismatch', $failManifest['error']);

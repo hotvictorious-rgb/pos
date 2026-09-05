@@ -194,3 +194,24 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
   - Any tampering with backup metadata, table manifests, or payload structures invalidates the cryptographic verification.
   - Maintained backward compatibility for legacy backups signed exclusively over the `data` payload.
 
+### VM-025: Service-Layer WHAT + WHERE Authority Enforcement, Actor Separation, and Debt UI Scoping
+- **Service-Level Warehouse Authority (`StockService::assertUserWarehouseAuthority`)**:
+  - The service layer authoritatively asserts both tenant tenancy AND user warehouse authority across all mutation methods (`recordStockIn`, `recordSale`, `dispatchUnsuppliedSale`, `fulfillStockReservation`, `initiateTransfer`, `receiveTransfer`, `recordCustomerPayment`, `recordStockAdjustment`, `recordSaleReturn`).
+  - Branch-scoped employees (`$user->isBranchScoped()`) are strictly blocked at the service layer from mutating any warehouse other than their assigned `$user->warehouse_id`, throwing `AuthorizationException`.
+  - Platform users are strictly blocked at the service layer from executing tenant business operations on any tenant warehouse.
+  - Tenant administrators are authorized across any warehouse within their authenticated tenant boundary.
+- **Authoritative Actor Separation (Caller-Supplied `$userId` Immunity)**:
+  - In HTTP route contexts, user authorization and capability checks derive strictly from `Auth::user()`.
+  - Caller-supplied `$userId` and `$userName` arguments are preserved strictly for audit logging and DB tracking, but are NEVER trusted for authorization decisions. An unprivileged or branch-scoped user cannot spoof an admin by passing the admin's `$userId`.
+- **Debt Management UI Scoping**:
+  - In `DebtController::index()`:
+    - When branch-scoped, `$allCustomers` in the payment modal dropdown is strictly scoped to customers with open sales originating at the employee's assigned branch (`$user->warehouse_id`).
+    - Debt bracket filtering (`HIGH`, `MEDIUM`, `LOW`) and `$highRiskDebtorsCount` evaluate the customer's branch debt rather than tenant-wide liability.
+- **Customer Ledger Branch Traceability Backfill**:
+  - Database migration `2026_09_05_090000_backfill_customer_ledgers_warehouse_id` backfills `warehouse_id` on historical `customer_ledgers` using `sales.warehouse_id` and customer branch sale history.
+- **Event-Authoritative Top Staff Analytics**:
+  - In `ReportController`: `topStaff` collection figures derive from event-authoritative payments (`inflowPayments - cashRefunds`) rather than cached `paidAmount`.
+- **Strict Cryptographic Backup Envelope Guarantee**:
+  - For backup payloads version 2.0 and above, envelope HMAC validation is strictly enforced; fallback to data-only HMAC is forbidden if envelope metadata or table manifests have been tampered with.
+
+

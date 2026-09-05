@@ -611,11 +611,14 @@ class BackupController extends Controller
             throw new \RuntimeException('Application key is not configured for cryptographic backup signing.');
         }
 
+        $version = (string) ($backupContent['version'] ?? '1.0.0');
+        $isV2OrAbove = version_compare($version, '2.0', '>=');
+
         $expectedEnvelopeChecksum = self::computeEnvelopeChecksum($backupContent, $signingKey);
         $checksumMatches = hash_equals($expectedEnvelopeChecksum, $backupContent['checksum']);
 
-        // Backward compatibility: If envelope checksum does not match, check legacy data-only checksum
-        if (!$checksumMatches) {
+        // Backward compatibility: Only allow data-only HMAC fallback for legacy pre-2.0 backups
+        if (!$checksumMatches && !$isV2OrAbove) {
             $legacyDataChecksum = hash_hmac('sha256', json_encode($backupContent['data']), $signingKey);
             $checksumMatches = hash_equals($legacyDataChecksum, $backupContent['checksum']);
         }

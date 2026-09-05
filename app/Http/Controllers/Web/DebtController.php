@@ -33,13 +33,49 @@ class DebtController extends Controller
         $query = Customer::where('total_debt', '>', 0);
 
         if ($assignedWarehouseId) {
-            $customerIdsAtBranch = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
+            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            $branchSales = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
                 ->whereNotNull('customerId')
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->pluck('customerId')
-                ->filter()
-                ->unique();
+                ->get();
+
+            $customerBranchDebts = [];
+            foreach ($branchSales as $bs) {
+                $cId = $bs->customerId;
+                $bal = $accountingService->calculateInvoiceBalance($bs);
+                if ($bal > 0) {
+                    $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                }
+            }
+
+            // Only customers who actually owe debt originating at this branch
+            $customerIdsAtBranch = array_keys(array_filter($customerBranchDebts, fn($b) => round($b, 2) > 0));
             $query->whereIn('id', $customerIdsAtBranch);
+
+            // Scope debt bracket filtering strictly to branch debt
+            if ($debtBracket === 'HIGH') {
+                $filteredIds = array_keys(array_filter($customerBranchDebts, fn($b) => $b >= 100000));
+                $query->whereIn('id', $filteredIds);
+            } elseif ($debtBracket === 'MEDIUM') {
+                $filteredIds = array_keys(array_filter($customerBranchDebts, fn($b) => $b >= 20000 && $b < 100000));
+                $query->whereIn('id', $filteredIds);
+            } elseif ($debtBracket === 'LOW') {
+                $filteredIds = array_keys(array_filter($customerBranchDebts, fn($b) => $b < 20000));
+                $query->whereIn('id', $filteredIds);
+            }
+
+            // Strictly scope modal dropdown to branch customers
+            $allCustomers = Customer::whereIn('id', $customerIdsAtBranch)->orderBy('name')->get();
+        } else {
+            if ($debtBracket === 'HIGH') {
+                $query->where('total_debt', '>=', 100000);
+            } elseif ($debtBracket === 'MEDIUM') {
+                $query->where('total_debt', '>=', 20000)->where('total_debt', '<', 100000);
+            } elseif ($debtBracket === 'LOW') {
+                $query->where('total_debt', '<', 20000);
+            }
+
+            $allCustomers = Customer::orderBy('name')->get();
         }
 
         if ($search) {
@@ -48,14 +84,6 @@ class DebtController extends Controller
                   ->orWhere('phone', 'like', "%{$search}%")
                   ->orWhere('address', 'like', "%{$search}%");
             });
-        }
-
-        if ($debtBracket === 'HIGH') {
-            $query->where('total_debt', '>=', 100000);
-        } elseif ($debtBracket === 'MEDIUM') {
-            $query->where('total_debt', '>=', 20000)->where('total_debt', '<', 100000);
-        } elseif ($debtBracket === 'LOW') {
-            $query->where('total_debt', '<', 20000);
         }
 
         if ($sortBy === 'lowest_debt') {
@@ -69,38 +97,30 @@ class DebtController extends Controller
         }
 
         $debtors = (clone $query)->paginate(25)->withQueryString();
-        $allCustomers = Customer::orderBy('name')->get();
 
         if ($assignedWarehouseId) {
-            $branchSales = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
-                ->whereNotNull('customerId')
-                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->get();
-            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+            $matchingDebtorIds = (clone $query)->pluck('id')->toArray();
             $totalOutstandingDebt = 0.0;
-            foreach ($branchSales as $bs) {
-                $totalOutstandingDebt += $accountingService->calculateInvoiceBalance($bs);
+            $highRiskDebtorsCount = 0;
+            foreach ($matchingDebtorIds as $mId) {
+                $bDebt = $customerBranchDebts[$mId] ?? 0.0;
+                $totalOutstandingDebt += $bDebt;
+                if ($bDebt >= 100000) {
+                    $highRiskDebtorsCount++;
+                }
             }
             $totalOutstandingDebt = round($totalOutstandingDebt, 2);
 
-            $debtors->getCollection()->transform(function ($debtor) use ($assignedWarehouseId, $accountingService) {
-                $bSales = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
-                    ->where('customerId', $debtor->id)
-                    ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                    ->get();
-                $bDebt = 0.0;
-                foreach ($bSales as $bs) {
-                    $bDebt += $accountingService->calculateInvoiceBalance($bs);
-                }
-                $debtor->branch_debt = round($bDebt, 2);
+            $debtors->getCollection()->transform(function ($debtor) use ($customerBranchDebts) {
+                $debtor->branch_debt = round($customerBranchDebts[$debtor->id] ?? 0.0, 2);
                 return $debtor;
             });
         } else {
             $totalOutstandingDebt = (clone $query)->sum('total_debt');
+            $highRiskDebtorsCount = (clone $query)->where('total_debt', '>=', 100000)->count();
         }
 
         $totalDebtorsCount = (clone $query)->count();
-        $highRiskDebtorsCount = (clone $query)->where('total_debt', '>=', 100000)->count();
 
         $recentPaymentsQuery = CustomerLedger::with(['customer', 'sale'])->where('type', 'PAYMENT');
         if ($assignedWarehouseId) {

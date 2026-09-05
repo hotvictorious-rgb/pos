@@ -8,6 +8,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 7 (Service-Layer WHAT + WHERE Authority Enforcement, Actor Separation, Debt UI Isolation, and Strict HMAC Guarantees)**:
+  - **Service-Level Warehouse Authority Enforcement (`StockService`)**:
+    - Implemented `assertUserWarehouseAuthority(int $warehouseId, ?User $actor = null): Warehouse` enforcing the complete WHAT + WHERE security contract at the service layer:
+      - Branch-scoped employees (`$user->isBranchScoped()`) are strictly restricted to `$user->warehouse_id === $warehouseId`, throwing `AuthorizationException` if attempting to mutate another branch.
+      - Platform users are strictly blocked from tenant warehouse business mutations (`AuthorizationException`).
+      - Tenant administrators are verified against active tenant boundaries.
+    - Replaced tenant-only warehouse assertions with `assertUserWarehouseAuthority` across all service mutation entry points:
+      - `recordStockIn`
+      - `recordSale`
+      - `dispatchUnsuppliedSale`
+      - `fulfillStockReservation`
+      - `initiateTransfer` (for `sourceWarehouseId`)
+      - `receiveTransfer` (for `destinationWarehouseId`)
+      - `recordCustomerPayment`
+      - `recordStockAdjustment`
+      - `recordSaleReturn`
+  - **Authoritative Actor Separation (Spoofing Immunity)**:
+    - Decoupled session authorization from audit logging in `StockService::assertUserCapability()` and `assertUserWarehouseAuthority()`.
+    - In HTTP route contexts, authorization derives strictly from `Auth::user()`. Caller-supplied `$userId` and `$userName` arguments are retained purely for audit trails and database records, preventing unprivileged or branch employees from spoofing administrator authority by passing an admin's ID.
+  - **Debt Management UI Scoping (`DebtController::index`)**:
+    - Scoped `$allCustomers` in the debt collection modal dropdown to customers with open sales originating at the employee's assigned warehouse when `$isBranchScoped`, preventing customer leakage across branches.
+    - Updated debt bracket filtering (`HIGH`, `MEDIUM`, `LOW`) and `$highRiskDebtorsCount` to evaluate the customer's calculated branch debt rather than tenant-wide liability.
+    - Derived `$totalOutstandingDebt` directly from open branch invoice balances.
+  - **Customer Ledgers Branch Traceability Migration**:
+    - Added database migration `2026_09_05_090000_backfill_customer_ledgers_warehouse_id.php` backfilling `customer_ledgers.warehouse_id` from `sales.warehouse_id` via `sale_id`, and inferring remaining historical ledgers from customer branch sale history or tenant primary warehouse.
+  - **Event-Authoritative Top Staff Analytics (`ReportController`)**:
+    - In `ReportController::index()`, updated `topStaff` collection figures to compute net event payments (`inflowPayments - cashRefunds`) from `Payment` records rather than relying on cached `paidAmount`.
+  - **Strict Backup Envelope Cryptographic HMAC Guarantee (`BackupController`)**:
+    - Hardened `validateBackupIntegrity()`: Version 2.0+ backups strictly require valid envelope HMAC checksums. Fallback to legacy data-only HMAC is strictly restricted to pre-2.0 backups (`version < 2.0`), ensuring metadata and manifest tampering cannot be masked.
+  - **Added `ProductionHardeningPass7Test`**: 8 comprehensive feature tests verifying service authority enforcement, spoofing immunity, debt UI scoping, ledger backfill, authoritative staff collections, and backup envelope HMAC security, expanding the test suite to **261 passed tests (1,459 assertions, 0 errors, 0 failures)** across 33 test suites.
 - **Production Hardening Pass 6 (Universal Branch Debt Isolation, Event-Driven Financial Authority, Envelope HMAC Integrity, and CI PHP Matrix)**:
   - **Branch-Isolated Debt Payments & Multi-Branch Reconciliations**:
     - Added database migration `2026_09_05_080000_add_warehouse_id_to_customer_ledgers_table` stamping `warehouse_id` on `customer_ledgers`.

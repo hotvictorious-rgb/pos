@@ -722,8 +722,9 @@ class ProductionHardeningPass6Test extends TestCase
         $this->assertNotNull($backupController->validateBackupIntegrity($tamperedData, 'TENANT', $this->tenant->id), "Tampered data payload must fail validation.");
 
         // 6. Backward Compatibility: Legacy backup signed only over 'data' payload
+        // Pre-2.0 legacy backup (data-only checksum)
         $legacyEnvelope = [
-            'version' => '2.1.0',
+            'version' => '1.0.0',
             'type' => 'TENANT',
             'tenant_id' => $this->tenant->id,
             'timestamp' => now()->toIso8601String(),
