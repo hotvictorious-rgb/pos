@@ -8,6 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- **Production Hardening Pass 9 (Platform Capability Scoping, Paystack Secret Elimination, Seeder Production Hardening, and Tenant ID Immutability)**:
+  - **Platform Employee Capability Isolation & Master Dashboard Hardening (`SaaSController`, `saas.admin.index`)**:
+    - Enforced strict capability isolation on the SaaS master dashboard. A Platform Employee with only `platform.health` receives strictly infrastructure metrics and health data, and is strictly blocked from viewing the tenant directory, customer/owner PII, MRR, settings, or backups.
+    - Wrapped tenant directory, MRR metrics, new tenant creation, platform settings, and backups inside granular Blade capability directives (`@if($canTenants)`, `@if($canSettings)`, `@if($canBackup)`, `@if($canHealth)`).
+    - Hardened `/saas/admin/tenant`, `/saas/admin/toggle/{id}`, `/saas/admin/limits/{id}`, `/saas/admin/delete/{id}`, and `/saas/admin/settings` to enforce 403 Forbidden on unauthorized platform employees.
+  - **Complete Elimination of Paystack Secret Key from HTML/Views (`SaaSController`, `saas.admin.index`)**:
+    - Eradicated `paystack_secret_key` from Blade view data, HTML forms, and JSON payloads.
+    - Replaced plaintext rendering with server-side masking (`paystack_secret_configured => bool`, `•••••••• (Configured — leave blank to keep unchanged)`).
+    - Hardened `updateSettings()`: blank submissions and mask bullet strings never overwrite the server-side key; updating requires an explicit, non-mask string.
+  - **Elimination of Known Default Credentials in Production Seeding (`DatabaseSeeder`)**:
+    - Enforced credential safety in `DatabaseSeeder`: running `db:seed` in production strictly rejects known weak defaults (`changeme123`, `admin123`, `staff123`, `password`, `12345678`, `secret`), requiring an explicit environment credential.
+    - Enforced password preservation: re-running `db:seed` preserves existing user passwords and never silently resets administrator, tenant admin, or staff credentials.
+    - Demo tenants and demo accounts are isolated from production seeding.
+  - **Tenant ID Immutability on Persisted Records (`BelongsToTenant`, `SecurityException`)**:
+    - Introduced `App\Exceptions\SecurityException`.
+    - Added `static::updating()` model hook in `BelongsToTenant`: any attempt to alter `tenant_id` on an already persisted record throws `SecurityException`, completely preventing cross-tenant migration via mass assignment, direct assignment, service mutations, or controller bypasses.
+  - **Comprehensive Pass 9 Adversarial Test Suite (`ProductionHardeningPass9Test`)**:
+    - Implemented 13 dedicated adversarial tests proving platform employee isolation, secret elimination, seeder credential preservation, tenant immutability, and service-layer closure.
+
 - **Production Hardening Pass 8 (Stock-Level Mutation Safety, Absolute Service Actor Closure, Deterministic Ledgers, and Report Debt Containment)**:
   - **Mutation-Safe `getStockLevel()` Separation (`StockService`)**:
     - Converted `StockService::getStockLevel(string $productId, int $warehouseId, bool $lockForUpdate = false): ?StockLevel` into a strictly non-mutating query. It never creates records (`firstOrCreate`) or issues implicit writes.

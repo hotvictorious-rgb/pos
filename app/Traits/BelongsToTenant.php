@@ -56,6 +56,20 @@ trait BelongsToTenant
                 }
             }
         });
+
+        static::updating(function ($model) {
+            if (config('saas.enabled')) {
+                if ($model->isDirty('tenant_id')) {
+                    $originalTenantId = $model->getOriginal('tenant_id');
+                    // Invariant: Once an authoritative tenant_id is established, it is strictly immutable.
+                    if (!empty($originalTenantId) && $originalTenantId !== $model->tenant_id) {
+                        throw new \App\Exceptions\SecurityException(
+                            "Cross-Tenant Security Violation: Immutable attribute 'tenant_id' cannot be altered on persisted record " . get_class($model) . " [{$model->getKey()}]."
+                        );
+                    }
+                }
+            }
+        });
     }
 
     /**

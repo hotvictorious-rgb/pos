@@ -237,4 +237,22 @@ Every feature must pass through the **Twelve-Point Architectural Evaluation Pipe
 - **Verifiable GitHub Actions CI & Commit Status Automation**:
   - CI test workflow (`ci.yml`) executes the full test suite against PHP 8.3 with SQLite environment bootstrapping, archives full test logs as artifacts, outputs Markdown step summaries, and safely writes GitHub Commit Statuses (`context: ci/laravel-tests`) alongside GitHub Checks, providing full independent verification directly within the GitHub commit graph and REST APIs.
 
+### VM-027: Platform Capability Scoping, Paystack Secret Elimination, Seeder Production Hardening, and Tenant ID Immutability
+- **Platform Capability Scoping & Master Dashboard Minimization**:
+  - On the SaaS master dashboard (`/saas/admin`), Platform Employees with partial platform capabilities receive strictly capability-scoped information.
+  - An employee with only `platform.health` receives strictly infrastructure metrics and health data, and is strictly prevented from receiving or viewing tenant directories, customer/owner PII, MRR, settings, or backups.
+  - Sensitive sections (Tenants Directory, Tenant Creation, SaaS Settings, and Backups) are protected both in the controller data pipeline and via granular Blade directives (`@if($canTenants)`, `@if($canSettings)`, `@if($canBackup)`, `@if($canHealth)`).
+- **Paystack Secret Elimination from HTML/Views**:
+  - `paystack_secret_key` is strictly forbidden from being passed to Blade views, HTML input attributes, or JSON responses.
+  - The UI presents only server-side configuration indicators (`paystack_secret_configured => bool` and `•••••••• (Configured — leave blank to keep unchanged)`).
+  - The update handler strictly preserves existing secret keys when submitted as blank or masked bullet strings; secret rotation requires an explicit, non-mask input.
+- **Seeder Production Hardening & Credential Safety**:
+  - In production environments, `DatabaseSeeder` strictly rejects known weak or default credentials (`changeme123`, `admin123`, `staff123`, `password`, `12345678`, `secret`), throwing `SecurityException` if an explicit secure `SUPER_ADMIN_PASSWORD` is not provided.
+  - Running `db:seed` preserves existing user passwords and never resets existing administrator, tenant admin, or staff credentials.
+  - Demo tenants and demo accounts are isolated from production seeding.
+- **Tenant ID Immutability on Persisted Records**:
+  - In `BelongsToTenant`, a `static::updating()` model hook prevents mutation of `tenant_id` on all persisted tenant records across the application.
+  - Any attempt to alter `tenant_id` via direct assignment, mass-assignment (`$model->update(['tenant_id' => ...])`), or service invocation immediately aborts with `App\Exceptions\SecurityException`.
+
+
 

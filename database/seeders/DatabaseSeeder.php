@@ -22,7 +22,17 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $superAdminEmail = strtolower(trim(config('saas.super_admin_email', 'admin@hysamventures.com')));
-        $superAdminPassword = env('SUPER_ADMIN_PASSWORD', 'changeme123');
+        $rawSuperAdminPassword = env('SUPER_ADMIN_PASSWORD');
+
+        // Production Invariant: Disallow known default or weak credentials
+        $knownWeakPasswords = ['changeme123', 'admin123', 'staff123', 'password', '12345678', 'secret'];
+        if (app()->environment('production')) {
+            if (empty($rawSuperAdminPassword) || in_array(strtolower($rawSuperAdminPassword), $knownWeakPasswords, true)) {
+                throw new \App\Exceptions\SecurityException("Security Violation: Production seeding requires a secure, non-default SUPER_ADMIN_PASSWORD environment variable.");
+            }
+        }
+
+        $superAdminPassword = $rawSuperAdminPassword ?: (app()->environment('testing') ? 'test-super-secret-pw' : Str::random(32));
 
         // 1. Seed Master Platform Tenant (default-tenant for Super Admin)
         $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant')
@@ -37,26 +47,16 @@ class DatabaseSeeder extends Seeder
                 'max_users' => 999,
             ]);
 
-        // 2. Seed Business Tenant (Hysam Ventures HQ)
-        $tenant = Tenant::withoutGlobalScopes()->find('tenant-1')
-            ?? Tenant::create([
-                'id' => 'tenant-1',
-                'name' => 'Hysam Ventures HQ',
-                'owner_email' => 'tenantadmin@hysam.com',
-                'owner_phone' => '08011112222',
-                'plan' => 'enterprise',
-                'status' => 'active',
-                'max_branches' => 10,
-                'max_users' => 50,
-            ]);
+        // 2. Seed Business Tenant (Hysam Ventures HQ) - Only if demo data is enabled or not in production
+        $seedDemoData = !app()->environment('production') || (bool) env('SEED_DEMO_DATA', false);
 
         // 3. Seed Platform Super Admin User (Super-Admin Console: /super-admin/login)
         $existingSuperAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
         if ($existingSuperAdmin) {
+            // INVARIANT: Re-seeding must NEVER overwrite existing user passwords or credentials
             $existingSuperAdmin->update([
                 'tenant_id' => 'default-tenant',
                 'name' => 'Platform Super Admin',
-                'password' => Hash::make($superAdminPassword),
                 'role' => 'admin',
                 'disabled' => false,
                 'permissions' => json_encode(['all' => true]),
@@ -74,25 +74,42 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
+        if (!$seedDemoData) {
+            return;
+        }
+
+        $tenant = Tenant::withoutGlobalScopes()->find('tenant-1')
+            ?? Tenant::create([
+                'id' => 'tenant-1',
+                'name' => 'Hysam Ventures HQ',
+                'owner_email' => 'tenantadmin@hysam.com',
+                'owner_phone' => '08011112222',
+                'plan' => 'enterprise',
+                'status' => 'active',
+                'max_branches' => 10,
+                'max_users' => 50,
+            ]);
+
         // 4. Seed Business Tenant Admin User (Tenant Admin Portal: /tenant/login)
         $tenantAdminEmail = 'tenantadmin@hysam.com';
         $existingTenantAdmin = User::withoutGlobalScopes()->where('email', $tenantAdminEmail)->first();
         if ($existingTenantAdmin) {
+            // INVARIANT: Re-seeding must NEVER overwrite existing user passwords
             $existingTenantAdmin->update([
                 'tenant_id' => $tenant->id,
                 'name' => 'Business Owner / Admin',
-                'password' => Hash::make('admin123'),
                 'role' => 'admin',
                 'disabled' => false,
                 'permissions' => json_encode(['all' => true]),
             ]);
         } else {
+            $tenantAdminPw = env('TENANT_ADMIN_PASSWORD') ?: (app()->environment('testing') ? 'tenant-admin-test-pw' : Str::random(32));
             User::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $tenant->id,
                 'name' => 'Business Owner / Admin',
                 'email' => $tenantAdminEmail,
-                'password' => Hash::make('admin123'),
+                'password' => Hash::make($tenantAdminPw),
                 'role' => 'admin',
                 'disabled' => false,
                 'permissions' => json_encode(['all' => true]),
@@ -103,21 +120,22 @@ class DatabaseSeeder extends Seeder
         $staffEmail = 'staff@hysam.com';
         $existingStaff = User::withoutGlobalScopes()->where('email', $staffEmail)->first();
         if ($existingStaff) {
+            // INVARIANT: Re-seeding must NEVER overwrite existing user passwords
             $existingStaff->update([
                 'tenant_id' => $tenant->id,
                 'name' => 'Sales Officer 1',
-                'password' => Hash::make('staff123'),
                 'role' => 'staff',
                 'disabled' => false,
                 'permissions' => json_encode(['pos' => true, 'stockIn' => true]),
             ]);
         } else {
+            $staffPw = env('STAFF_PASSWORD') ?: (app()->environment('testing') ? 'tenant-staff-test-pw' : Str::random(32));
             User::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $tenant->id,
                 'name' => 'Sales Officer 1',
                 'email' => $staffEmail,
-                'password' => Hash::make('staff123'),
+                'password' => Hash::make($staffPw),
                 'role' => 'staff',
                 'disabled' => false,
                 'permissions' => json_encode(['pos' => true, 'stockIn' => true]),

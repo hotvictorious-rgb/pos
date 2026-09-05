@@ -116,52 +116,86 @@ class SaaSController extends Controller
     /** Super Admin Master SaaS Dashboard & Control Panel */
     public function adminIndex()
     {
-        if (config('saas.enabled') && session('tenant_id') !== 'default-tenant') {
-            return redirect()->route('dashboard')->with('error', '🔒 Access Restricted: Only the SaaS Super Admin can access the Master Control Panel.');
+        $user = Auth::user();
+        if (!$user && session('user_id')) {
+            $user = User::findForAuthenticationById(session('user_id'));
         }
 
-        $tenants = Tenant::withCount(['users', 'warehouses'])->orderBy('created_at', 'desc')->get();
-        $totalTenants = $tenants->count();
-        $activeTenants = $tenants->where('status', 'active')->count();
-        $trialTenants = $tenants->where('status', 'trial')->count();
-        $suspendedTenants = $tenants->where('status', 'suspended')->count();
+        if (!$user || !$user->isPlatformUser()) {
+            return redirect()->route('dashboard')->with('error', '🔒 Access Restricted: Platform administrator privileges required.');
+        }
 
-        // Calculate Monthly Recurring Revenue (MRR)
-        $priceBasic = (float) SaaSSetting::get('monthly_price_basic', 15000);
-        $pricePro = (float) SaaSSetting::get('monthly_price_pro', 35000);
-        $priceEnterprise = (float) SaaSSetting::get('monthly_price_enterprise', 75000);
+        $canTenants = $user->isPlatformAdmin() || $user->hasCapability('platform.tenants');
+        $canSettings = $user->isPlatformAdmin() || $user->hasCapability('platform.settings');
+        $canBackup = $user->isPlatformAdmin() || $user->hasCapability('platform.backup');
+        $canHealth = $user->isPlatformAdmin() || $user->hasCapability('platform.health');
+        $canLimits = $user->isPlatformAdmin() || $user->hasCapability('platform.limits');
 
-        $mrr = 0;
-        foreach ($tenants->where('status', 'active') as $t) {
-            if ($t->plan === 'basic') $mrr += $priceBasic;
-            elseif ($t->plan === 'pro') $mrr += $pricePro;
-            elseif ($t->plan === 'enterprise') $mrr += $priceEnterprise;
+        // Only load tenant directory and calculate MRR if user holds platform.tenants capability!
+        if ($canTenants) {
+            $tenants = Tenant::withCount(['users', 'warehouses'])->orderBy('created_at', 'desc')->get();
+            $totalTenants = $tenants->count();
+            $activeTenants = $tenants->where('status', 'active')->count();
+            $trialTenants = $tenants->where('status', 'trial')->count();
+            $suspendedTenants = $tenants->where('status', 'suspended')->count();
+
+            // Calculate Monthly Recurring Revenue (MRR)
+            $priceBasic = (float) SaaSSetting::get('monthly_price_basic', 15000);
+            $pricePro = (float) SaaSSetting::get('monthly_price_pro', 35000);
+            $priceEnterprise = (float) SaaSSetting::get('monthly_price_enterprise', 75000);
+
+            $mrr = 0;
+            foreach ($tenants->where('status', 'active') as $t) {
+                if ($t->plan === 'basic') $mrr += $priceBasic;
+                elseif ($t->plan === 'pro') $mrr += $pricePro;
+                elseif ($t->plan === 'enterprise') $mrr += $priceEnterprise;
+            }
+        } else {
+            $tenants = collect();
+            $totalTenants = null;
+            $activeTenants = null;
+            $trialTenants = null;
+            $suspendedTenants = null;
+            $mrr = null;
         }
 
         // Platform-wide infrastructure count (zero tenant business data)
         $totalBranchesPlatform = Warehouse::withoutGlobalScopes()->count();
 
-        // SaaS Settings Map
-        $settings = [
-            'platform_name'        => SaaSSetting::get('platform_name', 'Hysam Multi-Branch POS SaaS'),
-            'support_email'        => SaaSSetting::get('support_email', 'support@hysamventures.com'),
-            'support_phone'        => SaaSSetting::get('support_phone', '+234 800 000 0000'),
-            'currency_symbol'      => SaaSSetting::get('currency_symbol', '₦'),
-            'trial_days'           => SaaSSetting::get('trial_days', '14'),
-            'allow_registration'   => SaaSSetting::get('allow_registration', '1'),
-            'monthly_price_basic'  => $priceBasic,
-            'monthly_price_pro'    => $pricePro,
-            'monthly_price_enterprise' => $priceEnterprise,
-            'bank_name'             => SaaSSetting::get('bank_name', 'Zenith Bank Plc'),
-            'bank_account_number'   => SaaSSetting::get('bank_account_number', '1012345678'),
-            'bank_account_name'     => SaaSSetting::get('bank_account_name', 'Hysam Ventures SaaS Ltd'),
-            'bank_instructions'     => SaaSSetting::get('bank_instructions', 'Please pay into the account above and send proof to support@hysamventures.com'),
-            'paystack_enabled'      => SaaSSetting::get('paystack_enabled', '1'),
-            'paystack_public_key'   => SaaSSetting::get('paystack_public_key', ''),
-            'paystack_secret_key'   => SaaSSetting::get('paystack_secret_key', ''),
-        ];
+        // SaaS Settings Map — loaded ONLY if user holds platform.settings capability
+        if ($canSettings) {
+            $settings = [
+                'platform_name'        => SaaSSetting::get('platform_name', 'Hysam Multi-Branch POS SaaS'),
+                'support_email'        => SaaSSetting::get('support_email', 'support@hysamventures.com'),
+                'support_phone'        => SaaSSetting::get('support_phone', '+234 800 000 0000'),
+                'currency_symbol'      => SaaSSetting::get('currency_symbol', '₦'),
+                'trial_days'           => SaaSSetting::get('trial_days', '14'),
+                'allow_registration'   => SaaSSetting::get('allow_registration', '1'),
+                'monthly_price_basic'  => (float) SaaSSetting::get('monthly_price_basic', 15000),
+                'monthly_price_pro'    => (float) SaaSSetting::get('monthly_price_pro', 35000),
+                'monthly_price_enterprise' => (float) SaaSSetting::get('monthly_price_enterprise', 75000),
+                'bank_name'             => SaaSSetting::get('bank_name', 'Zenith Bank Plc'),
+                'bank_account_number'   => SaaSSetting::get('bank_account_number', '1012345678'),
+                'bank_account_name'     => SaaSSetting::get('bank_account_name', 'Hysam Ventures SaaS Ltd'),
+                'bank_instructions'     => SaaSSetting::get('bank_instructions', 'Please pay into the account above and send proof to support@hysamventures.com'),
+                'paystack_enabled'      => SaaSSetting::get('paystack_enabled', '1'),
+                'paystack_public_key'   => SaaSSetting::get('paystack_public_key', ''),
+                // INVARIANT: Raw paystack_secret_key is NEVER passed to the view!
+                'paystack_secret_configured' => !empty(SaaSSetting::get('paystack_secret_key', '')),
+            ];
+        } else {
+            $settings = [
+                'currency_symbol' => '₦',
+                'paystack_secret_configured' => false,
+            ];
+        }
 
-        $backups = \App\Models\Backup::whereNull('tenant_id')->orderBy('created_at', 'desc')->get();
+        // Backups — loaded ONLY if user holds platform.backup capability
+        if ($canBackup) {
+            $backups = \App\Models\Backup::whereNull('tenant_id')->orderBy('created_at', 'desc')->get();
+        } else {
+            $backups = collect();
+        }
 
         return view('saas.admin.index', compact(
             'tenants',
@@ -172,7 +206,12 @@ class SaaSController extends Controller
             'mrr',
             'totalBranchesPlatform',
             'settings',
-            'backups'
+            'backups',
+            'canTenants',
+            'canSettings',
+            'canBackup',
+            'canHealth',
+            'canLimits'
         ));
     }
 
@@ -195,12 +234,19 @@ class SaaSController extends Controller
             'bank_instructions',
             'paystack_enabled',
             'paystack_public_key',
-            'paystack_secret_key',
         ];
 
         foreach ($fields as $field) {
             if ($request->has($field)) {
                 SaaSSetting::set($field, $request->input($field));
+            }
+        }
+
+        // Invariant: Paystack Secret Key is updated ONLY when explicitly supplied with a new, non-mask value
+        if ($request->filled('paystack_secret_key')) {
+            $secretInput = trim($request->input('paystack_secret_key'));
+            if ($secretInput !== '' && !preg_match('/^[•\*]+$/u', $secretInput)) {
+                SaaSSetting::set('paystack_secret_key', $secretInput);
             }
         }
 

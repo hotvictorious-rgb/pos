@@ -78,9 +78,10 @@
 
     <!-- Financial & Usage Analytics Bar -->
     <div class="stats-grid">
+        @if($canTenants)
         <div class="stat-card">
             <div class="stat-title">Estimated Monthly Revenue (MRR)</div>
-            <div class="stat-value" style="color: #34d399;">{{ $settings['currency_symbol'] }}{{ number_format($mrr, 2) }}</div>
+            <div class="stat-value" style="color: #34d399;">{{ $settings['currency_symbol'] ?? '₦' }}{{ number_format($mrr ?? 0, 2) }}</div>
         </div>
         <div class="stat-card">
             <div class="stat-title">Total Business Tenants</div>
@@ -94,6 +95,9 @@
                 <span style="color:#fca5a5;">{{ $suspendedTenants }} Suspended</span>
             </div>
         </div>
+        @endif
+
+        @if($canHealth)
         <div class="stat-card">
             <div class="stat-title">Platform Total Branches</div>
             <div class="stat-value" style="color: #c084fc;">{{ $totalBranchesPlatform }} Branches</div>
@@ -101,11 +105,38 @@
         <div class="stat-card">
             <div class="stat-title">Platform Infrastructure</div>
             <div class="stat-value" style="font-size: 18px; color: #cbd5e1; margin-top: 10px;">
-                <span style="color:#38bdf8;">{{ count($backups) }} Backups</span> | <span style="color:#34d399;">Active</span>
+                <span style="color:#38bdf8;">{{ count($backups) }} Backups</span> | <span style="color:#34d399;">Healthy</span>
+            </div>
+        </div>
+        @endif
+    </div>
+
+    @if($canHealth && !$canTenants && !$canSettings)
+    <!-- Dedicated Platform Health & Infrastructure Panel for Operations Staff -->
+    <div class="card-section">
+        <div class="section-title">🩺 Platform Health & System Status</div>
+        <div class="stats-grid" style="margin-bottom: 0;">
+            <div class="stat-card">
+                <div class="stat-title">PHP Runtime</div>
+                <div class="stat-value" style="font-size: 18px; color: #38bdf8;">{{ PHP_VERSION }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Database Engine</div>
+                <div class="stat-value" style="font-size: 18px; color: #34d399;">{{ config('database.default') }} (Connected)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Environment Mode</div>
+                <div class="stat-value" style="font-size: 18px; color: #c084fc;">{{ app()->environment() }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Total Branches Scoped</div>
+                <div class="stat-value" style="font-size: 18px; color: #f59e0b;">{{ $totalBranchesPlatform }}</div>
             </div>
         </div>
     </div>
+    @endif
 
+    @if($canTenants)
     <!-- Tenants Directory Section -->
     <div class="card-section">
         <div class="section-title">🏢 Business Tenants Directory</div>
@@ -192,10 +223,13 @@
             </tbody>
         </table>
     </div>
+    @endif
 
+    @if($canTenants || $canSettings)
     <!-- Quick Add Tenant & Global Configuration Grid -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px;">
 
+        @if($canTenants)
         <!-- Section: Create New Business Tenant -->
         <div class="card-section">
             <div class="section-title">➕ Create New Business Tenant</div>
@@ -244,7 +278,9 @@
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Create Business Account 🚀</button>
             </form>
         </div>
+        @endif
 
+        @if($canSettings)
         <!-- Section: Global SaaS Configuration Settings -->
         <div class="card-section">
             <div class="section-title">⚙️ SaaS Global Platform Settings</div>
@@ -252,51 +288,51 @@
                 @csrf
                 <div class="form-group">
                     <label>Platform Name</label>
-                    <input type="text" name="platform_name" value="{{ $settings['platform_name'] }}" required>
+                    <input type="text" name="platform_name" value="{{ $settings['platform_name'] ?? '' }}" required>
                 </div>
 
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Support Email</label>
-                        <input type="email" name="support_email" value="{{ $settings['support_email'] }}" required>
+                        <input type="email" name="support_email" value="{{ $settings['support_email'] ?? '' }}" required>
                     </div>
                     <div class="form-group">
                         <label>Support Phone</label>
-                        <input type="text" name="support_phone" value="{{ $settings['support_phone'] }}" required>
+                        <input type="text" name="support_phone" value="{{ $settings['support_phone'] ?? '' }}" required>
                     </div>
                 </div>
 
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Currency Symbol</label>
-                        <input type="text" name="currency_symbol" value="{{ $settings['currency_symbol'] }}" required>
+                        <input type="text" name="currency_symbol" value="{{ $settings['currency_symbol'] ?? '₦' }}" required>
                     </div>
                     <div class="form-group">
                         <label>Free Trial Duration (Days)</label>
-                        <input type="number" name="trial_days" value="{{ $settings['trial_days'] }}" required>
+                        <input type="number" name="trial_days" value="{{ $settings['trial_days'] ?? '14' }}" required>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label>Public Self-Registration (`/saas/register`)</label>
                     <select name="allow_registration" required>
-                        <option value="1" {{ $settings['allow_registration'] == '1' ? 'selected' : '' }}>Enabled (Public Signups Allowed)</option>
-                        <option value="0" {{ $settings['allow_registration'] == '0' ? 'selected' : '' }}>Disabled (Registration Closed)</option>
+                        <option value="1" {{ ($settings['allow_registration'] ?? '1') == '1' ? 'selected' : '' }}>Enabled (Public Signups Allowed)</option>
+                        <option value="0" {{ ($settings['allow_registration'] ?? '1') == '0' ? 'selected' : '' }}>Disabled (Registration Closed)</option>
                     </select>
                 </div>
 
                 <div class="form-grid">
                     <div class="form-group">
-                        <label>Basic Plan Monthly Price ({{ $settings['currency_symbol'] }})</label>
-                        <input type="number" name="monthly_price_basic" value="{{ $settings['monthly_price_basic'] }}" required>
+                        <label>Basic Plan Monthly Price ({{ $settings['currency_symbol'] ?? '₦' }})</label>
+                        <input type="number" name="monthly_price_basic" value="{{ $settings['monthly_price_basic'] ?? 15000 }}" required>
                     </div>
                     <div class="form-group">
-                        <label>Pro Plan Monthly Price ({{ $settings['currency_symbol'] }})</label>
-                        <input type="number" name="monthly_price_pro" value="{{ $settings['monthly_price_pro'] }}" required>
+                        <label>Pro Plan Monthly Price ({{ $settings['currency_symbol'] ?? '₦' }})</label>
+                        <input type="number" name="monthly_price_pro" value="{{ $settings['monthly_price_pro'] ?? 35000 }}" required>
                     </div>
                     <div class="form-group">
-                        <label>Enterprise Monthly Price ({{ $settings['currency_symbol'] }})</label>
-                        <input type="number" name="monthly_price_enterprise" value="{{ $settings['monthly_price_enterprise'] }}" required>
+                        <label>Enterprise Monthly Price ({{ $settings['currency_symbol'] ?? '₦' }})</label>
+                        <input type="number" name="monthly_price_enterprise" value="{{ $settings['monthly_price_enterprise'] ?? 75000 }}" required>
                     </div>
                 </div>
 
@@ -305,20 +341,20 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label>Bank Name</label>
-                            <input type="text" name="bank_name" value="{{ $settings['bank_name'] }}" placeholder="e.g. Zenith Bank / GTBank">
+                            <input type="text" name="bank_name" value="{{ $settings['bank_name'] ?? '' }}" placeholder="e.g. Zenith Bank / GTBank">
                         </div>
                         <div class="form-group">
                             <label>Account Number</label>
-                            <input type="text" name="bank_account_number" value="{{ $settings['bank_account_number'] }}" placeholder="e.g. 1012345678">
+                            <input type="text" name="bank_account_number" value="{{ $settings['bank_account_number'] ?? '' }}" placeholder="e.g. 1012345678">
                         </div>
                     </div>
                     <div class="form-group">
                         <label>Account Name</label>
-                        <input type="text" name="bank_account_name" value="{{ $settings['bank_account_name'] }}" placeholder="e.g. Hysam Ventures SaaS Ltd">
+                        <input type="text" name="bank_account_name" value="{{ $settings['bank_account_name'] ?? '' }}" placeholder="e.g. Hysam Ventures SaaS Ltd">
                     </div>
                     <div class="form-group">
                         <label>Transfer Instructions Notice</label>
-                        <input type="text" name="bank_instructions" value="{{ $settings['bank_instructions'] }}" placeholder="e.g. Send payment proof to support@hysamventures.com">
+                        <input type="text" name="bank_instructions" value="{{ $settings['bank_instructions'] ?? '' }}" placeholder="e.g. Send payment proof to support@hysamventures.com">
                     </div>
                 </div>
 
@@ -327,18 +363,21 @@
                     <div class="form-group">
                         <label>Paystack Automated Checkout</label>
                         <select name="paystack_enabled">
-                            <option value="1" {{ $settings['paystack_enabled'] == '1' ? 'selected' : '' }}>Enabled (Automated Card / USSD Payment)</option>
-                            <option value="0" {{ $settings['paystack_enabled'] == '0' ? 'selected' : '' }}>Disabled</option>
+                            <option value="1" {{ ($settings['paystack_enabled'] ?? '1') == '1' ? 'selected' : '' }}>Enabled (Automated Card / USSD Payment)</option>
+                            <option value="0" {{ ($settings['paystack_enabled'] ?? '1') == '0' ? 'selected' : '' }}>Disabled</option>
                         </select>
                     </div>
                     <div class="form-grid">
                         <div class="form-group">
                             <label>Paystack Public Key (`pk_live_...` or `pk_test_...`)</label>
-                            <input type="text" name="paystack_public_key" value="{{ $settings['paystack_public_key'] }}" placeholder="pk_test_...">
+                            <input type="text" name="paystack_public_key" value="{{ $settings['paystack_public_key'] ?? '' }}" placeholder="pk_test_...">
                         </div>
                         <div class="form-group">
-                            <label>Paystack Secret Key (`sk_live_...` or `sk_test_...`)</label>
-                            <input type="password" name="paystack_secret_key" value="{{ $settings['paystack_secret_key'] }}" placeholder="sk_test_...">
+                            <label>Paystack Secret Key</label>
+                            <input type="password" name="paystack_secret_key" value="" placeholder="{{ !empty($settings['paystack_secret_configured']) ? '•••••••• (Configured — leave blank to keep unchanged)' : 'sk_test_...' }}" autocomplete="new-password">
+                            @if(!empty($settings['paystack_secret_configured']))
+                                <span style="font-size: 11px; color: #34d399; display: block; margin-top: 4px;">✓ Secret Key is securely stored server-side.</span>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -346,51 +385,55 @@
                 <button type="submit" class="btn btn-success" style="width: 100%; margin-top: 10px;">Save Global SaaS & Payment Settings 💾</button>
             </form>
         </div>
-
-        <!-- Section: Super-Admin Exclusive Platform Database Backups -->
-        <div class="card-section">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
-                <div>
-                    <div class="section-title" style="margin-bottom: 4px;">💾 Platform Database Backups & Snapshots</div>
-                    <p style="color: #94a3b8; font-size: 13px;">Manage and download platform infrastructure and configuration backup snapshots. Restricted exclusively to Platform Super-Administrators (contains zero tenant business records).</p>
-                </div>
-                <form method="POST" action="/api/backups" onsubmit="return confirm('Generate an instant database safety backup now?');">
-                    @csrf
-                    <button type="submit" class="btn btn-primary">📦 Create Instant Backup</button>
-                </form>
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>Filename</th>
-                        <th>Created Date</th>
-                        <th>File Size</th>
-                        <th>Origin / Creator</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($backups as $b)
-                    <tr>
-                        <td><strong>{{ $b->filename }}</strong></td>
-                        <td>{{ date('d M Y, h:i A', strtotime($b->created_at)) }}</td>
-                        <td>{{ number_format(($b->size ?? 1024) / 1024, 1) }} KB</td>
-                        <td><span style="color: #38bdf8;">{{ $b->created_by }}</span></td>
-                        <td>
-                            <a href="/api/backups/{{ $b->id }}/download" class="btn btn-secondary btn-sm">⬇️ Download</a>
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="5" style="text-align: center; color: #94a3b8; padding: 24px;">No database snapshots found. Click "Create Instant Backup" above to generate one.</td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+        @endif
 
     </div>
+    @endif
+
+    @if($canBackup)
+    <!-- Section: Super-Admin Exclusive Platform Database Backups -->
+    <div class="card-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <div class="section-title" style="margin-bottom: 4px;">💾 Platform Database Backups & Snapshots</div>
+                <p style="color: #94a3b8; font-size: 13px;">Manage and download platform infrastructure and configuration backup snapshots. Restricted exclusively to Platform Super-Administrators (contains zero tenant business records).</p>
+            </div>
+            <form method="POST" action="/api/backups" onsubmit="return confirm('Generate an instant database safety backup now?');">
+                @csrf
+                <button type="submit" class="btn btn-primary">📦 Create Instant Backup</button>
+            </form>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Created Date</th>
+                    <th>File Size</th>
+                    <th>Origin / Creator</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($backups as $b)
+                <tr>
+                    <td><strong>{{ $b->filename }}</strong></td>
+                    <td>{{ date('d M Y, h:i A', strtotime($b->created_at)) }}</td>
+                    <td>{{ number_format(($b->size ?? 1024) / 1024, 1) }} KB</td>
+                    <td><span style="color: #38bdf8;">{{ $b->created_by }}</span></td>
+                    <td>
+                        <a href="/api/backups/{{ $b->id }}/download" class="btn btn-secondary btn-sm">⬇️ Download</a>
+                    </td>
+                </tr>
+                @empty
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #94a3b8; padding: 24px;">No database snapshots found. Click "Create Instant Backup" above to generate one.</td>
+                </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+    @endif
 
 </body>
 </html>
