@@ -560,6 +560,7 @@ class ProductionHardeningPass3Test extends TestCase
             'created_by' => 'Purge Test',
         ]);
 
+        $this->actingAs($this->platformAdmin);
         $saasController = app(\App\Http\Controllers\SaaS\SaaSController::class);
         $saasController->deleteTenant($purgeTenant->id);
 

@@ -2,7 +2,7 @@ name: CI Test Suite
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "feat/**", "feature/**" ]
   pull_request:
     branches: [ "main" ]
 
@@ -32,10 +32,18 @@ jobs:
         coverage: none
 
     - name: Setup Environment & SQLite Database
+      env:
+        CI_SECRET_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD }}
       run: |
         cp .env.example .env
         sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/' .env
         sed -i 's/DB_DATABASE=hysam/DB_DATABASE=database\/database.sqlite/' .env
+        if [ -n "$CI_SECRET_PASSWORD" ]; then
+          CI_PW="$CI_SECRET_PASSWORD"
+        else
+          CI_PW="CI_Ephemeral_$(openssl rand -hex 16)"
+        fi
+        sed -i "s/SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD=\"$CI_PW\"/" .env
         mkdir -p database
         touch database/database.sqlite
 
@@ -78,6 +86,109 @@ jobs:
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               description: description,
               context: 'ci/laravel-tests'
+            });
+          } catch (error) {
+            core.info(`Commit status publishing skipped (permissions): ${error.message}`);
+          }
+
+  mysql-tests:
+    name: "MySQL 8.0 & Root Provisioning CI"
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: hysam_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+        extensions: mbstring, xml, ctype, iconv, intl, pdo, mysql, pdo_mysql, bcmath
+        coverage: none
+
+    - name: Setup Environment for MySQL
+      env:
+        CI_SECRET_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD }}
+      run: |
+        cp .env.example .env
+        sed -i 's/DB_CONNECTION=.*/DB_CONNECTION=mysql/' .env
+        sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
+        sed -i 's/DB_PORT=.*/DB_PORT=3306/' .env
+        sed -i 's/DB_DATABASE=.*/DB_DATABASE=hysam_test/' .env
+        sed -i 's/DB_USERNAME=.*/DB_USERNAME=root/' .env
+        sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=root/' .env
+        if [ -n "$CI_SECRET_PASSWORD" ]; then
+          CI_PW="$CI_SECRET_PASSWORD"
+        else
+          CI_PW="CI_Ephemeral_$(openssl rand -hex 16)"
+        fi
+        sed -i "s/SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD=\"$CI_PW\"/" .env
+
+    - name: Install Composer Dependencies
+      run: composer install --prefer-dist --no-interaction --no-progress
+
+    - name: Generate Application Key
+      run: php artisan key:generate
+
+    - name: Run Migrations on MySQL 8.0
+      run: php artisan migrate:fresh --force
+
+    - name: Run Dedicated Root Provisioning on MySQL 8.0
+      run: php artisan saas:provision-root --force
+
+    - name: Execute Full Automated Test Suite on MySQL 8.0 (SaaS Multi-Tenant Mode)
+      id: mysql_test_suite
+      run: |
+        php artisan test --configuration=phpunit.mysql.xml --colors=never | tee mysql_test_run.log
+        echo "### MySQL 8.0 SaaS Multi-Tenant Test Suite Execution Summary" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        cat mysql_test_run.log >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+    - name: Execute Standalone Mode Verification on MySQL 8.0 (SAAS_ENABLED=false)
+      id: mysql_standalone_test_suite
+      run: |
+        php artisan test --configuration=phpunit.mysql.standalone.xml --filter=SaasProvisionRootCommandTest --colors=never | tee mysql_standalone_test_run.log
+        echo "### MySQL 8.0 Standalone Verification Execution Summary" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        cat mysql_standalone_test_run.log >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload MySQL Test Results Artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mysql-test-results
+        path: |
+          mysql_test_run.log
+          mysql_standalone_test_run.log
+        retention-days: 7
+
+    - name: Publish GitHub MySQL Commit Status
+      if: always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          try {
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            const description = state === 'success' ? 'MySQL 8.0 CI & provisioning tests passed' : 'MySQL 8.0 CI tests failed';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: state,
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: description,
+              context: 'ci/mysql-8.0-tests'
             });
           } catch (error) {
             core.info(`Commit status publishing skipped (permissions): ${error.message}`);

@@ -71,6 +71,8 @@ class InstallerController extends Controller
             'CACHE_STORE'  => 'file',
             'QUEUE_CONNECTION' => 'sync',
             'SESSION_DRIVER'   => 'file',
+            'APP_INSTALLED'    => 'false',
+            'APP_INSTALLER_ENABLED' => 'true',
         ]);
 
         Artisan::call('config:clear');
@@ -107,6 +109,12 @@ class InstallerController extends Controller
     public function run()
     {
         try {
+            // Standalone installer takeover protection (Fail-Closed)
+            // If database is already migrated and users exist, reject takeover
+            if (\Illuminate\Support\Facades\Schema::hasTable('users') && \App\Models\User::withoutGlobalScopes()->exists()) {
+                abort(403, 'Security Violation: Cannot run installer when user accounts already exist.');
+            }
+
             // Generate app key if not set
             if (empty(config('app.key'))) {
                 Artisan::call('key:generate', ['--force' => true]);
@@ -115,34 +123,70 @@ class InstallerController extends Controller
             // Run migrations
             Artisan::call('migrate', ['--force' => true]);
 
-            // Create the admin user
+            // Re-verify after migrations that no accounts existed
+            if (\App\Models\User::withoutGlobalScopes()->exists()) {
+                abort(403, 'Security Violation: Cannot provision initial admin over existing users.');
+            }
+
+            // Create initial admin user
             $adminName     = session('installer_admin_name');
             $adminEmail    = session('installer_admin_email');
             $adminPassHash = session('installer_admin_password_hash');
 
             if ($adminEmail && $adminPassHash) {
-                \App\Models\User::updateOrCreate(
-                    ['email' => $adminEmail],
-                    [
+                if (config('saas.enabled')) {
+                    // Temporarily align super_admin_email config for this installation run if needed
+                    config(['saas.super_admin_email' => $adminEmail]);
+
+                    Artisan::call('saas:provision-root', [
+                        '--email' => $adminEmail,
+                        '--password-hash' => $adminPassHash,
+                        '--force' => true,
+                    ]);
+
+                    $root = \App\Models\User::withoutGlobalScopes()->whereRaw('LOWER(email) = ?', [strtolower(trim($adminEmail))])->first();
+                    if (!$root || !$root->isPlatformAdmin()) {
+                        throw new \App\Exceptions\SecurityException("Security Invariant Failed: Initial root provisioning did not satisfy isPlatformAdmin().");
+                    }
+                } else {
+                    \App\Models\User::create([
+                        'id'       => (string) \Illuminate\Support\Str::uuid(),
                         'name'     => $adminName,
+                        'email'    => $adminEmail,
                         'password' => $adminPassHash,
                         'role'     => 'admin',
-                    ]
-                );
+                    ]);
+                }
             }
 
             // Write the installed lock file
             file_put_contents(storage_path('installed'), date('Y-m-d H:i:s'));
 
-            // Clear caches
-            Artisan::call('config:cache');
-            Artisan::call('route:cache');
-            Artisan::call('view:cache');
+            // Persist authoritative SUPER_ADMIN_EMAIL and lock installer via environment flags
+            $envUpdates = [
+                'APP_INSTALLED' => 'true',
+                'APP_INSTALLER_ENABLED' => 'false',
+            ];
+            if ($adminEmail) {
+                $envUpdates['SUPER_ADMIN_EMAIL'] = $adminEmail;
+                config(['saas.super_admin_email' => $adminEmail]);
+            }
 
-            // Clear installer session data
+            $this->writeEnv($envUpdates);
+
+            // Compile caches only outside testing environments
+            if (!app()->environment('testing')) {
+                Artisan::call('config:cache');
+                Artisan::call('route:cache');
+                Artisan::call('view:cache');
+            }
+
+            // Clear installer session data immediately
             session()->forget(['installer_admin_name', 'installer_admin_email', 'installer_admin_password_hash']);
 
             return response()->json(['success' => true]);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], $e->getStatusCode());
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
@@ -177,16 +221,16 @@ class InstallerController extends Controller
     }
 
     /** Write key=value pairs to the .env file */
-    private function writeEnv(array $data): void
+    public function writeEnv(array $data, ?string $envPath = null): void
     {
-        $envPath = base_path('.env');
+        $envPath = $envPath ?: base_path('.env');
 
-        // Start from .env.example if .env doesn't exist yet
-        if (!file_exists($envPath)) {
+        // Start from .env.example if target env doesn't exist yet
+        if (!file_exists($envPath) && file_exists(base_path('.env.example'))) {
             copy(base_path('.env.example'), $envPath);
         }
 
-        $env = file_get_contents($envPath);
+        $env = file_exists($envPath) ? file_get_contents($envPath) : '';
 
         foreach ($data as $key => $value) {
             $pattern = "/^{$key}=.*/m";

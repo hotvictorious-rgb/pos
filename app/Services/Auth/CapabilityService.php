@@ -57,7 +57,11 @@ class CapabilityService
         'tenant.backup',
 
         // SaaS Platform Management (Platform Admin & Platform Employee)
-        'platform.tenants',
+        'platform.tenants', // Legacy composite bundle
+        'platform.tenants.read',
+        'platform.tenants.create',
+        'platform.tenants.suspend',
+        'platform.tenants.delete',
         'platform.settings',
         'platform.limits',
         'platform.health',
@@ -81,6 +85,10 @@ class CapabilityService
     protected static array $roleCapabilities = [
         'platform_admin' => [
             'platform.tenants',
+            'platform.tenants.read',
+            'platform.tenants.create',
+            'platform.tenants.suspend',
+            'platform.tenants.delete',
             'platform.settings',
             'platform.limits',
             'platform.health',
@@ -90,6 +98,10 @@ class CapabilityService
         ],
         'super_admin' => [
             'platform.tenants',
+            'platform.tenants.read',
+            'platform.tenants.create',
+            'platform.tenants.suspend',
+            'platform.tenants.delete',
             'platform.settings',
             'platform.limits',
             'platform.health',
@@ -260,6 +272,19 @@ class CapabilityService
         }
 
         $userCapabilities = self::getCapabilitiesForUser($user);
-        return in_array($capability, $userCapabilities, true);
+        if (in_array($capability, $userCapabilities, true)) {
+            return true;
+        }
+
+        // Safe granular inheritance for legacy 'platform.tenants' bundle:
+        // Grants operational management (read, create, suspend), but strictly EXCLUDES 'platform.tenants.delete'
+        // to prevent privilege creep and require explicit deletion authorization.
+        if (in_array('platform.tenants', $userCapabilities, true)) {
+            if (in_array($capability, ['platform.tenants.read', 'platform.tenants.create', 'platform.tenants.suspend'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
