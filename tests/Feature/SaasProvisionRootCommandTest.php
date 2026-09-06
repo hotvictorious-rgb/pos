@@ -18,9 +18,14 @@ class SaasProvisionRootCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected ?string $originalEnvBackup = null;
+
     protected function setUp(): void
     {
         parent::setUp();
+        if (file_exists(base_path('.env'))) {
+            $this->originalEnvBackup = file_get_contents(base_path('.env'));
+        }
         app()->detectEnvironment(fn() => 'testing');
         config(['saas.enabled' => true]);
         config(['saas.super_admin_email' => 'superadmin@hysam.com']);
@@ -32,6 +37,9 @@ class SaasProvisionRootCommandTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->originalEnvBackup !== null) {
+            file_put_contents(base_path('.env'), $this->originalEnvBackup);
+        }
         if (!file_exists(storage_path('installed'))) {
             file_put_contents(storage_path('installed'), date('Y-m-d H:i:s'));
         }
@@ -593,5 +601,63 @@ class SaasProvisionRootCommandTest extends TestCase
         $content = json_decode($response->getContent(), true);
         $this->assertFalse($content['success']);
         $this->assertStringContainsString('Security Violation', $content['error']);
+    }
+
+    /**
+     * 19. Fresh Install Custom Super Admin Email Persists to .env and Retains Platform Authority
+     */
+    public function test_installer_persists_custom_super_admin_email_to_env_and_maintains_platform_admin(): void
+    {
+        if (file_exists(storage_path('installed'))) {
+            @unlink(storage_path('installed'));
+        }
+        config(['app.installed' => false]);
+        config(['saas.enabled' => true]);
+
+        $customEmail = 'owner@customdomain.com';
+        $hashedPass = Hash::make('CustomSecretPass#2026');
+
+        // Ensure clean slate for custom email and default tenant
+        User::withoutGlobalScopes()->where('email', $customEmail)->delete();
+        User::withoutGlobalScopes()->where('email', 'superadmin@hysam.com')->delete();
+        Tenant::withoutGlobalScopes()->where('id', 'default-tenant')->delete();
+
+        session([
+            'installer_admin_name' => 'Custom Platform Owner',
+            'installer_admin_email' => $customEmail,
+            'installer_admin_password_hash' => $hashedPass,
+        ]);
+
+        $controller = new InstallerController();
+        $response = $controller->run();
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertTrue($data['success']);
+
+        // 1. Verify that .env file persisted the custom SUPER_ADMIN_EMAIL and locked installer flags
+        $envContent = file_get_contents(base_path('.env'));
+        $this->assertStringContainsString("SUPER_ADMIN_EMAIL={$customEmail}", $envContent);
+        $this->assertStringContainsString("APP_INSTALLED=true", $envContent);
+        $this->assertStringContainsString("APP_INSTALLER_ENABLED=false", $envContent);
+
+        // 2. Simulate application reload / config cache reading from persisted .env
+        putenv("SUPER_ADMIN_EMAIL={$customEmail}");
+        $_ENV['SUPER_ADMIN_EMAIL'] = $customEmail;
+        config(['saas.super_admin_email' => $customEmail]);
+
+        // 3. Verify custom root user retains isPlatformAdmin() === true
+        $customRoot = User::withoutGlobalScopes()->where('email', $customEmail)->first();
+        $this->assertNotNull($customRoot);
+        $this->assertSame('default-tenant', $customRoot->tenant_id);
+        $this->assertTrue($customRoot->isPlatformAdmin(), 'Custom installer admin must retain isPlatformAdmin authority');
+
+        // 4. Verify old/default email does NOT retain platform admin authority
+        $defaultOldUser = new User([
+            'email' => 'superadmin@hysam.com',
+            'tenant_id' => 'default-tenant',
+            'role' => 'admin',
+        ]);
+        $this->assertFalse($defaultOldUser->isPlatformAdmin(), 'Old default email must NOT have platform admin authority');
     }
 }

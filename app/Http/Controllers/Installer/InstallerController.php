@@ -162,13 +162,17 @@ class InstallerController extends Controller
             // Write the installed lock file
             file_put_contents(storage_path('installed'), date('Y-m-d H:i:s'));
 
-            // Lock installer via environment flags as well (if .env exists)
-            if (file_exists(base_path('.env')) && !app()->environment('testing')) {
-                $this->writeEnv([
-                    'APP_INSTALLED' => 'true',
-                    'APP_INSTALLER_ENABLED' => 'false',
-                ]);
+            // Persist authoritative SUPER_ADMIN_EMAIL and lock installer via environment flags
+            $envUpdates = [
+                'APP_INSTALLED' => 'true',
+                'APP_INSTALLER_ENABLED' => 'false',
+            ];
+            if ($adminEmail) {
+                $envUpdates['SUPER_ADMIN_EMAIL'] = $adminEmail;
+                config(['saas.super_admin_email' => $adminEmail]);
             }
+
+            $this->writeEnv($envUpdates);
 
             // Compile caches only outside testing environments
             if (!app()->environment('testing')) {
@@ -217,16 +221,16 @@ class InstallerController extends Controller
     }
 
     /** Write key=value pairs to the .env file */
-    private function writeEnv(array $data): void
+    public function writeEnv(array $data, ?string $envPath = null): void
     {
-        $envPath = base_path('.env');
+        $envPath = $envPath ?: base_path('.env');
 
-        // Start from .env.example if .env doesn't exist yet
-        if (!file_exists($envPath)) {
+        // Start from .env.example if target env doesn't exist yet
+        if (!file_exists($envPath) && file_exists(base_path('.env.example'))) {
             copy(base_path('.env.example'), $envPath);
         }
 
-        $env = file_get_contents($envPath);
+        $env = file_exists($envPath) ? file_get_contents($envPath) : '';
 
         foreach ($data as $key => $value) {
             $pattern = "/^{$key}=.*/m";
