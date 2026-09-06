@@ -229,6 +229,8 @@ class SaaSController extends Controller
     /** Update SaaS Platform Settings */
     public function updateSettings(Request $request)
     {
+        $this->requirePlatformCapability('platform.settings');
+
         $request->validate([
             'platform_name'            => 'nullable|string|max:100',
             'support_email'            => 'nullable|email|max:100',
@@ -286,6 +288,8 @@ class SaaSController extends Controller
     /** Create Tenant Account Manually from Control Panel */
     public function storeTenant(Request $request)
     {
+        $this->requirePlatformCapability('platform.tenants');
+
         $request->validate([
             'business_name' => 'required|string|max:255',
             'owner_name'    => 'required|string|max:255',
@@ -345,6 +349,8 @@ class SaaSController extends Controller
     /** Toggle Tenant Status */
     public function toggleStatus(Request $request, $id)
     {
+        $this->requirePlatformCapability('platform.tenants');
+
         $request->validate([
             'status' => 'required|string|in:active,trial,suspended',
         ]);
@@ -359,6 +365,8 @@ class SaaSController extends Controller
     /** Update Custom Plan & Branch Limits per Tenant */
     public function updateTenantLimits(Request $request, $id)
     {
+        $this->requirePlatformCapability('platform.limits');
+
         $tenant = Tenant::findOrFail($id);
         
         if ($request->has('plan')) {
@@ -387,6 +395,8 @@ class SaaSController extends Controller
     /** Delete Tenant Account and All Associated Business Data */
     public function deleteTenant($id)
     {
+        $this->requirePlatformCapability('platform.tenants');
+
         if ($id === 'default-tenant') {
             return back()->with('error', 'Cannot delete default system master tenant.');
         }
@@ -435,5 +445,24 @@ class SaaSController extends Controller
     public function suspended()
     {
         return view('saas.suspended');
+    }
+
+    /**
+     * Defense-in-depth: Verify that acting platform user holds required platform capability or root authority.
+     */
+    private function requirePlatformCapability(string $capability): void
+    {
+        $user = Auth::user();
+        if (!$user && session('user_id')) {
+            $user = User::findForAuthenticationById(session('user_id'));
+        }
+
+        if (!$user || !$user->isPlatformUser()) {
+            abort(403, 'Forbidden: Platform credentials required.');
+        }
+
+        if (!$user->isPlatformAdmin() && !$user->hasCapability($capability)) {
+            abort(403, "Forbidden: Missing required platform capability '{$capability}'.");
+        }
     }
 }

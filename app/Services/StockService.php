@@ -36,7 +36,7 @@ class StockService
         }
 
         if (config('saas.enabled')) {
-            $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+            $currentTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
             if (empty($currentTenantId)) {
                 throw new \InvalidArgumentException("Security Violation: No authoritative tenant context established. Operation rejected.");
             }
@@ -59,20 +59,21 @@ class StockService
      */
     public function assertUserWarehouseAuthority(int $warehouseId, ?User $actor = null): Warehouse
     {
-        $wh = $this->assertTenantWarehouse($warehouseId);
-
         // Authoritative actor resolution:
         // In HTTP route contexts, authorization derives strictly from the authenticated session (Auth::user()).
         // Caller-supplied $actor is ignored during HTTP requests to prevent privilege spoofing.
         $isHttp = (request()->route() !== null || (!app()->runningInConsole() && !app()->runningUnitTests()));
         $user = $isHttp ? Auth::user() : (Auth::user() ?? $actor);
 
+        if ($user && $user->isPlatformUser()) {
+            throw new AuthorizationException(
+                "Security Violation: Platform user '{$user->name}' cannot perform tenant business operations on Branch #{$warehouseId}."
+            );
+        }
+
+        $wh = $this->assertTenantWarehouse($warehouseId);
+
         if ($user) {
-            if ($user->isPlatformUser()) {
-                throw new AuthorizationException(
-                    "Security Violation: Platform user '{$user->name}' cannot perform tenant business operations on Branch #{$warehouseId}."
-                );
-            }
 
             if ($user->isBranchScoped()) {
                 if ((int) $user->warehouse_id !== (int) $warehouseId) {
@@ -295,7 +296,7 @@ class StockService
             // Anonymous walk-in transactions with zero debt do NOT acquire customer locks.
             $customer = null;
             if (!empty($customerId)) {
-                $activeTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+                $activeTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
                 $customer = Customer::withoutGlobalScopes()->where('id', $customerId)->lockForUpdate()->first();
                 if (!$customer) {
                     throw new \InvalidArgumentException("Customer #{$customerId} does not exist.");
@@ -318,7 +319,7 @@ class StockService
 
             $sale = Sale::create([
                 'id' => $saleId,
-                'tenant_id' => session('tenant_id') ?? null,
+                'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id'),
                 'warehouse_id' => $warehouseId,
                 'customerName' => $customerName,
                 'customerId' => $customerId,
@@ -570,7 +571,7 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'productId' => $item->productId,
                     'warehouse_id' => $warehouseId,
                     'type' => 'DISPATCH_FULFILLED',
@@ -677,7 +678,7 @@ class StockService
 
             InventoryLog::create([
                 'id' => (string) Str::uuid(),
-                'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                 'productId' => $productId,
                 'warehouse_id' => $warehouseId,
                 'type' => 'DISPATCH_FULFILLED',
@@ -721,7 +722,7 @@ class StockService
             }
 
             if (config('saas.enabled')) {
-                $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null) ?? $sourceWh->tenant_id;
+                $currentTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : (session('tenant_id') ?? $sourceWh->tenant_id);
 
                 if ($sourceWh->tenant_id !== $currentTenantId) {
                     throw new \InvalidArgumentException("Security Violation: Source branch #{$sourceWarehouseId} does not belong to active tenant '{$currentTenantId}'.");
@@ -1059,7 +1060,7 @@ class StockService
 
             // Tenant boundary assertion
             if (config('saas.enabled')) {
-                $activeTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+                $activeTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
                 if ($activeTenantId && $customer->tenant_id !== $activeTenantId) {
                     throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} does not belong to active tenant '{$activeTenantId}'.");
                 }
@@ -1067,7 +1068,7 @@ class StockService
 
             $hasSales = Sale::where('customerId', $customerId)->exists();
             $allocatedSaleIds = [];
-            $tenantId = session('tenant_id') ?? $customer->tenant_id ?? null;
+            $tenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($customer->tenant_id ?? session('tenant_id'));
 
             if ($hasSales) {
                 // Retrieve open sales strictly within branch context if warehouseId is provided
@@ -1435,7 +1436,7 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'productId' => $product->id,
                     'warehouse_id' => $warehouseId,
                     'type' => 'SALES_RETURN',
@@ -1493,7 +1494,7 @@ class StockService
 
                 Payment::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'saleId' => $saleId,
                     'amount' => -$totalRefundAmount,
                     'method' => 'REFUND_CASH',
@@ -1562,7 +1563,7 @@ class StockService
 
                 $singleReturn = \App\Models\SalesReturn::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'saleId' => $saleId,
                     'customerName' => $sale->customerName,
                     'code' => 'RET-' . strtoupper(Str::random(6)),
