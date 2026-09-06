@@ -157,7 +157,7 @@ jobs:
     - name: Execute Standalone Mode Verification on MySQL 8.0 (SAAS_ENABLED=false)
       id: mysql_standalone_test_suite
       run: |
-        php artisan test --configuration=phpunit.mysql.xml --filter=SaasProvisionRootCommandTest -d SAAS_ENABLED=false --colors=never | tee mysql_standalone_test_run.log
+        php artisan test --configuration=phpunit.mysql.standalone.xml --filter=SaasProvisionRootCommandTest --colors=never | tee mysql_standalone_test_run.log
         echo "### MySQL 8.0 Standalone Verification Execution Summary" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         cat mysql_standalone_test_run.log >> $GITHUB_STEP_SUMMARY
