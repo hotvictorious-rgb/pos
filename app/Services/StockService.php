@@ -30,19 +30,25 @@ class StockService
      */
     public function assertTenantWarehouse(int $warehouseId): Warehouse
     {
-        $wh = Warehouse::withoutGlobalScopes()->find($warehouseId);
-        if (!$wh) {
-            throw new \InvalidArgumentException("Warehouse #{$warehouseId} does not exist.");
-        }
-
+        $currentTenantId = null;
         if (config('saas.enabled')) {
             $currentTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
             if (empty($currentTenantId)) {
                 throw new \InvalidArgumentException("Security Violation: No authoritative tenant context established. Operation rejected.");
             }
-            if ($wh->tenant_id !== $currentTenantId) {
+        }
+
+        $query = Warehouse::query();
+        if (config('saas.enabled') && !empty($currentTenantId)) {
+            $query->where('tenant_id', $currentTenantId);
+        }
+        $wh = $query->find($warehouseId);
+
+        if (!$wh) {
+            if (config('saas.enabled') && Warehouse::withoutGlobalScopes()->where('id', $warehouseId)->exists()) {
                 throw new \InvalidArgumentException("Security Violation: Warehouse #{$warehouseId} does not belong to active tenant '{$currentTenantId}'. Cross-tenant stock transfers are strictly forbidden.");
             }
+            throw new \InvalidArgumentException("Warehouse #{$warehouseId} does not exist.");
         }
 
         return $wh;
@@ -297,15 +303,19 @@ class StockService
             $customer = null;
             if (!empty($customerId)) {
                 $activeTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
-                $customer = Customer::withoutGlobalScopes()->where('id', $customerId)->lockForUpdate()->first();
-                if (!$customer) {
-                    throw new \InvalidArgumentException("Customer #{$customerId} does not exist.");
-                }
-                $activeTenantClean = !empty($activeTenantId) ? (string) $activeTenantId : null;
-                $custTenantClean   = !empty($customer->tenant_id) ? (string) $customer->tenant_id : null;
 
-                if ($custTenantClean !== $activeTenantClean) {
-                    throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} belongs to tenant '{$customer->tenant_id}', not active tenant '{$activeTenantId}'.");
+                $custQuery = Customer::query()->where('id', $customerId);
+                if (!empty($activeTenantId)) {
+                    $custQuery->where('tenant_id', $activeTenantId);
+                }
+                $customer = $custQuery->lockForUpdate()->first();
+
+                if (!$customer) {
+                    if (Customer::withoutGlobalScopes()->where('id', $customerId)->exists()) {
+                        $foreignCust = Customer::withoutGlobalScopes()->find($customerId);
+                        throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} belongs to tenant '{$foreignCust->tenant_id}', not active tenant '{$activeTenantId}'.");
+                    }
+                    throw new \InvalidArgumentException("Customer #{$customerId} does not exist.");
                 }
                 $customerName = $customer->name;
             } elseif ($remainingDebt > 0 && !empty($customerName) && $customerName !== 'Walk-in Customer') {
@@ -711,25 +721,33 @@ class StockService
             }
 
             // 2. Authoritative Tenant Boundary Verification for Both Source & Destination
-            $sourceWh = Warehouse::withoutGlobalScopes()->find($sourceWarehouseId);
-            $destWh   = Warehouse::withoutGlobalScopes()->find($destWarehouseId);
+            $currentTenantId = null;
+            if (config('saas.enabled')) {
+                $currentTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
+            }
+
+            $sourceQuery = Warehouse::query();
+            $destQuery = Warehouse::query();
+            if (config('saas.enabled') && !empty($currentTenantId)) {
+                $sourceQuery->where('tenant_id', $currentTenantId);
+                $destQuery->where('tenant_id', $currentTenantId);
+            }
+
+            $sourceWh = $sourceQuery->find($sourceWarehouseId);
+            $destWh   = $destQuery->find($destWarehouseId);
 
             if (!$sourceWh) {
+                if (config('saas.enabled') && Warehouse::withoutGlobalScopes()->where('id', $sourceWarehouseId)->exists()) {
+                    throw new \InvalidArgumentException("Security Violation: Source branch #{$sourceWarehouseId} does not belong to active tenant '{$currentTenantId}'.");
+                }
                 throw new \InvalidArgumentException("Source branch #{$sourceWarehouseId} does not exist.");
             }
             if (!$destWh) {
+                if (config('saas.enabled') && Warehouse::withoutGlobalScopes()->where('id', $destWarehouseId)->exists()) {
+                    $foreignDest = Warehouse::withoutGlobalScopes()->find($destWarehouseId);
+                    throw new \InvalidArgumentException("Security Violation: Destination branch #{$destWarehouseId} belongs to a different tenant ('{$foreignDest->tenant_id}'). Cross-tenant stock transfers are strictly forbidden.");
+                }
                 throw new \InvalidArgumentException("Destination branch #{$destWarehouseId} does not exist.");
-            }
-
-            if (config('saas.enabled')) {
-                $currentTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : (session('tenant_id') ?? $sourceWh->tenant_id);
-
-                if ($sourceWh->tenant_id !== $currentTenantId) {
-                    throw new \InvalidArgumentException("Security Violation: Source branch #{$sourceWarehouseId} does not belong to active tenant '{$currentTenantId}'.");
-                }
-                if ($destWh->tenant_id !== $currentTenantId) {
-                    throw new \InvalidArgumentException("Security Violation: Destination branch #{$destWarehouseId} belongs to a different tenant ('{$destWh->tenant_id}'). Cross-tenant stock transfers are strictly forbidden.");
-                }
             }
 
             // 3. Pre-validate ALL items and lock stock before creating the Transfer record

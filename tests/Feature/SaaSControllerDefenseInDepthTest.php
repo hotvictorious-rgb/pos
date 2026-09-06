@@ -170,20 +170,48 @@ class SaaSControllerDefenseInDepthTest extends TestCase
 
         try {
             $controller->deleteTenant($this->tenantB->id);
-            $this->fail('Expected 403 HttpException for platform employee lacking platform.tenants');
+            $this->fail('Expected 403 HttpException for platform employee lacking capabilities');
         } catch (HttpException $e) {
             $this->assertEquals(403, $e->getStatusCode());
-            $this->assertStringContainsString("Missing required platform capability 'platform.tenants'", $e->getMessage());
+            $this->assertStringContainsString("Missing required platform capability 'platform.tenants.delete'", $e->getMessage());
         }
     }
 
     /**
-     * Test 3: Platform employee with platform.tenants can invoke deleteTenant at controller level.
+     * Test 3: Legacy platform.tenants bundle does NOT grant tenant deletion (P2 Hardening).
      */
-    public function test_controller_defense_lock_permits_authorized_platform_employee(): void
+    public function test_legacy_platform_tenants_capability_cannot_delete_tenant(): void
     {
         $controller = app(SaaSController::class);
+        // platformEmployeeWithCaps has only 'platform.tenants'
         $this->actingAs($this->platformEmployeeWithCaps);
+
+        try {
+            $controller->deleteTenant($this->tenantB->id);
+            $this->fail('Expected 403: platform.tenants bundle must NOT include deletion authority');
+        } catch (HttpException $e) {
+            $this->assertEquals(403, $e->getStatusCode());
+            $this->assertStringContainsString("Missing required platform capability 'platform.tenants.delete'", $e->getMessage());
+        }
+    }
+
+    /**
+     * Test 4: Explicit platform.tenants.delete capability permits deletion.
+     */
+    public function test_controller_defense_lock_permits_authorized_platform_employee_with_delete_cap(): void
+    {
+        $deleteAdmin = User::withoutGlobalScopes()->create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'name' => 'Platform Delete Admin',
+            'email' => 'delmgr@system.local',
+            'password' => Hash::make('SecretPass123!'),
+            'role' => 'platform_employee',
+            'permissions' => ['platform.tenants.delete'],
+        ]);
+
+        $controller = app(SaaSController::class);
+        $this->actingAs($deleteAdmin);
 
         $response = $controller->deleteTenant($this->tenantB->id);
         $this->assertTrue($response->isRedirection());

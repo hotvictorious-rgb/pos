@@ -288,7 +288,7 @@ class SaaSController extends Controller
     /** Create Tenant Account Manually from Control Panel */
     public function storeTenant(Request $request)
     {
-        $this->requirePlatformCapability('platform.tenants');
+        $this->requirePlatformCapability('platform.tenants.create');
 
         $request->validate([
             'business_name' => 'required|string|max:255',
@@ -349,7 +349,7 @@ class SaaSController extends Controller
     /** Toggle Tenant Status */
     public function toggleStatus(Request $request, $id)
     {
-        $this->requirePlatformCapability('platform.tenants');
+        $this->requirePlatformCapability('platform.tenants.suspend');
 
         $request->validate([
             'status' => 'required|string|in:active,trial,suspended',
@@ -395,7 +395,7 @@ class SaaSController extends Controller
     /** Delete Tenant Account and All Associated Business Data */
     public function deleteTenant($id)
     {
-        $this->requirePlatformCapability('platform.tenants');
+        $this->requirePlatformCapability('platform.tenants.delete');
 
         if ($id === 'default-tenant') {
             return back()->with('error', 'Cannot delete default system master tenant.');
