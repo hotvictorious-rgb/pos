@@ -17,7 +17,8 @@ trait BelongsToTenant
 
         static::creating(function ($model) {
             if (config('saas.enabled')) {
-                $sessionTenantId = session('tenant_id');
+                $authUser = auth()->check() ? auth()->user() : null;
+                $sessionTenantId = $authUser?->tenant_id ?? session('tenant_id');
 
 
                 // If running in console or tests with explicit tenant_id, allow it

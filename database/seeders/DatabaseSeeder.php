@@ -32,47 +32,21 @@ class DatabaseSeeder extends Seeder
             }
         }
 
-        $superAdminPassword = $rawSuperAdminPassword ?: (app()->environment('testing') ? 'test-super-secret-pw' : Str::random(32));
+        // 1. Delegate Master Platform Tenant & Super Admin provisioning to dedicated command
+        // INVARIANT: Re-seeding must NEVER overwrite existing user passwords or credentials
+        $existingSuperAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
+        $provisionParams = [
+            '--email' => $superAdminEmail,
+            '--force' => true,
+        ];
+        if (!$existingSuperAdmin && !empty($rawSuperAdminPassword)) {
+            $provisionParams['--password'] = $rawSuperAdminPassword;
+        }
 
-        // 1. Seed Master Platform Tenant (default-tenant for Super Admin)
-        $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant')
-            ?? Tenant::create([
-                'id' => 'default-tenant',
-                'name' => 'Platform Master HQ',
-                'owner_email' => $superAdminEmail,
-                'owner_phone' => '08000000000',
-                'plan' => 'enterprise',
-                'status' => 'active',
-                'max_branches' => 999,
-                'max_users' => 999,
-            ]);
+        \Illuminate\Support\Facades\Artisan::call('saas:provision-root', $provisionParams);
 
         // 2. Seed Business Tenant (Hysam Ventures HQ) - Only if demo data is enabled or not in production
         $seedDemoData = !app()->environment('production') || (bool) env('SEED_DEMO_DATA', false);
-
-        // 3. Seed Platform Super Admin User (Super-Admin Console: /super-admin/login)
-        $existingSuperAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
-        if ($existingSuperAdmin) {
-            // INVARIANT: Re-seeding must NEVER overwrite existing user passwords or credentials
-            $existingSuperAdmin->update([
-                'tenant_id' => 'default-tenant',
-                'name' => 'Platform Super Admin',
-                'role' => 'admin',
-                'disabled' => false,
-                'permissions' => json_encode(['all' => true]),
-            ]);
-        } else {
-            User::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => 'default-tenant',
-                'name' => 'Platform Super Admin',
-                'email' => $superAdminEmail,
-                'password' => Hash::make($superAdminPassword),
-                'role' => 'admin',
-                'disabled' => false,
-                'permissions' => json_encode(['all' => true]),
-            ]);
-        }
 
         if (!$seedDemoData) {
             return;

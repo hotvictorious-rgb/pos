@@ -40,23 +40,27 @@ class User extends Authenticatable
     {
         static::saving(function ($user) {
             $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
-            // Prevent non-root identities from acquiring super_admin role
-            if ($user->role === 'super_admin') {
-                if ($user->tenant_id !== 'default-tenant' || strtolower(trim($user->email)) !== $superAdminEmail) {
-                    $user->role = 'admin'; // Normalize privilege escalation attempt
-                }
-            }
 
-            // Reserved System Tenant Boundary:
-            // Prevent ordinary tenant users from being assigned to 'default-tenant'
+            // Invariant: Non-root accounts in default-tenant are strictly platform_employee only
             if ($user->tenant_id === 'default-tenant') {
                 $isRootAdmin = (strtolower(trim($user->email ?? '')) === $superAdminEmail);
+                if (!$isRootAdmin && in_array($user->role, ['admin', 'super_admin'], true)) {
+                    $user->role = 'platform_employee'; // Normalize privilege escalation: non-root platform staff are platform_employee
+                }
+
                 $isConsole = app()->runningInConsole();
                 $actingUser = \Illuminate\Support\Facades\Auth::check() ? \Illuminate\Support\Facades\Auth::user() : null;
                 $actingIsPlatformAdmin = $actingUser ? $actingUser->isPlatformAdmin() : false;
 
                 if (!$isRootAdmin && !$isConsole && !$actingIsPlatformAdmin) {
                     throw new \InvalidArgumentException("Security Violation: 'default-tenant' is a reserved platform system identifier and cannot be assigned to ordinary accounts.");
+                }
+            }
+
+            // Prevent non-root identities from acquiring super_admin role
+            if ($user->role === 'super_admin') {
+                if ($user->tenant_id !== 'default-tenant' || strtolower(trim($user->email)) !== $superAdminEmail) {
+                    $user->role = 'admin'; // Normalize privilege escalation attempt
                 }
             }
         });

@@ -107,6 +107,11 @@ class InstallerController extends Controller
     public function run()
     {
         try {
+            // Standalone installer takeover protection (Fail-Closed)
+            if (\App\Models\User::withoutGlobalScopes()->exists()) {
+                abort(403, 'Security Violation: Cannot run installer when user accounts already exist.');
+            }
+
             // Generate app key if not set
             if (empty(config('app.key'))) {
                 Artisan::call('key:generate', ['--force' => true]);
@@ -115,31 +120,53 @@ class InstallerController extends Controller
             // Run migrations
             Artisan::call('migrate', ['--force' => true]);
 
-            // Create the admin user
+            // Re-verify after migrations that no accounts existed
+            if (\App\Models\User::withoutGlobalScopes()->exists()) {
+                abort(403, 'Security Violation: Cannot provision initial admin over existing users.');
+            }
+
+            // Create initial admin user
             $adminName     = session('installer_admin_name');
             $adminEmail    = session('installer_admin_email');
             $adminPassHash = session('installer_admin_password_hash');
 
             if ($adminEmail && $adminPassHash) {
-                \App\Models\User::updateOrCreate(
-                    ['email' => $adminEmail],
-                    [
+                if (config('saas.enabled')) {
+                    // Temporarily align super_admin_email config for this installation run if needed
+                    config(['saas.super_admin_email' => $adminEmail]);
+
+                    Artisan::call('saas:provision-root', [
+                        '--email' => $adminEmail,
+                        '--password-hash' => $adminPassHash,
+                        '--force' => true,
+                    ]);
+
+                    $root = \App\Models\User::withoutGlobalScopes()->whereRaw('LOWER(email) = ?', [strtolower(trim($adminEmail))])->first();
+                    if (!$root || !$root->isPlatformAdmin()) {
+                        throw new \App\Exceptions\SecurityException("Security Invariant Failed: Initial root provisioning did not satisfy isPlatformAdmin().");
+                    }
+                } else {
+                    \App\Models\User::create([
+                        'id'       => (string) \Illuminate\Support\Str::uuid(),
                         'name'     => $adminName,
+                        'email'    => $adminEmail,
                         'password' => $adminPassHash,
                         'role'     => 'admin',
-                    ]
-                );
+                    ]);
+                }
             }
 
             // Write the installed lock file
             file_put_contents(storage_path('installed'), date('Y-m-d H:i:s'));
 
-            // Clear caches
-            Artisan::call('config:cache');
-            Artisan::call('route:cache');
-            Artisan::call('view:cache');
+            // Compile caches only outside testing environments
+            if (!app()->environment('testing')) {
+                Artisan::call('config:cache');
+                Artisan::call('route:cache');
+                Artisan::call('view:cache');
+            }
 
-            // Clear installer session data
+            // Clear installer session data immediately
             session()->forget(['installer_admin_name', 'installer_admin_email', 'installer_admin_password_hash']);
 
             return response()->json(['success' => true]);

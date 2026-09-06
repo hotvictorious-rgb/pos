@@ -18,9 +18,11 @@ class TenantScope implements Scope
             return;
         }
 
-        // 2. If tenant context exists in session and is non-empty, apply tenant_id isolation
-        if (session()->has('tenant_id') && !empty(session('tenant_id'))) {
-            $tenantId = session('tenant_id');
+        // 2. Authoritative identity chain: authenticated user tenant takes precedence over session
+        $authUser = auth()->check() ? auth()->user() : null;
+        $tenantId = $authUser?->tenant_id ?? (session()->has('tenant_id') && !empty(session('tenant_id')) ? session('tenant_id') : null);
+
+        if (!empty($tenantId)) {
             $tableName = $model->getTable();
             $builder->where("{$tableName}.tenant_id", $tenantId);
         } else {
