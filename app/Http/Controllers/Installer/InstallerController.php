@@ -108,7 +108,8 @@ class InstallerController extends Controller
     {
         try {
             // Standalone installer takeover protection (Fail-Closed)
-            if (\App\Models\User::withoutGlobalScopes()->exists()) {
+            // If database is already migrated and users exist, reject takeover
+            if (\Illuminate\Support\Facades\Schema::hasTable('users') && \App\Models\User::withoutGlobalScopes()->exists()) {
                 abort(403, 'Security Violation: Cannot run installer when user accounts already exist.');
             }
 

@@ -32,18 +32,35 @@ class DatabaseSeeder extends Seeder
             }
         }
 
-        // 1. Delegate Master Platform Tenant & Super Admin provisioning to dedicated command
-        // INVARIANT: Re-seeding must NEVER overwrite existing user passwords or credentials
-        $existingSuperAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
-        $provisionParams = [
-            '--email' => $superAdminEmail,
-            '--force' => true,
-        ];
-        if (!$existingSuperAdmin && !empty($rawSuperAdminPassword)) {
-            $provisionParams['--password'] = $rawSuperAdminPassword;
-        }
+        if (config('saas.enabled')) {
+            // 1. SaaS Multi-Tenant Mode: Delegate Master Platform Tenant & Root provisioning to dedicated command
+            // INVARIANT: Re-seeding must NEVER overwrite existing user passwords or credentials
+            $existingSuperAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
+            $provisionParams = [
+                '--email' => $superAdminEmail,
+                '--force' => true,
+            ];
+            if (!$existingSuperAdmin && !empty($rawSuperAdminPassword)) {
+                $provisionParams['--password'] = $rawSuperAdminPassword;
+            }
 
-        \Illuminate\Support\Facades\Artisan::call('saas:provision-root', $provisionParams);
+            \Illuminate\Support\Facades\Artisan::call('saas:provision-root', $provisionParams);
+        } else {
+            // 1. Standalone Single-Tenant Mode: Provision standard local administrator without SaaS master tenant
+            $existingAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
+            if (!$existingAdmin) {
+                $standalonePw = $rawSuperAdminPassword ?: (app()->environment('testing') ? 'test-super-secret-pw' : Str::random(32));
+                User::create([
+                    'id' => (string) Str::uuid(),
+                    'name' => 'Store Administrator',
+                    'email' => $superAdminEmail,
+                    'password' => Hash::make($standalonePw),
+                    'role' => 'admin',
+                    'disabled' => false,
+                    'permissions' => json_encode(['all' => true]),
+                ]);
+            }
+        }
 
         // 2. Seed Business Tenant (Hysam Ventures HQ) - Only if demo data is enabled or not in production
         $seedDemoData = !app()->environment('production') || (bool) env('SEED_DEMO_DATA', false);

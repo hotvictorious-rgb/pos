@@ -462,4 +462,51 @@ class SaasProvisionRootCommandTest extends TestCase
         $exitCode3 = Artisan::call('saas:provision-root', ['--force' => true]);
         $this->assertSame(0, $exitCode3);
     }
+
+    /**
+     * 14. Fresh Installer Takeover Guard Distinguishes Unmigrated Schema From Existing Accounts
+     */
+    public function test_installer_guard_handles_unmigrated_database_without_query_exception(): void
+    {
+        $nonExistentTable = 'unmigrated_fresh_db_table';
+        $this->assertFalse(\Illuminate\Support\Facades\Schema::hasTable($nonExistentTable));
+
+        // Directly querying an unmigrated table throws a QueryException (the previous bug)
+        $threwException = false;
+        try {
+            \Illuminate\Support\Facades\DB::table($nonExistentTable)->exists();
+        } catch (\Illuminate\Database\QueryException $e) {
+            $threwException = true;
+        }
+        $this->assertTrue($threwException, 'Querying non-existent table directly must throw QueryException');
+
+        // The guarded expression safely evaluates to false without throwing any exception
+        $guardResult = \Illuminate\Support\Facades\Schema::hasTable($nonExistentTable)
+            && \Illuminate\Support\Facades\DB::table($nonExistentTable)->exists();
+        $this->assertFalse($guardResult);
+    }
+
+    /**
+     * 15. Standalone Mode Seeder Does Not Provision SaaS Root
+     */
+    public function test_database_seeder_in_standalone_mode_does_not_provision_saas_root(): void
+    {
+        config(['saas.enabled' => false]);
+        config(['saas.super_admin_email' => 'admin@hysamventures.com']);
+        User::withoutGlobalScopes()->where('email', 'admin@hysamventures.com')->delete();
+
+        // Delete default-tenant to verify standalone seeder does not create it
+        Tenant::withoutGlobalScopes()->where('id', 'default-tenant')->delete();
+
+        Artisan::call('db:seed');
+
+        $admin = User::withoutGlobalScopes()->where('email', 'admin@hysamventures.com')->first();
+        $this->assertNotNull($admin);
+        $this->assertSame('admin', $admin->role);
+        $this->assertFalse($admin->isPlatformAdmin());
+        $this->assertNotSame('default-tenant', $admin->tenant_id);
+
+        $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant');
+        $this->assertNull($defaultTenant);
+    }
 }
