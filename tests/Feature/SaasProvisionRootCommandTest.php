@@ -411,7 +411,7 @@ class SaasProvisionRootCommandTest extends TestCase
             app()->detectEnvironment(fn() => 'production');
 
             $this->expectException(SecurityException::class);
-            $this->expectExceptionMessage("Production root provisioning requires a secure, non-default password.");
+            $this->expectExceptionMessage("Production root provisioning requires a secure, non-default, non-placeholder password.");
 
             Artisan::call('saas:provision-root', [
                 '--password' => 'password',
@@ -420,5 +420,46 @@ class SaasProvisionRootCommandTest extends TestCase
         } finally {
             app()->detectEnvironment(fn() => $originalEnv);
         }
+    }
+
+    /**
+     * 12. Placeholder Passwords from .env.example Rejected in Production Mode
+     */
+    public function test_placeholder_passwords_rejected_in_production_mode(): void
+    {
+        $originalEnv = app()->environment();
+        try {
+            app()->detectEnvironment(fn() => 'production');
+
+            $this->expectException(SecurityException::class);
+            $this->expectExceptionMessage("Production root provisioning requires a secure, non-default, non-placeholder password.");
+
+            Artisan::call('saas:provision-root', [
+                '--password' => 'set_your_secure_password_here',
+                '--force' => true,
+            ]);
+        } finally {
+            app()->detectEnvironment(fn() => $originalEnv);
+        }
+    }
+
+    /**
+     * 13. Re-provisioning Existing Root Without --force or Password Rotation Fails
+     */
+    public function test_reprovisioning_existing_root_without_force_fails(): void
+    {
+        User::withoutGlobalScopes()->where('email', 'superadmin@hysam.com')->delete();
+
+        // Initial provisioning creates root
+        $exitCode1 = Artisan::call('saas:provision-root');
+        $this->assertSame(0, $exitCode1);
+
+        // Re-executing without --force or --password must fail
+        $exitCode2 = Artisan::call('saas:provision-root');
+        $this->assertSame(1, $exitCode2);
+
+        // Re-executing WITH --force succeeds
+        $exitCode3 = Artisan::call('saas:provision-root', ['--force' => true]);
+        $this->assertSame(0, $exitCode3);
     }
 }

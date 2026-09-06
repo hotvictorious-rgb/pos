@@ -73,14 +73,41 @@ class SaasProvisionRootCommand extends Command
         }
 
         // 3. Provision or Invariant-Enforce Root User
-        $knownWeakPasswords = ['changeme123', 'admin123', 'staff123', 'password', '12345678', 'secret'];
+        $knownWeakPasswords = [
+            'changeme123',
+            'admin123',
+            'staff123',
+            'password',
+            '12345678',
+            'secret',
+            'set_your_secure_password_here',
+            'your_cpanel_db_password',
+            'your_email_password',
+        ];
+
+        $isWeakOrPlaceholder = function (?string $pw) use ($knownWeakPasswords): bool {
+            if (empty($pw)) {
+                return true;
+            }
+            $clean = strtolower(trim($pw));
+            return in_array($clean, $knownWeakPasswords, true)
+                || str_contains($clean, 'set_your_')
+                || str_contains($clean, 'your_password')
+                || str_contains($clean, 'placeholder');
+        };
 
         if ($existingUser) {
+            // INVARIANT: When root user already exists, re-execution requires explicit --force or explicit rotation
+            if (!$this->option('force') && !$this->option('password') && !$this->option('password-hash')) {
+                $this->error("Platform root user '{$superAdminEmail}' already exists. Re-provisioning requires explicit --force flag or explicit rotation option.");
+                return Command::FAILURE;
+            }
+
             // INVARIANT: Do NOT reset existing password unless explicitly supplied via --password or --password-hash
             if ($this->option('password')) {
                 $rawPw = $this->option('password');
-                if (app()->environment('production') && in_array(strtolower($rawPw), $knownWeakPasswords, true)) {
-                    throw new SecurityException("Security Violation: Production password change requires a secure, non-default password.");
+                if (app()->environment('production') && $isWeakOrPlaceholder($rawPw)) {
+                    throw new SecurityException("Security Violation: Production password change requires a secure, non-default, non-placeholder password.");
                 }
                 $existingUser->password = Hash::make($rawPw);
                 $this->info("Updated root password from explicit --password option.");
@@ -116,8 +143,8 @@ class SaasProvisionRootCommand extends Command
                     $this->warn("Generated random password for Super Admin: {$rawPw}");
                 }
 
-                if (app()->environment('production') && in_array(strtolower($rawPw), $knownWeakPasswords, true)) {
-                    throw new SecurityException("Security Violation: Production root provisioning requires a secure, non-default password.");
+                if (app()->environment('production') && $isWeakOrPlaceholder($rawPw)) {
+                    throw new SecurityException("Security Violation: Production root provisioning requires a secure, non-default, non-placeholder password.");
                 }
 
                 $hashedPassword = Hash::make($rawPw);

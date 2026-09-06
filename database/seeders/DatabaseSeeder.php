@@ -25,7 +25,7 @@ class DatabaseSeeder extends Seeder
         $rawSuperAdminPassword = env('SUPER_ADMIN_PASSWORD');
 
         // Production Invariant: Disallow known default or weak credentials
-        $knownWeakPasswords = ['changeme123', 'admin123', 'staff123', 'password', '12345678', 'secret'];
+        $knownWeakPasswords = ['changeme123', 'admin123', 'staff123', 'password', '12345678', 'secret', 'set_your_secure_password_here'];
         if (app()->environment('production')) {
             if (empty($rawSuperAdminPassword) || in_array(strtolower($rawSuperAdminPassword), $knownWeakPasswords, true)) {
                 throw new \App\Exceptions\SecurityException("Security Violation: Production seeding requires a secure, non-default SUPER_ADMIN_PASSWORD environment variable.");
