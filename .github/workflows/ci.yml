@@ -32,11 +32,18 @@ jobs:
         coverage: none
 
     - name: Setup Environment & SQLite Database
+      env:
+        CI_SECRET_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD }}
       run: |
         cp .env.example .env
         sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/' .env
         sed -i 's/DB_DATABASE=hysam/DB_DATABASE=database\/database.sqlite/' .env
-        sed -i 's/SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD="CI_SQLite_SecureRootPassword#2026"/' .env
+        if [ -n "$CI_SECRET_PASSWORD" ]; then
+          CI_PW="$CI_SECRET_PASSWORD"
+        else
+          CI_PW="CI_Ephemeral_$(openssl rand -hex 16)"
+        fi
+        sed -i "s/SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD=\"$CI_PW\"/" .env
         mkdir -p database
         touch database/database.sqlite
 
@@ -109,6 +116,8 @@ jobs:
         coverage: none
 
     - name: Setup Environment for MySQL
+      env:
+        CI_SECRET_PASSWORD: ${{ secrets.SUPER_ADMIN_PASSWORD }}
       run: |
         cp .env.example .env
         sed -i 's/DB_CONNECTION=.*/DB_CONNECTION=mysql/' .env
@@ -117,7 +126,12 @@ jobs:
         sed -i 's/DB_DATABASE=.*/DB_DATABASE=hysam_test/' .env
         sed -i 's/DB_USERNAME=.*/DB_USERNAME=root/' .env
         sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=root/' .env
-        sed -i 's/SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD="CI_MySQL_SecureRootPassword#2026"/' .env
+        if [ -n "$CI_SECRET_PASSWORD" ]; then
+          CI_PW="$CI_SECRET_PASSWORD"
+        else
+          CI_PW="CI_Ephemeral_$(openssl rand -hex 16)"
+        fi
+        sed -i "s/SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD=\"$CI_PW\"/" .env
 
     - name: Install Composer Dependencies
       run: composer install --prefer-dist --no-interaction --no-progress
@@ -129,7 +143,7 @@ jobs:
       run: php artisan migrate:fresh --force
 
     - name: Run Dedicated Root Provisioning on MySQL 8.0
-      run: php artisan saas:provision-root --force --password="CI_MySQL_SecureRootPassword#2026"
+      run: php artisan saas:provision-root --force
 
     - name: Execute Full Automated Test Suite on MySQL 8.0
       id: mysql_test_suite
