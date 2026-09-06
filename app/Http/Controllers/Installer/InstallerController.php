@@ -71,6 +71,8 @@ class InstallerController extends Controller
             'CACHE_STORE'  => 'file',
             'QUEUE_CONNECTION' => 'sync',
             'SESSION_DRIVER'   => 'file',
+            'APP_INSTALLED'    => 'false',
+            'APP_INSTALLER_ENABLED' => 'true',
         ]);
 
         Artisan::call('config:clear');
@@ -160,6 +162,14 @@ class InstallerController extends Controller
             // Write the installed lock file
             file_put_contents(storage_path('installed'), date('Y-m-d H:i:s'));
 
+            // Lock installer via environment flags as well (if .env exists)
+            if (file_exists(base_path('.env')) && !app()->environment('testing')) {
+                $this->writeEnv([
+                    'APP_INSTALLED' => 'true',
+                    'APP_INSTALLER_ENABLED' => 'false',
+                ]);
+            }
+
             // Compile caches only outside testing environments
             if (!app()->environment('testing')) {
                 Artisan::call('config:cache');
@@ -171,6 +181,8 @@ class InstallerController extends Controller
             session()->forget(['installer_admin_name', 'installer_admin_email', 'installer_admin_password_hash']);
 
             return response()->json(['success' => true]);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], $e->getStatusCode());
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }

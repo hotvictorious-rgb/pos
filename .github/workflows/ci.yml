@@ -145,13 +145,22 @@ jobs:
     - name: Run Dedicated Root Provisioning on MySQL 8.0
       run: php artisan saas:provision-root --force
 
-    - name: Execute Full Automated Test Suite on MySQL 8.0
+    - name: Execute Full Automated Test Suite on MySQL 8.0 (SaaS Multi-Tenant Mode)
       id: mysql_test_suite
       run: |
         php artisan test --configuration=phpunit.mysql.xml --colors=never | tee mysql_test_run.log
-        echo "### MySQL 8.0 Automated Test Suite Execution Summary" >> $GITHUB_STEP_SUMMARY
+        echo "### MySQL 8.0 SaaS Multi-Tenant Test Suite Execution Summary" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         cat mysql_test_run.log >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+    - name: Execute Standalone Mode Verification on MySQL 8.0 (SAAS_ENABLED=false)
+      id: mysql_standalone_test_suite
+      run: |
+        php artisan test --configuration=phpunit.mysql.xml --filter=SaasProvisionRootCommandTest -d SAAS_ENABLED=false --colors=never | tee mysql_standalone_test_run.log
+        echo "### MySQL 8.0 Standalone Verification Execution Summary" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        cat mysql_standalone_test_run.log >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Upload MySQL Test Results Artifact
@@ -159,7 +168,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: mysql-test-results
-        path: mysql_test_run.log
+        path: |
+          mysql_test_run.log
+          mysql_standalone_test_run.log
         retention-days: 7
 
     - name: Publish GitHub MySQL Commit Status

@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use App\Models\User;
 use App\Models\Tenant;
 use App\Exceptions\SecurityException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -54,25 +55,7 @@ class SaasProvisionRootCommand extends Command
             throw new SecurityException($msg);
         }
 
-        // 2. Ensure Master Platform Tenant (default-tenant)
-        $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant');
-        if (!$defaultTenant) {
-            $defaultTenant = Tenant::create([
-                'id' => 'default-tenant',
-                'name' => 'Platform Master HQ',
-                'owner_email' => $superAdminEmail,
-                'owner_phone' => '08000000000',
-                'plan' => 'enterprise',
-                'status' => 'active',
-                'max_branches' => 999,
-                'max_users' => 999,
-            ]);
-            $this->info("Created platform master tenant: 'default-tenant'.");
-        } else {
-            $this->line("Platform master tenant 'default-tenant' verified.");
-        }
-
-        // 3. Provision or Invariant-Enforce Root User
+        // 2. Pre-Validation Phase (Zero Database Writes before validation passes)
         $knownWeakPasswords = [
             'changeme123',
             'admin123',
@@ -96,6 +79,8 @@ class SaasProvisionRootCommand extends Command
                 || str_contains($clean, 'placeholder');
         };
 
+        $targetHashedPassword = null;
+
         if ($existingUser) {
             // INVARIANT: When root user already exists, re-execution requires explicit --force or explicit rotation
             if (!$this->option('force') && !$this->option('password') && !$this->option('password-hash')) {
@@ -103,34 +88,32 @@ class SaasProvisionRootCommand extends Command
                 return Command::FAILURE;
             }
 
-            // INVARIANT: Do NOT reset existing password unless explicitly supplied via --password or --password-hash
-            if ($this->option('password')) {
-                $rawPw = $this->option('password');
+            if ($this->option('password-hash')) {
+                $hash = (string) $this->option('password-hash');
+                // Enforce valid bcrypt ($2y$, $2a$, $2b$) or argon2 hash structure for privileged internal interface
+                if (!preg_match('/^\$2[ayb]\$[0-9]{2}\$[A-Za-z0-9\.\/]{53}$/', $hash) && !str_starts_with($hash, '$argon2')) {
+                    throw new SecurityException("Security Violation: Invalid password hash format provided to internal provisioning interface.");
+                }
+                $targetHashedPassword = $hash;
+                $this->info("Prepared root password update from explicit pre-hashed credential.");
+            } elseif ($this->option('password')) {
+                $rawPw = (string) $this->option('password');
                 if (app()->environment('production') && $isWeakOrPlaceholder($rawPw)) {
                     throw new SecurityException("Security Violation: Production password change requires a secure, non-default, non-placeholder password.");
                 }
-                $existingUser->password = Hash::make($rawPw);
-                $this->info("Updated root password from explicit --password option.");
-            } elseif ($this->option('password-hash')) {
-                $existingUser->password = $this->option('password-hash');
-                $this->info("Updated root password from explicit pre-hashed credential.");
+                $targetHashedPassword = Hash::make($rawPw);
+                $this->info("Prepared root password update from explicit --password option.");
             } else {
-                $this->line("Preserving existing root user password (no explicit --password provided).");
+                $this->line("Preserving existing root user password (no explicit rotation credential provided).");
             }
-
-            $existingUser->tenant_id = 'default-tenant';
-            $existingUser->role = 'admin';
-            $existingUser->disabled = false;
-            $existingUser->permissions = json_encode(['all' => true]);
-            $existingUser->save();
-
-            $rootUser = $existingUser;
         } else {
-            // Fresh root creation: determine password
-            $hashedPassword = null;
-
+            // Fresh root creation: determine and validate credentials BEFORE creating default-tenant
             if ($this->option('password-hash')) {
-                $hashedPassword = $this->option('password-hash');
+                $hash = (string) $this->option('password-hash');
+                if (!preg_match('/^\$2[ayb]\$[0-9]{2}\$[A-Za-z0-9\.\/]{53}$/', $hash) && !str_starts_with($hash, '$argon2')) {
+                    throw new SecurityException("Security Violation: Invalid password hash format provided to internal provisioning interface.");
+                }
+                $targetHashedPassword = $hash;
             } else {
                 $rawPw = $this->option('password')
                     ?: (app()->environment('testing') ? 'test-super-secret-pw' : (env('SUPER_ADMIN_PASSWORD') ?: null));
@@ -147,31 +130,71 @@ class SaasProvisionRootCommand extends Command
                     throw new SecurityException("Security Violation: Production root provisioning requires a secure, non-default, non-placeholder password.");
                 }
 
-                $hashedPassword = Hash::make($rawPw);
+                $targetHashedPassword = Hash::make($rawPw);
+            }
+        }
+
+        // 3. Transactional Provisioning (Atomically create/verify default-tenant + root user)
+        $isFresh = !$existingUser;
+        $rootUser = DB::transaction(function () use (
+            $superAdminEmail,
+            $existingUser,
+            $targetHashedPassword
+        ) {
+            // A. Ensure Master Platform Tenant (default-tenant)
+            $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant');
+            if (!$defaultTenant) {
+                $defaultTenant = Tenant::create([
+                    'id' => 'default-tenant',
+                    'name' => 'Platform Master HQ',
+                    'owner_email' => $superAdminEmail,
+                    'owner_phone' => '08000000000',
+                    'plan' => 'enterprise',
+                    'status' => 'active',
+                    'max_branches' => 999,
+                    'max_users' => 999,
+                ]);
             }
 
-            $rootUser = User::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => 'default-tenant',
-                'name' => 'Platform Super Admin',
-                'email' => $superAdminEmail,
-                'password' => $hashedPassword,
-                'role' => 'admin',
-                'disabled' => false,
-                'permissions' => json_encode(['all' => true]),
-            ]);
-            $this->info("Created platform Super Admin: {$superAdminEmail}");
+            // B. Provision or Update Root User
+            if ($existingUser) {
+                if ($targetHashedPassword !== null) {
+                    $existingUser->password = $targetHashedPassword;
+                }
+                $existingUser->tenant_id = 'default-tenant';
+                $existingUser->role = 'admin';
+                $existingUser->disabled = false;
+                $existingUser->permissions = json_encode(['all' => true]);
+                $existingUser->save();
+                $user = $existingUser;
+            } else {
+                $user = User::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => 'default-tenant',
+                    'name' => 'Platform Super Admin',
+                    'email' => $superAdminEmail,
+                    'password' => $targetHashedPassword,
+                    'role' => 'admin',
+                    'disabled' => false,
+                    'permissions' => json_encode(['all' => true]),
+                ]);
+            }
+
+            // C. Invariant Assertion inside transaction (rolls back on failure)
+            $user->refresh();
+            if (!$user->isPlatformAdmin()) {
+                throw new SecurityException("Verification Failed: Provisioned user '{$superAdminEmail}' does not satisfy isPlatformAdmin().");
+            }
+
+            return $user;
+        });
+
+        if ($isFresh) {
+            $this->info("Created and verified platform master tenant and Super Admin: {$superAdminEmail}");
+        } else {
+            $this->info("Updated and verified platform Super Admin: {$superAdminEmail}");
         }
 
-        // 4. Invariant Assertion
-        $rootUser->refresh();
-        if (!$rootUser->isPlatformAdmin()) {
-            $msg = "Verification Failed: Provisioned user '{$superAdminEmail}' does not satisfy isPlatformAdmin().";
-            $this->error($msg);
-            throw new SecurityException($msg);
-        }
-
-        $this->info("Platform root user verified: {$superAdminEmail} satisfies isPlatformAdmin().");
         return Command::SUCCESS;
     }
 }

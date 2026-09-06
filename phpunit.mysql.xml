@@ -24,7 +24,7 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="SAAS_ENABLED" value="false"/>
+        <env name="SAAS_ENABLED" value="true"/>
         <env name="SUPER_ADMIN_EMAIL" value="superadmin@hysam.com"/>
     </php>
 </phpunit>

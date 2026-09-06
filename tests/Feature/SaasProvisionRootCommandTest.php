@@ -283,8 +283,8 @@ class SaasProvisionRootCommandTest extends TestCase
         $controller = new InstallerController();
         $response = $controller->run();
 
-        // Must fail with 500 containing Security Violation in JSON
-        $this->assertEquals(500, $response->getStatusCode());
+        // Must fail with HTTP 403 containing Security Violation in JSON
+        $this->assertEquals(403, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
         $this->assertFalse($data['success']);
         $this->assertStringContainsString('Security Violation', $data['error']);
@@ -508,5 +508,90 @@ class SaasProvisionRootCommandTest extends TestCase
 
         $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant');
         $this->assertNull($defaultTenant);
+    }
+
+    /**
+     * 16. Transactional Atomicity: Pre-Validation / Invariant Failure Leaves No Orphaned Default Tenant
+     */
+    public function test_provisioning_atomicity_rolls_back_and_leaves_no_orphaned_tenant(): void
+    {
+        $originalEnv = app()->environment();
+        $this->app->detectEnvironment(fn () => 'production');
+
+        try {
+            // Remove existing default-tenant and superadmin
+            Tenant::withoutGlobalScopes()->where('id', 'default-tenant')->delete();
+            User::withoutGlobalScopes()->where('email', 'superadmin@hysam.com')->delete();
+
+            $this->assertNull(Tenant::withoutGlobalScopes()->find('default-tenant'));
+
+            $threw = false;
+            try {
+                // In production, placeholder password fails validation before DB write or inside transaction
+                Artisan::call('saas:provision-root', [
+                    '--email' => 'superadmin@hysam.com',
+                    '--password' => 'set_your_secure_password_here',
+                ]);
+            } catch (SecurityException $e) {
+                $threw = true;
+            }
+
+            $this->assertTrue($threw, 'Should throw SecurityException for placeholder password in production');
+
+            // Must NOT leave an orphaned default-tenant in database
+            $defaultTenant = Tenant::withoutGlobalScopes()->find('default-tenant');
+            $this->assertNull($defaultTenant, 'default-tenant must not be created or must be rolled back on provisioning failure');
+        } finally {
+            $this->app->detectEnvironment(fn () => $originalEnv);
+        }
+    }
+
+    /**
+     * 17. Privileged Internal Interface: Invalid Password Hash Format Fails Closed
+     */
+    public function test_invalid_password_hash_format_rejected_by_internal_interface(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Invalid password hash format');
+
+        Artisan::call('saas:provision-root', [
+            '--email' => 'superadmin@hysam.com',
+            '--password-hash' => 'plaintext_unhashed_string_not_a_bcrypt_hash',
+        ]);
+    }
+
+    /**
+     * 18. Installer Exception Handling Preserves HTTP 403 Response Code
+     */
+    public function test_installer_exception_handling_preserves_http_403(): void
+    {
+        // Populate existing user with tenant to trigger takeover protection
+        $existing = User::withoutGlobalScopes()->where('email', 'existingadmin@test.com')->first();
+        if (!$existing) {
+            $tenant = Tenant::withoutGlobalScopes()->find('tenant-1') ?? Tenant::create([
+                'id' => 'tenant-1',
+                'name' => 'Existing Shop',
+                'owner_email' => 'shop@test.com',
+                'plan' => 'standard',
+                'status' => 'active',
+            ]);
+
+            User::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenant->id,
+                'name' => 'Existing Admin',
+                'email' => 'existingadmin@test.com',
+                'password' => Hash::make('SecretPass#123'),
+                'role' => 'admin',
+            ]);
+        }
+
+        $controller = new InstallerController();
+        $response = $controller->run();
+
+        $this->assertSame(403, $response->getStatusCode(), 'Installer must return real HTTP 403 instead of converting to 500');
+        $content = json_decode($response->getContent(), true);
+        $this->assertFalse($content['success']);
+        $this->assertStringContainsString('Security Violation', $content['error']);
     }
 }
