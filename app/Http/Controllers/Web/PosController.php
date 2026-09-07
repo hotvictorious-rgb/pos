@@ -133,7 +133,7 @@ class PosController extends Controller
      */
     public function checkout(Request $request)
     {
-        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
+        $tenantId = Auth::user()?->tenant_id ?? session('tenant_id') ?? 'default-tenant';
         $userId = Auth::id() ?? 'POS-USER-1';
         $warehouseId = null;
 
@@ -487,7 +487,7 @@ class PosController extends Controller
         }
 
         $idempotencyKey = $request->header('X-Idempotency-Key') ?? $request->input('idempotency_key');
-        $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
+        $tenantId = Auth::user()?->tenant_id ?? session('tenant_id') ?? 'default-tenant';
 
         // 🔒 Invariant VM-032: Enforce Mandatory Idempotency Closure
         if (empty($idempotencyKey)) {

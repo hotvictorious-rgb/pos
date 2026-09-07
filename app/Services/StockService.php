@@ -30,19 +30,25 @@ class StockService
      */
     public function assertTenantWarehouse(int $warehouseId): Warehouse
     {
-        $wh = Warehouse::withoutGlobalScopes()->find($warehouseId);
-        if (!$wh) {
-            throw new \InvalidArgumentException("Warehouse #{$warehouseId} does not exist.");
-        }
-
+        $currentTenantId = null;
         if (config('saas.enabled')) {
-            $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+            $currentTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
             if (empty($currentTenantId)) {
                 throw new \InvalidArgumentException("Security Violation: No authoritative tenant context established. Operation rejected.");
             }
-            if ($wh->tenant_id !== $currentTenantId) {
+        }
+
+        $query = Warehouse::query();
+        if (config('saas.enabled') && !empty($currentTenantId)) {
+            $query->where('tenant_id', $currentTenantId);
+        }
+        $wh = $query->find($warehouseId);
+
+        if (!$wh) {
+            if (config('saas.enabled') && Warehouse::withoutGlobalScopes()->where('id', $warehouseId)->exists()) {
                 throw new \InvalidArgumentException("Security Violation: Warehouse #{$warehouseId} does not belong to active tenant '{$currentTenantId}'. Cross-tenant stock transfers are strictly forbidden.");
             }
+            throw new \InvalidArgumentException("Warehouse #{$warehouseId} does not exist.");
         }
 
         return $wh;
@@ -59,20 +65,21 @@ class StockService
      */
     public function assertUserWarehouseAuthority(int $warehouseId, ?User $actor = null): Warehouse
     {
-        $wh = $this->assertTenantWarehouse($warehouseId);
-
         // Authoritative actor resolution:
         // In HTTP route contexts, authorization derives strictly from the authenticated session (Auth::user()).
         // Caller-supplied $actor is ignored during HTTP requests to prevent privilege spoofing.
         $isHttp = (request()->route() !== null || (!app()->runningInConsole() && !app()->runningUnitTests()));
         $user = $isHttp ? Auth::user() : (Auth::user() ?? $actor);
 
+        if ($user && $user->isPlatformUser()) {
+            throw new AuthorizationException(
+                "Security Violation: Platform user '{$user->name}' cannot perform tenant business operations on Branch #{$warehouseId}."
+            );
+        }
+
+        $wh = $this->assertTenantWarehouse($warehouseId);
+
         if ($user) {
-            if ($user->isPlatformUser()) {
-                throw new AuthorizationException(
-                    "Security Violation: Platform user '{$user->name}' cannot perform tenant business operations on Branch #{$warehouseId}."
-                );
-            }
 
             if ($user->isBranchScoped()) {
                 if ((int) $user->warehouse_id !== (int) $warehouseId) {
@@ -295,16 +302,20 @@ class StockService
             // Anonymous walk-in transactions with zero debt do NOT acquire customer locks.
             $customer = null;
             if (!empty($customerId)) {
-                $activeTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
-                $customer = Customer::withoutGlobalScopes()->where('id', $customerId)->lockForUpdate()->first();
-                if (!$customer) {
-                    throw new \InvalidArgumentException("Customer #{$customerId} does not exist.");
-                }
-                $activeTenantClean = !empty($activeTenantId) ? (string) $activeTenantId : null;
-                $custTenantClean   = !empty($customer->tenant_id) ? (string) $customer->tenant_id : null;
+                $activeTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
 
-                if ($custTenantClean !== $activeTenantClean) {
-                    throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} belongs to tenant '{$customer->tenant_id}', not active tenant '{$activeTenantId}'.");
+                $custQuery = Customer::query()->where('id', $customerId);
+                if (!empty($activeTenantId)) {
+                    $custQuery->where('tenant_id', $activeTenantId);
+                }
+                $customer = $custQuery->lockForUpdate()->first();
+
+                if (!$customer) {
+                    if (Customer::withoutGlobalScopes()->where('id', $customerId)->exists()) {
+                        $foreignCust = Customer::withoutGlobalScopes()->find($customerId);
+                        throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} belongs to tenant '{$foreignCust->tenant_id}', not active tenant '{$activeTenantId}'.");
+                    }
+                    throw new \InvalidArgumentException("Customer #{$customerId} does not exist.");
                 }
                 $customerName = $customer->name;
             } elseif ($remainingDebt > 0 && !empty($customerName) && $customerName !== 'Walk-in Customer') {
@@ -318,7 +329,7 @@ class StockService
 
             $sale = Sale::create([
                 'id' => $saleId,
-                'tenant_id' => session('tenant_id') ?? null,
+                'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id'),
                 'warehouse_id' => $warehouseId,
                 'customerName' => $customerName,
                 'customerId' => $customerId,
@@ -570,7 +581,7 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'productId' => $item->productId,
                     'warehouse_id' => $warehouseId,
                     'type' => 'DISPATCH_FULFILLED',
@@ -677,7 +688,7 @@ class StockService
 
             InventoryLog::create([
                 'id' => (string) Str::uuid(),
-                'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                 'productId' => $productId,
                 'warehouse_id' => $warehouseId,
                 'type' => 'DISPATCH_FULFILLED',
@@ -710,25 +721,33 @@ class StockService
             }
 
             // 2. Authoritative Tenant Boundary Verification for Both Source & Destination
-            $sourceWh = Warehouse::withoutGlobalScopes()->find($sourceWarehouseId);
-            $destWh   = Warehouse::withoutGlobalScopes()->find($destWarehouseId);
+            $currentTenantId = null;
+            if (config('saas.enabled')) {
+                $currentTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
+            }
+
+            $sourceQuery = Warehouse::query();
+            $destQuery = Warehouse::query();
+            if (config('saas.enabled') && !empty($currentTenantId)) {
+                $sourceQuery->where('tenant_id', $currentTenantId);
+                $destQuery->where('tenant_id', $currentTenantId);
+            }
+
+            $sourceWh = $sourceQuery->find($sourceWarehouseId);
+            $destWh   = $destQuery->find($destWarehouseId);
 
             if (!$sourceWh) {
+                if (config('saas.enabled') && Warehouse::withoutGlobalScopes()->where('id', $sourceWarehouseId)->exists()) {
+                    throw new \InvalidArgumentException("Security Violation: Source branch #{$sourceWarehouseId} does not belong to active tenant '{$currentTenantId}'.");
+                }
                 throw new \InvalidArgumentException("Source branch #{$sourceWarehouseId} does not exist.");
             }
             if (!$destWh) {
+                if (config('saas.enabled') && Warehouse::withoutGlobalScopes()->where('id', $destWarehouseId)->exists()) {
+                    $foreignDest = Warehouse::withoutGlobalScopes()->find($destWarehouseId);
+                    throw new \InvalidArgumentException("Security Violation: Destination branch #{$destWarehouseId} belongs to a different tenant ('{$foreignDest->tenant_id}'). Cross-tenant stock transfers are strictly forbidden.");
+                }
                 throw new \InvalidArgumentException("Destination branch #{$destWarehouseId} does not exist.");
-            }
-
-            if (config('saas.enabled')) {
-                $currentTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null) ?? $sourceWh->tenant_id;
-
-                if ($sourceWh->tenant_id !== $currentTenantId) {
-                    throw new \InvalidArgumentException("Security Violation: Source branch #{$sourceWarehouseId} does not belong to active tenant '{$currentTenantId}'.");
-                }
-                if ($destWh->tenant_id !== $currentTenantId) {
-                    throw new \InvalidArgumentException("Security Violation: Destination branch #{$destWarehouseId} belongs to a different tenant ('{$destWh->tenant_id}'). Cross-tenant stock transfers are strictly forbidden.");
-                }
             }
 
             // 3. Pre-validate ALL items and lock stock before creating the Transfer record
@@ -1059,7 +1078,7 @@ class StockService
 
             // Tenant boundary assertion
             if (config('saas.enabled')) {
-                $activeTenantId = session('tenant_id') ?? (Auth::check() ? Auth::user()->tenant_id : null);
+                $activeTenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id');
                 if ($activeTenantId && $customer->tenant_id !== $activeTenantId) {
                     throw new \InvalidArgumentException("Security Violation: Customer #{$customerId} does not belong to active tenant '{$activeTenantId}'.");
                 }
@@ -1067,7 +1086,7 @@ class StockService
 
             $hasSales = Sale::where('customerId', $customerId)->exists();
             $allocatedSaleIds = [];
-            $tenantId = session('tenant_id') ?? $customer->tenant_id ?? null;
+            $tenantId = (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($customer->tenant_id ?? session('tenant_id'));
 
             if ($hasSales) {
                 // Retrieve open sales strictly within branch context if warehouseId is provided
@@ -1435,7 +1454,7 @@ class StockService
 
                 InventoryLog::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'productId' => $product->id,
                     'warehouse_id' => $warehouseId,
                     'type' => 'SALES_RETURN',
@@ -1493,7 +1512,7 @@ class StockService
 
                 Payment::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'saleId' => $saleId,
                     'amount' => -$totalRefundAmount,
                     'method' => 'REFUND_CASH',
@@ -1562,7 +1581,7 @@ class StockService
 
                 $singleReturn = \App\Models\SalesReturn::create([
                     'id' => (string) Str::uuid(),
-                    'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                    'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'saleId' => $saleId,
                     'customerName' => $sale->customerName,
                     'code' => 'RET-' . strtoupper(Str::random(6)),

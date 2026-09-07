@@ -22,7 +22,8 @@ class EnsureTenantActive
             }
         }
 
-        $tenantId = session('tenant_id');
+        $authUser = auth()->check() ? auth()->user() : null;
+        $tenantId = $authUser?->tenant_id ?? session('tenant_id');
         $isApi = ($request->ajax() || $request->wantsJson() || $request->is('api/*'));
 
         if (!$tenantId) {

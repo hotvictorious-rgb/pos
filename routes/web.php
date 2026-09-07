@@ -76,13 +76,13 @@ Route::prefix('saas')->name('saas.')->group(function () {
     Route::get('/suspended',     [\App\Http\Controllers\SaaS\SaaSController::class, 'suspended'])->name('suspended');
 
     // Super Admin Master SaaS Control Panel
-    Route::prefix('admin')->name('admin.')->middleware([\App\Http\Middleware\RequireSuperAdmin::class])->group(function () {
-        Route::get('/',                 [\App\Http\Controllers\SaaS\SaaSController::class, 'adminIndex'])->middleware('capability:platform.health,platform.tenants,platform.settings')->name('index');
+    Route::prefix('admin')->name('admin.')->middleware([\App\Http\Middleware\RequirePlatformUser::class])->group(function () {
+        Route::get('/',                 [\App\Http\Controllers\SaaS\SaaSController::class, 'adminIndex'])->middleware('capability:platform.health,platform.tenants,platform.tenants.read,platform.settings')->name('index');
         Route::post('/settings',        [\App\Http\Controllers\SaaS\SaaSController::class, 'updateSettings'])->middleware('capability:platform.settings')->name('settings');
-        Route::post('/tenant',          [\App\Http\Controllers\SaaS\SaaSController::class, 'storeTenant'])->middleware('capability:platform.tenants')->name('tenant.store');
-        Route::post('/toggle/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'toggleStatus'])->middleware('capability:platform.tenants')->name('toggle');
+        Route::post('/tenant',          [\App\Http\Controllers\SaaS\SaaSController::class, 'storeTenant'])->middleware('capability:platform.tenants,platform.tenants.create')->name('tenant.store');
+        Route::post('/toggle/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'toggleStatus'])->middleware('capability:platform.tenants,platform.tenants.suspend')->name('toggle');
         Route::post('/limits/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'updateTenantLimits'])->middleware('capability:platform.limits')->name('limits');
-        Route::post('/delete/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'deleteTenant'])->middleware('capability:platform.tenants')->name('delete');
+        Route::post('/delete/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'deleteTenant'])->middleware('capability:platform.tenants.delete')->name('delete');
     });
 });
 

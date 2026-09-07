@@ -616,6 +616,7 @@ class ProductionHardeningPass2Test extends TestCase
         $this->assertEquals(1, StockReservation::withoutGlobalScopes()->where('tenant_id', $purgeTenant->id)->count());
         $this->assertEquals(1, Backup::where('tenant_id', $purgeTenant->id)->count());
 
+        $this->actingAs($this->platformAdmin);
         $saasController = app(\App\Http\Controllers\SaaS\SaaSController::class);
         $saasController->deleteTenant($purgeTenant->id);
 
