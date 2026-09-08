@@ -69,14 +69,19 @@ class ProductController extends Controller
         }
 
         $warehouseIds = $warehouses->pluck('id');
-        $products = $query->orderBy('category')->orderBy('name')->get();
+        $productsList = $query->orderBy('category')->orderBy('name')->get();
+        $productIds = $productsList->pluck('id');
+
+        // Batch-load all authorized branch stock levels in exactly 1 query
+        $allStockLevels = StockLevel::whereIn('product_id', $productIds)
+            ->whereIn('warehouse_id', $warehouseIds)
+            ->get()
+            ->groupBy('product_id');
 
         // Attach per-branch physical stocks strictly scoped to authorized warehouses
-        $products = $products->map(function ($p) use ($warehouseIds) {
-            $p->branch_stocks = StockLevel::where('product_id', $p->id)
-                ->whereIn('warehouse_id', $warehouseIds)
-                ->pluck('physical_stock', 'warehouse_id')
-                ->toArray();
+        $products = $productsList->map(function ($p) use ($allStockLevels) {
+            $levels = $allStockLevels->get($p->id, collect());
+            $p->branch_stocks = $levels->pluck('physical_stock', 'warehouse_id')->toArray();
             $p->total_physical_stock = array_sum($p->branch_stocks);
             return $p;
         });

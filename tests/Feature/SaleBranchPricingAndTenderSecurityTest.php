@@ -14,6 +14,7 @@ use App\Models\Payment;
 use App\Services\StockService;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 
 class SaleBranchPricingAndTenderSecurityTest extends TestCase
 {
@@ -985,5 +986,89 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
         $this->assertFalse($perms['transfer'] ?? true, "Cashier cannot transfer goods.");
         $this->assertFalse($perms['users'] ?? true, "Cashier cannot manage users.");
         $this->assertFalse($perms['reports'] ?? true, "Cashier cannot view financial reports.");
+    }
+
+    /**
+     * Verifies that PosController@index loads products and their branch stock levels in batch,
+     * maintaining constant O(1) database query complexity regardless of product catalog size.
+     */
+    public function test_pos_index_inventory_loading_has_zero_n_plus_one_queries_with_many_products(): void
+    {
+        // 1. Seed 5 products with stock levels at branchA
+        for ($i = 1; $i <= 5; $i++) {
+            $p = Product::create([
+                'id' => "prod-pos-perf-{$i}",
+                'tenant_id' => $this->tenant->id,
+                'name' => "POS Product {$i}",
+                'code' => "CODE-POS-{$i}",
+                'category' => "Category " . ($i % 2),
+                'unitPrice' => 1000 * $i,
+                'currentStock' => 20,
+                'updatedAt' => now()->toIso8601String(),
+            ]);
+
+            StockLevel::create([
+                'tenant_id' => $this->tenant->id,
+                'warehouse_id' => $this->branchA->id,
+                'product_id' => $p->id,
+                'physical_stock' => 20,
+                'allocated_stock' => 0,
+            ]);
+        }
+
+        // Measure query count with 5 products
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $response5 = $this->actingAs($this->cashierA)->withSession([
+            'tenant_id' => $this->tenant->id,
+            'active_warehouse_id' => $this->branchA->id,
+        ])->get(route('pos.index'));
+        $queries5Products = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $response5->assertStatus(200);
+
+        // 2. Seed 20 MORE products (total 25 products)
+        for ($i = 6; $i <= 25; $i++) {
+            $p = Product::create([
+                'id' => "prod-pos-perf-{$i}",
+                'tenant_id' => $this->tenant->id,
+                'name' => "POS Product {$i}",
+                'code' => "CODE-POS-{$i}",
+                'category' => "Category " . ($i % 2),
+                'unitPrice' => 1000 * $i,
+                'currentStock' => 20,
+                'updatedAt' => now()->toIso8601String(),
+            ]);
+
+            StockLevel::create([
+                'tenant_id' => $this->tenant->id,
+                'warehouse_id' => $this->branchA->id,
+                'product_id' => $p->id,
+                'physical_stock' => 20,
+                'allocated_stock' => 0,
+            ]);
+        }
+
+        // Measure query count with 25 products
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $response25 = $this->actingAs($this->cashierA)->withSession([
+            'tenant_id' => $this->tenant->id,
+            'active_warehouse_id' => $this->branchA->id,
+        ])->get(route('pos.index'));
+        $queries25Products = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $response25->assertStatus(200);
+
+        // If N+1 existed, adding 20 products would have added 20 queries (1 query per product).
+        // With batch loading via whereIn and keyBy, query count difference must be <= 1 (constant O(1)).
+        $diff = abs($queries25Products - $queries5Products);
+        $this->assertLessThanOrEqual(
+            1,
+            $diff,
+            "Query count increased by {$diff} when product catalog expanded by 20 products. Expected O(1) constant query complexity on POS index."
+        );
     }
 }

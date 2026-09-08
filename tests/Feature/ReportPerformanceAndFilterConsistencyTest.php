@@ -328,4 +328,67 @@ class ReportPerformanceAndFilterConsistencyTest extends TestCase
         $allReturns = $execResp->viewData('returns');
         $this->assertCount(2, $allReturns);
     }
+
+    /**
+     * TEST 5: POS terminal index and Product Catalog buildFilteredProducts load stock levels
+     * in a single batch query without N+1 query loops.
+     */
+    public function test_pos_index_and_product_catalog_avoid_n_plus_one_stock_queries(): void
+    {
+        // Seed 15 products
+        for ($i = 1; $i <= 15; $i++) {
+            $p = Product::create([
+                'id' => "prod-pos-n1-{$i}",
+                'tenant_id' => $this->tenant->id,
+                'name' => "POS Batch Item {$i}",
+                'code' => "SKU-POS-{$i}",
+                'category' => 'Groceries',
+                'unitPrice' => 2000.00,
+                'costPrice' => 1500.00,
+                'minStockLevel' => 5,
+                'archived' => false,
+            ]);
+
+            StockLevel::create([
+                'tenant_id' => $this->tenant->id,
+                'product_id' => $p->id,
+                'warehouse_id' => $this->warehouseA->id,
+                'physical_stock' => 25,
+            ]);
+        }
+
+        // 1. Verify POS terminal index executes in exactly 1 stock_levels query
+        $posStockQueryCount = 0;
+        DB::listen(function ($query) use (&$posStockQueryCount) {
+            if (str_contains($query->sql, 'stock_levels') && str_contains(strtolower($query->sql), 'select')) {
+                $posStockQueryCount++;
+            }
+        });
+
+        $posResponse = $this->actingAs($this->executiveUser)->withSession([
+            'tenant_id' => $this->tenant->id,
+            'active_warehouse_id' => $this->warehouseA->id,
+        ])->get(route('pos.index'));
+        $posResponse->assertStatus(200);
+
+        $this->assertLessThanOrEqual(2, $posStockQueryCount, "POS index executed {$posStockQueryCount} stock_levels queries for 15 products; expected bulk batch query.");
+        $posProducts = $posResponse->viewData('products');
+        $this->assertCount(15, $posProducts);
+        $this->assertEquals(25, $posProducts->first()->available_stock);
+
+        // 2. Verify Product catalog index executes in exactly 1 stock_levels query
+        $catalogStockQueryCount = 0;
+        DB::listen(function ($query) use (&$catalogStockQueryCount) {
+            if (str_contains($query->sql, 'stock_levels') && str_contains(strtolower($query->sql), 'select')) {
+                $catalogStockQueryCount++;
+            }
+        });
+
+        $catalogResponse = $this->actingAs($this->executiveUser)->withSession([
+            'tenant_id' => $this->tenant->id,
+            'active_warehouse_id' => $this->warehouseA->id,
+        ])->get(route('products.index'));
+        $catalogResponse->assertStatus(200);
+        $this->assertLessThanOrEqual(2, $catalogStockQueryCount, "Product catalog executed {$catalogStockQueryCount} stock_levels queries for 15 products; expected bulk batch query.");
+    }
 }
