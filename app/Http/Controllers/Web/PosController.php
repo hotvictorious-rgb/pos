@@ -256,9 +256,10 @@ class PosController extends Controller
             $idempotencyPayload = [
                 'warehouse_id' => $warehouseId,
                 'items' => $request->items,
-                'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
-                'cashAmount' => (float) ($request->cashAmount ?? 0),
-                'posAmount' => (float) ($request->posAmount ?? 0),
+                'declaredPaidAmount' => (float) ($request->paidAmount ?? $paidAmount),
+                'paidAmount' => $calc['paidAmount'],
+                'cashAmount' => $calc['retainedCash'],
+                'posAmount' => $calc['retainedPos'],
                 'transferAmount' => 0.0,
                 'customerId' => $customerId,
                 'customerPhone' => $customerPhone,
