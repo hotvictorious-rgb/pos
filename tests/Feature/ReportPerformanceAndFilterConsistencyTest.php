@@ -316,19 +316,6 @@ class ReportPerformanceAndFilterConsistencyTest extends TestCase
         ]);
 
         // Branch A cashier visits reports
-        $accounting = app(\App\Services\Accounting\AccountingReportService::class);
-        $q = $accounting->buildReturnsQuery([]);
-        dump([
-            'authUser' => \Auth::user()?->email,
-            'isBranchScoped' => \Auth::user()?->isBranchScoped(),
-            'userWh' => \Auth::user()?->warehouse_id,
-            'saleWh' => $saleA->warehouse_id,
-            'returnsCount' => $q->count(),
-            'returnsSql' => $q->toSql(),
-            'returnsBindings' => $q->getBindings(),
-            'allReturnsInDb' => SalesReturn::all()->toArray(),
-            'allSalesInDb' => Sale::all()->toArray(),
-        ]);
         $branchResp = $this->actingAs($this->branchUserA)->get(route('reports.index', ['tab' => 'returns']));
         $branchResp->assertStatus(200);
         $returnsData = $branchResp->viewData('returns');
