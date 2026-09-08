@@ -427,7 +427,7 @@
                 </div>
                 <div class="pay-tabs">
                     <div class="pay-tab active" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Paid (Cash)</div>
-                    <div class="pay-tab" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS/Bank)</div>
+                    <div class="pay-tab" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS Terminal)</div>
                     <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part-Paid / Not Paid</div>
                 </div>
 

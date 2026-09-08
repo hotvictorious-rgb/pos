@@ -171,23 +171,13 @@ class ReportController extends Controller
             ->take(5)
             ->get();
 
-        // 5. Top Staff by Sales Volume (Event-Authoritative)
+        // 5. Top Staff by Sales Volume (Batch In-Memory, Zero N+1 Queries)
         $topStaff = $sales->groupBy('userName')->map(function ($group, $name) {
-            $groupSaleIds = $group->pluck('id');
-            $inflows = (float) \App\Models\Payment::whereIn('saleId', $groupSaleIds)
-                ->where('amount', '>', 0)
-                ->where('method', '!=', 'REFUND_CASH')
-                ->sum('amount');
-            $refunds = abs((float) \App\Models\Payment::whereIn('saleId', $groupSaleIds)
-                ->where('method', 'REFUND_CASH')
-                ->sum('amount'));
-            $collected = max(0.0, round($inflows - $refunds, 2));
-
             return [
-                'name' => $name,
+                'name' => $name ?: 'System',
                 'count' => $group->count(),
                 'total' => (float) $group->sum('totalAmount'),
-                'collected' => $collected,
+                'collected' => max(0.0, round((float) $group->sum('event_paid_amount'), 2)),
             ];
         })->sortByDesc('total')->take(5);
 

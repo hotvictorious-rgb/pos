@@ -1,6 +1,12 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ * 
+ * ARCHIVED / RETIRED LEGACY SPA:
+ * The production interface is 100% Laravel Blade (resources/views/).
+ * This React component tree is decommissioned and retained exclusively
+ * for CI build/typecheck compliance. Do not use for new features.
+ * See resources/js/ARCHIVED_LEGACY_SPA_NOTICE.md
  */
 
 import { useState, useEffect, useRef } from 'react';

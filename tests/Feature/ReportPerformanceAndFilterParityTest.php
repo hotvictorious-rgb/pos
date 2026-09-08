@@ -397,4 +397,83 @@ class ReportPerformanceAndFilterParityTest extends TestCase
             "Query count increased by {$queryDiff} when sales doubled. Expected O(1) constant query complexity."
         );
     }
+
+    /**
+     * Verifies that topStaff ranking is computed completely in-memory with zero N+1 queries
+     * even when there are multiple distinct staff members.
+     */
+    public function test_reports_top_staff_has_zero_n_plus_one_queries_with_many_staff_groups(): void
+    {
+        // 1. Create 3 sales with 3 distinct staff members
+        for ($i = 1; $i <= 3; $i++) {
+            $s = $this->createSale([
+                'id' => "sale-staff-p1-{$i}",
+                'userName' => "Cashier Group {$i}",
+                'customerName' => "Customer {$i}",
+                'totalAmount' => 15000.0 * $i,
+                'paidAmount' => 15000.0 * $i,
+                'cashAmount' => 15000.0 * $i,
+                'status' => 'COMPLETED',
+                'deliveryStatus' => 'SUPPLIED',
+                'createdAt' => Carbon::now()->subDays(1)->toIso8601String(),
+            ]);
+
+            $this->createPayment([
+                'saleId' => $s->id,
+                'amount' => 15000.0 * $i,
+                'method' => 'CASH',
+                'timestamp' => Carbon::now()->subDays(1)->toIso8601String(),
+            ]);
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $response = $this->actingAs($this->tenantAdmin)->get(route('reports.index'));
+        $queries3Staff = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $response->assertStatus(200);
+        $response->assertViewHas('topStaff');
+        $topStaff = $response->viewData('topStaff');
+        $this->assertCount(3, $topStaff);
+
+        // 2. Add 10 MORE sales with 10 MORE distinct staff members (total 13 staff members)
+        for ($i = 4; $i <= 13; $i++) {
+            $s = $this->createSale([
+                'id' => "sale-staff-p2-{$i}",
+                'userName' => "Cashier Group {$i}",
+                'customerName' => "Customer {$i}",
+                'totalAmount' => 15000.0 * $i,
+                'paidAmount' => 15000.0 * $i,
+                'cashAmount' => 15000.0 * $i,
+                'status' => 'COMPLETED',
+                'deliveryStatus' => 'SUPPLIED',
+                'createdAt' => Carbon::now()->subDays(1)->toIso8601String(),
+            ]);
+
+            $this->createPayment([
+                'saleId' => $s->id,
+                'amount' => 15000.0 * $i,
+                'method' => 'CASH',
+                'timestamp' => Carbon::now()->subDays(1)->toIso8601String(),
+            ]);
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $response2 = $this->actingAs($this->tenantAdmin)->get(route('reports.index'));
+        $queries13Staff = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $response2->assertStatus(200);
+
+        // If topStaff had N+1 queries (2 per staff), adding 10 staff members would have added 20 queries.
+        // Because topStaff computation is batch in-memory, query difference must be <= 1 (constant O(1)).
+        $staffQueryDiff = abs($queries13Staff - $queries3Staff);
+        $this->assertLessThanOrEqual(
+            1,
+            $staffQueryDiff,
+            "Query count increased by {$staffQueryDiff} when staff count increased by 10. Expected O(1) query complexity for topStaff."
+        );
+    }
 }

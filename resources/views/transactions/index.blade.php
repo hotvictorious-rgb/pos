@@ -423,7 +423,6 @@
                             <option value="">-- All Methods --</option>
                             <option value="CASH" {{ request('payment_method') === 'CASH' ? 'selected' : '' }}>Cash</option>
                             <option value="POS" {{ request('payment_method') === 'POS' ? 'selected' : '' }}>POS Terminal</option>
-                            <option value="TRANSFER" {{ request('payment_method') === 'TRANSFER' ? 'selected' : '' }}>Bank Transfer</option>
                         </select>
                     </div>
                 @endif
