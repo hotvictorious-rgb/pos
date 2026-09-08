@@ -21,10 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'capability' => \App\Http\Middleware\RequireCapability::class,
         ]);
-        // Check if the application has been installed, ensure web authentication & attach security headers
+        // Ensure web authentication & attach security headers
         $middleware->web(append: [
             \App\Http\Middleware\SecurityHeaders::class,
-            \App\Http\Middleware\CheckInstalled::class,
             \App\Http\Middleware\CheckWebAuth::class,
             \App\Http\Middleware\EnsureTenantActive::class,
             \App\Http\Middleware\BlockReadOnlyMutations::class,

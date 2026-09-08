@@ -207,7 +207,7 @@
                 Monitoring real-time physical counts, supplier deliveries, and multi-branch inventory balances.
             </p>
         </div>
-        <a href="{{ route('reports.export.csv', 'inventory') }}" class="btn btn-secondary" style="font-size: 0.82rem; color: #facc15; border-color: rgba(234, 179, 8, 0.4);">
+        <a href="{{ route('reports.export.csv', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.82rem; color: #facc15; border-color: rgba(234, 179, 8, 0.4);">
             📥 Export Stock Valuation CSV
         </a>
     </div>

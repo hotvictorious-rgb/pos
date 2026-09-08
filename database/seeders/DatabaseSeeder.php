@@ -21,13 +21,36 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $superAdminEmail = strtolower(trim(config('saas.super_admin_email', 'admin@hysamventures.com')));
-        $rawSuperAdminPassword = env('SUPER_ADMIN_PASSWORD');
+        $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'admin@hysamventures.com')));
+        $rawSuperAdminPassword = getenv('SUPER_ADMIN_PASSWORD') ?: (env('SUPER_ADMIN_PASSWORD') ?: ($_ENV['SUPER_ADMIN_PASSWORD'] ?? null));
+
+        $knownWeakPasswords = [
+            'changeme123',
+            'admin123',
+            'staff123',
+            'password',
+            '12345678',
+            'secret',
+            'set_your_secure_password_here',
+            'your_cpanel_db_password',
+            'your_email_password',
+        ];
+
+        $isWeakOrPlaceholder = function (?string $pw) use ($knownWeakPasswords): bool {
+            if (empty($pw)) {
+                return true;
+            }
+            $clean = strtolower(trim($pw));
+            return in_array($clean, $knownWeakPasswords, true)
+                || str_contains($clean, 'set_your_')
+                || str_contains($clean, 'your_password')
+                || str_contains($clean, 'placeholder')
+                || strlen($pw) < 8;
+        };
 
         // Production Invariant: Disallow known default or weak credentials
-        $knownWeakPasswords = ['changeme123', 'admin123', 'staff123', 'password', '12345678', 'secret', 'set_your_secure_password_here'];
         if (app()->environment('production')) {
-            if (empty($rawSuperAdminPassword) || in_array(strtolower($rawSuperAdminPassword), $knownWeakPasswords, true)) {
+            if (!empty($rawSuperAdminPassword) && $isWeakOrPlaceholder($rawSuperAdminPassword)) {
                 throw new \App\Exceptions\SecurityException("Security Violation: Production seeding requires a secure, non-default SUPER_ADMIN_PASSWORD environment variable.");
             }
         }
@@ -40,15 +63,27 @@ class DatabaseSeeder extends Seeder
                 '--email' => $superAdminEmail,
                 '--force' => true,
             ];
-            if (!$existingSuperAdmin && !empty($rawSuperAdminPassword)) {
-                $provisionParams['--password'] = $rawSuperAdminPassword;
+
+            if (!$existingSuperAdmin) {
+                if (app()->environment('production') && $isWeakOrPlaceholder($rawSuperAdminPassword)) {
+                    throw new \App\Exceptions\SecurityException("Security Violation: Production seeding requires a secure, non-default SUPER_ADMIN_PASSWORD environment variable.");
+                }
+                if (!empty($rawSuperAdminPassword)) {
+                    $provisionParams['--password'] = $rawSuperAdminPassword;
+                }
             }
 
             \Illuminate\Support\Facades\Artisan::call('saas:provision-root', $provisionParams);
         } else {
             // 1. Standalone Single-Tenant Mode: Provision standard local administrator without SaaS master tenant
+            // INVARIANT: Re-seeding must NEVER overwrite existing user passwords or credentials
             $existingAdmin = User::withoutGlobalScopes()->where('email', $superAdminEmail)->first();
+
             if (!$existingAdmin) {
+                if (app()->environment('production') && $isWeakOrPlaceholder($rawSuperAdminPassword)) {
+                    throw new \App\Exceptions\SecurityException("Security Violation: Production seeding requires a secure, non-default SUPER_ADMIN_PASSWORD environment variable.");
+                }
+
                 $standalonePw = $rawSuperAdminPassword ?: (app()->environment('testing') ? 'test-super-secret-pw' : Str::random(32));
                 User::create([
                     'id' => (string) Str::uuid(),

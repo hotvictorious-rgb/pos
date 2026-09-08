@@ -1,9 +1,10 @@
 /**
- * ARCHITECTURAL INVARIANT (Pass 16 Retirement):
- * VMarket POS is strictly 100% online and authoritative through Laravel PHP.
+ * ARCHIVED / RETIRED LEGACY CLIENT STORAGE:
+ * Production interface is 100% Laravel Blade (resources/views/).
  * Client-side shadow ledgers, localStorage mutation, and background offline sync
  * are permanently retired to prevent financial desynchronization and double-spending.
  * All mutations MUST be submitted directly to authoritative Laravel endpoints.
+ * See resources/js/ARCHIVED_LEGACY_SPA_NOTICE.md
  */
 
 import { Product, Sale, Payment, User, InventoryLog, SalesReturn, Activity, SyncVerificationResult, TableVerification } from '../types';

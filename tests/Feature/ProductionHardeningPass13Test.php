@@ -197,48 +197,7 @@ class ProductionHardeningPass13Test extends TestCase
         $this->assertEquals('DISPATCHED', $transfer->status);
     }
 
-    /**
-     * PASS 13 - FAIL-CLOSED INSTALLER LOCKOUT VIA ENV FLAG:
-     * Verifies that when APP_INSTALLED=true or APP_INSTALLER_ENABLED=false,
-     * any HTTP request to /install is blocked even if storage/installed file is absent.
-     */
-    public function test_installer_fail_closed_lockout_via_environment_flags(): void
-    {
-        $markerPath = storage_path('installed');
-        $hadMarker = file_exists($markerPath);
 
-        try {
-            if ($hadMarker) {
-                @unlink($markerPath);
-            }
-
-            // Test Case A: config('app.installed') => true blocks installer with redirect to /
-            config(['app.installed' => true, 'app.installer_enabled' => true]);
-
-            $response = $this->get('/install');
-            $response->assertRedirect('/');
-            $response->assertSessionHas('info', 'The application is already installed.');
-
-            // Test Case B: When app.installed => false but app.installer_enabled => false
-            config(['app.installed' => false, 'app.installer_enabled' => false]);
-
-            $response2 = $this->get('/install');
-            $response2->assertStatus(403);
-        } finally {
-            // Guarantee storage/installed is restored so subsequent test suites aren't impacted
-            file_put_contents($markerPath, date('Y-m-d H:i:s'));
-            config(['app.installed' => false, 'app.installer_enabled' => true]);
-        }
-    }
-
-    protected function tearDown(): void
-    {
-        $markerPath = storage_path('installed');
-        if (!file_exists($markerPath)) {
-            file_put_contents($markerPath, date('Y-m-d H:i:s'));
-        }
-        parent::tearDown();
-    }
 
     /**
      * PASS 13 - INTEGER KOBO ACCOUNTING MATH INVARIANCE:

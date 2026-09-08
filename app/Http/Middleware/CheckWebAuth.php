@@ -27,8 +27,6 @@ class CheckWebAuth
             'super-admin/logout',
             'super-admin-employee/login',
             'super-admin-employee/logout',
-            'install',
-            'install/*',
             'api/login',
             'landing',
             'welcome',

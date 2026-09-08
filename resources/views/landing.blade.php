@@ -1355,15 +1355,11 @@
                                     <div class="split-tender-grid">
                                         <div class="split-pill">
                                             💵 CASH
-                                            <strong>₦65,500</strong>
-                                        </div>
-                                        <div class="split-pill">
-                                            📱 TRANSFER
-                                            <strong>₦150,000</strong>
+                                            <strong>₦165,500</strong>
                                         </div>
                                         <div class="split-pill">
                                             💳 POS CARD
-                                            <strong>₦50,000</strong>
+                                            <strong>₦100,000</strong>
                                         </div>
                                     </div>
                                 </div>

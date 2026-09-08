@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+use App\Models\Activity;
+use App\Rules\PasswordPolicy;
 
 class AuthController extends Controller
 {
@@ -458,5 +460,87 @@ class AuthController extends Controller
 
         RateLimiter::clear($emailKey);
         RateLimiter::clear($ipKey);
+    }
+
+    /**
+     * Display the self-service change password interface for the authenticated user.
+     */
+    public function showChangePassword(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return redirect()->route('login')->with('warning', 'Please log in to change your password.');
+        }
+
+        return view('auth.change-password', [
+            'user' => $user,
+        ]);
+    }
+
+    /**
+     * Process a self-service password change for the currently authenticated user.
+     */
+    public function changePassword(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            if ($request->wantsJson() || $request->is('api/*')) {
+                return response()->json(['error' => 'Unauthenticated.'], 401);
+            }
+            return redirect()->route('login')->with('warning', 'Please log in to change your password.');
+        }
+
+        $request->validate([
+            'current_password' => 'required|string',
+            'new_password'     => array_merge(['confirmed'], PasswordPolicy::rules(true)),
+        ], PasswordPolicy::messages());
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            if ($request->wantsJson() || $request->is('api/*')) {
+                return response()->json(['error' => 'The current password provided does not match our records.'], 422);
+            }
+            return back()->withErrors(['current_password' => 'The current password provided does not match our records.'])->withInput();
+        }
+
+        // Prevent setting identical password
+        if (Hash::check($request->new_password, $user->password)) {
+            if ($request->wantsJson() || $request->is('api/*')) {
+                return response()->json(['error' => 'New password must be different from your current password.'], 422);
+            }
+            return back()->withErrors(['new_password' => 'New password must be different from your current password.'])->withInput();
+        }
+
+        // Persist new hashed password
+        $user->password = Hash::make($request->new_password);
+        $user->save();
+
+        // Safely re-authenticate session
+        Auth::login($user);
+
+        // Security Audit Log (Never log plaintext password or hashes)
+        $clientIp = $request->ip() ?? '127.0.0.1';
+        Activity::create([
+            'id'          => (string) Str::uuid(),
+            'tenant_id'   => session('tenant_id') ?? $user->tenant_id ?? null,
+            'type'        => 'PASSWORD_CHANGED',
+            'description' => "User '{$user->name}' ({$user->email}, Role: {$user->role}) updated account password from IP {$clientIp}.",
+            'userId'      => $user->id,
+            'userName'    => $user->name,
+            'timestamp'   => now()->toIso8601String(),
+            'metadata'    => [
+                'ip'         => $clientIp,
+                'user_agent' => substr((string) $request->userAgent(), 0, 500),
+                'user_id'    => $user->id,
+                'action'     => 'PASSWORD_CHANGED',
+                'tenant_id'  => session('tenant_id') ?? $user->tenant_id,
+                'request_id' => $request->header('X-Request-ID') ?? (string) Str::uuid(),
+            ],
+        ]);
+
+        if ($request->wantsJson() || $request->is('api/*')) {
+            return response()->json(['message' => 'Password updated successfully.']);
+        }
+
+        return redirect()->route('account.password')->with('success', '✓ Your password has been changed successfully. Your new password is now active.');
     }
 }

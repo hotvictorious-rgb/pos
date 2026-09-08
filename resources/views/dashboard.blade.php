@@ -429,8 +429,8 @@
                 </div>
 
                 <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
-                    <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">POS / Bank Transfers</div>
-                    <div style="font-size: 1.4rem; font-weight: 800; color: #a78bfa; margin-top: 0.2rem;">₦{{ number_format($myPosAmount + $myTransferAmount) }}</div>
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">POS Terminal Payments</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #a78bfa; margin-top: 0.2rem;">₦{{ number_format($myPosAmount) }}</div>
                 </div>
 
                 <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">

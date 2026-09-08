@@ -56,11 +56,17 @@ class PosController extends Controller
 
         $activeWarehouse = Warehouse::find($activeWarehouseId) ?? $warehouses->first();
 
-        // Get products with their stock levels at this warehouse
-        $products = Product::where('archived', false)->get()->map(function ($product) use ($activeWarehouse) {
-            $stock = StockLevel::where('product_id', $product->id)
-                ->where('warehouse_id', $activeWarehouse->id)
-                ->first();
+        // Batch load products with their stock levels at this warehouse (Zero N+1 Queries)
+        $productsList = Product::where('archived', false)->get();
+        $productIds = $productsList->pluck('id');
+
+        $stockLevelsMap = StockLevel::whereIn('product_id', $productIds)
+            ->where('warehouse_id', $activeWarehouse->id)
+            ->get()
+            ->keyBy('product_id');
+
+        $products = $productsList->map(function ($product) use ($stockLevelsMap) {
+            $stock = $stockLevelsMap->get($product->id);
 
             $product->physical_stock = $stock ? $stock->physical_stock : 0;
             $product->allocated_stock = $stock ? $stock->allocated_stock : 0;
@@ -256,10 +262,11 @@ class PosController extends Controller
             $idempotencyPayload = [
                 'warehouse_id' => $warehouseId,
                 'items' => $request->items,
-                'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
-                'cashAmount' => (float) ($request->cashAmount ?? 0),
-                'posAmount' => (float) ($request->posAmount ?? 0),
-                'transferAmount' => (float) ($request->transferAmount ?? 0),
+                'declaredPaidAmount' => (float) ($request->paidAmount ?? $paidAmount),
+                'paidAmount' => $calc['paidAmount'],
+                'cashAmount' => $calc['retainedCash'],
+                'posAmount' => $calc['retainedPos'],
+                'transferAmount' => 0.0,
                 'customerId' => $customerId,
                 'customerPhone' => $customerPhone,
                 'is_supplied' => $isSuppliedNow,

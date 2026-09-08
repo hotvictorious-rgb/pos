@@ -217,9 +217,12 @@ class DashboardController extends Controller
         $outOfStockCount = $outOfStockQuery->count();
         $totalProducts = Product::where('archived', false)->count();
 
-        // 10. Multi-Branch Summary Breakdown (for executive view)
-        $branchBreakdown = $warehouses->map(function ($wh) {
-            $levels = StockLevel::with('product')->where('warehouse_id', $wh->id)->get();
+        // 10. Multi-Branch Summary Breakdown (Batch loaded, Zero N+1 Queries)
+        $whIds = $warehouses->pluck('id');
+        $allBranchLevels = StockLevel::with('product')->whereIn('warehouse_id', $whIds)->get()->groupBy('warehouse_id');
+
+        $branchBreakdown = $warehouses->map(function ($wh) use ($allBranchLevels) {
+            $levels = $allBranchLevels->get($wh->id, collect());
             $units = (int) $levels->sum('physical_stock');
             $val = (float) $levels->sum(fn($sl) => $sl->physical_stock * ($sl->product->unitPrice ?? 0));
             $lowCount = $levels->where('physical_stock', '<=', 5)->count();

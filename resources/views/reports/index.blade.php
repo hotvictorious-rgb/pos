@@ -127,7 +127,7 @@
         </div>
         <div style="display: flex; gap: 0.5rem;">
             <button onclick="window.print()" class="btn btn-secondary">🖨️ Print Summary</button>
-            <a href="{{ route('reports.export.json', 'sales') }}" class="btn btn-primary" style="background: #6366f1;">
+            <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-primary" style="background: #6366f1;">
                 🤖 AI Data Digest (JSON)
             </a>
         </div>
@@ -299,8 +299,8 @@
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Filtered Sales Transactions</h3>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'sales') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
-                    <a href="{{ route('reports.export.json', 'sales') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
                 </div>
             </div>
 
@@ -321,7 +321,10 @@
                     </thead>
                     <tbody>
                         @forelse($sales as $s)
-                        @php $debt = max(0, $s->totalAmount - $s->paidAmount); @endphp
+                        @php
+                            $paid = $s->event_paid_amount ?? $s->paidAmount;
+                            $debt = $s->debt_balance ?? max(0, $s->totalAmount - $paid);
+                        @endphp
                         <tr>
                             <td><strong>#{{ substr($s->id, 0, 8) }}</strong></td>
                             <td style="font-size: 0.75rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($s->createdAt)) }}</td>
@@ -331,11 +334,11 @@
                             </td>
                             <td>{{ $s->items->count() }} items</td>
                             <td style="font-weight: 800;">₦{{ number_format($s->totalAmount, 0) }}</td>
-                            <td style="color: #4ade80;">₦{{ number_format($s->paidAmount, 0) }}</td>
+                            <td style="color: #4ade80;">₦{{ number_format($paid, 0) }}</td>
                             <td>
-                                @if($s->paidAmount >= $s->totalAmount)
+                                @if($debt <= 0.01)
                                     <span class="badge badge-success">✓ Paid</span>
-                                @elseif($s->paidAmount > 0)
+                                @elseif($paid > 0.01)
                                     <span class="badge badge-warning" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;">💳 Part-Paid (₦{{ number_format($debt, 0) }})</span>
                                 @else
                                     <span class="badge badge-danger">🔴 Not Paid (₦{{ number_format($debt, 0) }})</span>
@@ -369,8 +372,8 @@
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Multi-Branch Inventory & Stock Health</h3>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'inventory') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
-                    <a href="{{ route('reports.export.json', 'inventory') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
                 </div>
             </div>
 
@@ -428,8 +431,8 @@
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Inter-Branch Transfers & Discrepancies</h3>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'transfers') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
-                    <a href="{{ route('reports.export.json', 'transfers') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
                 </div>
             </div>
 
@@ -488,8 +491,8 @@
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Customer Debt Aging & Recovery Ledger</h3>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'debtors') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
-                    <a href="{{ route('reports.export.json', 'debtors') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
                 </div>
             </div>
 
@@ -546,8 +549,8 @@
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Damaged, Expired & Lost Stock Audit Write-offs</h3>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'damages') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
-                    <a href="{{ route('reports.export.json', 'damages') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'damages'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'damages'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
                 </div>
             </div>
 
@@ -595,8 +598,8 @@
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Customer Returns & Refunds Audit Ledger</h3>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'returns') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
-                    <a href="{{ route('reports.export.json', 'returns') }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
                 </div>
             </div>
 
@@ -664,8 +667,8 @@
                     <h4 style="font-size: 1rem; font-weight: 800; color: #4ade80; margin-bottom: 0.35rem;">📊 Complete Sales Data</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">All customer transactions, payment methods, debt balances, and cashier records.</p>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', 'sales') }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', 'sales') }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
 
@@ -673,8 +676,8 @@
                     <h4 style="font-size: 1rem; font-weight: 800; color: #60a5fa; margin-bottom: 0.35rem;">📦 Inventory & Branch Valuations</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">All catalog SKUs, shelf counts per branch, low stock warnings, and total ₦ asset values.</p>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', 'inventory') }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', 'inventory') }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
 
@@ -682,8 +685,8 @@
                     <h4 style="font-size: 1rem; font-weight: 800; color: #fbbf24; margin-bottom: 0.35rem;">🚚 Logistics & In-Transit Transfers</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Transfer history, carrier driver tracking, and verified count discrepancy flags.</p>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', 'transfers') }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', 'transfers') }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
 
@@ -691,8 +694,8 @@
                     <h4 style="font-size: 1rem; font-weight: 800; color: #f87171; margin-bottom: 0.35rem;">💳 Customer Debtors & Aging</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Complete debtor contact details, total debt exposure, and aging risk buckets.</p>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', 'debtors') }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', 'debtors') }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
 
@@ -700,8 +703,8 @@
                     <h4 style="font-size: 1rem; font-weight: 800; color: #fca5a5; margin-bottom: 0.35rem;">🔄 Sales Returns & Refunds</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Complete logs of returned items, quantity, refund amounts, and reasons.</p>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', 'returns') }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', 'returns') }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
             </div>

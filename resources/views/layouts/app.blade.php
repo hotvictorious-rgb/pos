@@ -473,6 +473,10 @@
                     Operator: <strong style="color: #f3f4f6;">{{ auth()->user()->name ?? session('user_name', 'Auditor / Lead') }}</strong>
                 </div>
 
+                <a href="{{ route('account.password') }}" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #93c5fd; display: inline-flex; align-items: center; gap: 0.35rem;" title="Change your account password">
+                    <span>🔑</span> <span>Password</span>
+                </a>
+
                 <a href="{{ route('logout') }}" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; background: rgba(220,38,38,0.15); border-color: rgba(220,38,38,0.4); color: #fca5a5; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sign out of system">
                     <span>🚪</span> <span>Log Out</span>
                 </a>

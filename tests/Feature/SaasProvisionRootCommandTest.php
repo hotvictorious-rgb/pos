@@ -7,7 +7,6 @@ use App\Models\User;
 use App\Models\Tenant;
 use App\Models\Product;
 use App\Exceptions\SecurityException;
-use App\Http\Controllers\Installer\InstallerController;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
@@ -29,19 +28,12 @@ class SaasProvisionRootCommandTest extends TestCase
         app()->detectEnvironment(fn() => 'testing');
         config(['saas.enabled' => true]);
         config(['saas.super_admin_email' => 'superadmin@hysam.com']);
-        config(['app.installed' => true]);
-        if (!file_exists(storage_path('installed'))) {
-            file_put_contents(storage_path('installed'), date('Y-m-d H:i:s'));
-        }
     }
 
     protected function tearDown(): void
     {
         if ($this->originalEnvBackup !== null) {
             file_put_contents(base_path('.env'), $this->originalEnvBackup);
-        }
-        if (!file_exists(storage_path('installed'))) {
-            file_put_contents(storage_path('installed'), date('Y-m-d H:i:s'));
         }
         parent::tearDown();
     }
@@ -256,84 +248,7 @@ class SaasProvisionRootCommandTest extends TestCase
         $this->assertSame('customer-solar', $merchantUser->tenant_id);
     }
 
-    /**
-     * 7. Standalone Installer Takeover Protection
-     */
-    public function test_installer_aborts_takeover_if_users_already_exist(): void
-    {
-        $tenant = Tenant::withoutGlobalScopes()->find('default-tenant')
-            ?? Tenant::create([
-                'id' => 'default-tenant',
-                'name' => 'HQ',
-                'owner_email' => 'superadmin@hysam.com',
-                'status' => 'active',
-                'plan' => 'enterprise',
-            ]);
 
-        User::withoutGlobalScopes()->where('email', 'superadmin@hysam.com')->delete();
-
-        User::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => 'default-tenant',
-            'name' => 'Existing User',
-            'email' => 'superadmin@hysam.com',
-            'password' => Hash::make('existingpass'),
-            'role' => 'admin',
-        ]);
-
-        // Attacker accesses installer run
-        session([
-            'installer_admin_name' => 'Attacker',
-            'installer_admin_email' => 'attacker@evil.com',
-            'installer_admin_password_hash' => Hash::make('attackerpass'),
-        ]);
-
-        $controller = new InstallerController();
-        $response = $controller->run();
-
-        // Must fail with HTTP 403 containing Security Violation in JSON
-        $this->assertEquals(403, $response->getStatusCode());
-        $data = json_decode($response->getContent(), true);
-        $this->assertFalse($data['success']);
-        $this->assertStringContainsString('Security Violation', $data['error']);
-    }
-
-    /**
-     * 8. Installer Provisions Root and Creates Installed Lock
-     */
-    public function test_installer_delegates_to_provision_root_and_creates_installed_lock(): void
-    {
-        User::withoutGlobalScopes()->truncate();
-        if (file_exists(storage_path('installed'))) {
-            @unlink(storage_path('installed'));
-        }
-        config(['app.installed' => false]);
-
-        $adminEmail = 'superadmin@hysam.com';
-        $hashedPass = Hash::make('InstallerSecretPass#2026');
-
-        session([
-            'installer_admin_name' => 'Platform Super Admin',
-            'installer_admin_email' => $adminEmail,
-            'installer_admin_password_hash' => $hashedPass,
-        ]);
-
-        $controller = new InstallerController();
-        $response = $controller->run();
-
-        $this->assertEquals(200, $response->getStatusCode());
-        $data = json_decode($response->getContent(), true);
-        $this->assertTrue($data['success']);
-
-        $root = User::withoutGlobalScopes()->where('email', $adminEmail)->first();
-        $this->assertNotNull($root);
-        $this->assertSame('default-tenant', $root->tenant_id);
-        $this->assertTrue($root->isPlatformAdmin());
-        $this->assertTrue(Hash::check('InstallerSecretPass#2026', $root->password));
-
-        $this->assertFileExists(storage_path('installed'));
-        $this->assertNull(session('installer_admin_email'));
-    }
 
     /**
      * 9. DatabaseSeeder Delegates to saas:provision-root
@@ -566,98 +481,5 @@ class SaasProvisionRootCommandTest extends TestCase
             '--email' => 'superadmin@hysam.com',
             '--password-hash' => 'plaintext_unhashed_string_not_a_bcrypt_hash',
         ]);
-    }
-
-    /**
-     * 18. Installer Exception Handling Preserves HTTP 403 Response Code
-     */
-    public function test_installer_exception_handling_preserves_http_403(): void
-    {
-        // Populate existing user with tenant to trigger takeover protection
-        $existing = User::withoutGlobalScopes()->where('email', 'existingadmin@test.com')->first();
-        if (!$existing) {
-            $tenant = Tenant::withoutGlobalScopes()->find('tenant-1') ?? Tenant::create([
-                'id' => 'tenant-1',
-                'name' => 'Existing Shop',
-                'owner_email' => 'shop@test.com',
-                'plan' => 'standard',
-                'status' => 'active',
-            ]);
-
-            User::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenant->id,
-                'name' => 'Existing Admin',
-                'email' => 'existingadmin@test.com',
-                'password' => Hash::make('SecretPass#123'),
-                'role' => 'admin',
-            ]);
-        }
-
-        $controller = new InstallerController();
-        $response = $controller->run();
-
-        $this->assertSame(403, $response->getStatusCode(), 'Installer must return real HTTP 403 instead of converting to 500');
-        $content = json_decode($response->getContent(), true);
-        $this->assertFalse($content['success']);
-        $this->assertStringContainsString('Security Violation', $content['error']);
-    }
-
-    /**
-     * 19. Fresh Install Custom Super Admin Email Persists to .env and Retains Platform Authority
-     */
-    public function test_installer_persists_custom_super_admin_email_to_env_and_maintains_platform_admin(): void
-    {
-        if (file_exists(storage_path('installed'))) {
-            @unlink(storage_path('installed'));
-        }
-        config(['app.installed' => false]);
-        config(['saas.enabled' => true]);
-
-        $customEmail = 'owner@customdomain.com';
-        $hashedPass = Hash::make('CustomSecretPass#2026');
-
-        // Ensure clean slate for custom email and default tenant
-        User::withoutGlobalScopes()->where('email', $customEmail)->delete();
-        User::withoutGlobalScopes()->where('email', 'superadmin@hysam.com')->delete();
-        Tenant::withoutGlobalScopes()->where('id', 'default-tenant')->delete();
-
-        session([
-            'installer_admin_name' => 'Custom Platform Owner',
-            'installer_admin_email' => $customEmail,
-            'installer_admin_password_hash' => $hashedPass,
-        ]);
-
-        $controller = new InstallerController();
-        $response = $controller->run();
-
-        $this->assertEquals(200, $response->getStatusCode());
-        $data = json_decode($response->getContent(), true);
-        $this->assertTrue($data['success']);
-
-        // 1. Verify that .env file persisted the custom SUPER_ADMIN_EMAIL and locked installer flags
-        $envContent = file_get_contents(base_path('.env'));
-        $this->assertStringContainsString("SUPER_ADMIN_EMAIL={$customEmail}", $envContent);
-        $this->assertStringContainsString("APP_INSTALLED=true", $envContent);
-        $this->assertStringContainsString("APP_INSTALLER_ENABLED=false", $envContent);
-
-        // 2. Simulate application reload / config cache reading from persisted .env
-        putenv("SUPER_ADMIN_EMAIL={$customEmail}");
-        $_ENV['SUPER_ADMIN_EMAIL'] = $customEmail;
-        config(['saas.super_admin_email' => $customEmail]);
-
-        // 3. Verify custom root user retains isPlatformAdmin() === true
-        $customRoot = User::withoutGlobalScopes()->where('email', $customEmail)->first();
-        $this->assertNotNull($customRoot);
-        $this->assertSame('default-tenant', $customRoot->tenant_id);
-        $this->assertTrue($customRoot->isPlatformAdmin(), 'Custom installer admin must retain isPlatformAdmin authority');
-
-        // 4. Verify old/default email does NOT retain platform admin authority
-        $defaultOldUser = new User([
-            'email' => 'superadmin@hysam.com',
-            'tenant_id' => 'default-tenant',
-            'role' => 'admin',
-        ]);
-        $this->assertFalse($defaultOldUser->isPlatformAdmin(), 'Old default email must NOT have platform admin authority');
     }
 }

@@ -4,7 +4,6 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DataController;
 use App\Http\Controllers\BackupController;
-use App\Http\Controllers\Installer\InstallerController;
 use App\Http\Controllers\Web\DashboardController;
 use App\Http\Controllers\Web\PosController;
 use App\Http\Controllers\Web\StockController;
@@ -17,18 +16,10 @@ use App\Models\Customer;
 use App\Models\Transfer;
 
 // ─────────────────────────────────────────────────────────
-// INSTALLER ROUTES (accessible before the app is installed)
+// AUTHENTICATED USER ACCOUNT & SECURITY
 // ─────────────────────────────────────────────────────────
-Route::prefix('install')->name('installer.')->group(function () {
-    Route::get('/',            [InstallerController::class, 'welcome'])->name('welcome');
-    Route::get('/requirements',[InstallerController::class, 'requirements'])->name('requirements');
-    Route::get('/database',    [InstallerController::class, 'database'])->name('database');
-    Route::post('/database',   [InstallerController::class, 'databaseSave'])->name('database.save');
-    Route::get('/admin',       [InstallerController::class, 'admin'])->name('admin');
-    Route::post('/admin',      [InstallerController::class, 'install'])->name('install');
-    Route::post('/run',        [InstallerController::class, 'run'])->name('run');
-    Route::get('/complete',    [InstallerController::class, 'complete'])->name('complete');
-});
+Route::get('/account/password',  [AuthController::class, 'showChangePassword'])->name('account.password');
+Route::post('/account/password', [AuthController::class, 'changePassword'])->name('account.password.update');
 
 // ─────────────────────────────────────────────────────────
 // PUBLIC MARKETING & LANDING PAGE (Nigerian Retail, Supermarkets & Wholesalers)

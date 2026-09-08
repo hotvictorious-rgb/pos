@@ -618,9 +618,18 @@ class AccountingReportService
             $query->where('warehouse_id', (int) $filters['warehouse_id']);
         }
 
+        // Authoritative event-based financial calculation subqueries:
+        $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method != 'REFUND_CASH'), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method = 'REFUND_CASH'), 0)";
+        $netPaidSql = "({$eventNetPaidSql})";
+        $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
+        $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$netPaidSql}))";
+
         // Cashier/Staff filter
         if (!empty($filters['user_id'])) {
             $query->where('userId', $filters['user_id']);
+        }
+        if (!empty($filters['user_name'])) {
+            $query->where('userName', 'like', "%{$filters['user_name']}%");
         }
 
         // Customer filter
@@ -628,14 +637,40 @@ class AccountingReportService
             $query->where('customerId', $filters['customer_id']);
         }
 
-        // Payment status filter
-        if (!empty($filters['status'])) {
-            $query->where('status', strtoupper($filters['status']));
+        // Payment status filter (supports static 'status' and event-derived 'payment_status')
+        $paymentStatus = !empty($filters['payment_status']) ? strtoupper($filters['payment_status']) : (!empty($filters['status']) ? strtoupper($filters['status']) : null);
+        if ($paymentStatus) {
+            if ($paymentStatus === 'PAID') {
+                $query->whereRaw("{$netBalanceSql} <= 0.01");
+            } elseif (in_array($paymentStatus, ['PART_PAID', 'PARTIAL'])) {
+                $query->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01");
+            } elseif (in_array($paymentStatus, ['NOT_PAID', 'UNPAID'])) {
+                $query->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) <= 0.01");
+            } elseif ($paymentStatus === 'DEBT') {
+                $query->whereRaw("{$netBalanceSql} > 0.01");
+            } else {
+                $query->where('status', $paymentStatus);
+            }
         }
 
-        // Fulfillment status filter
+        // Fulfillment / Delivery status filter (supports compound delivery and payment statuses)
         if (!empty($filters['delivery_status'])) {
-            $query->where('deliveryStatus', strtoupper($filters['delivery_status']));
+            $dStatus = strtoupper($filters['delivery_status']);
+            if (in_array($dStatus, ['DELIVERED', 'SUPPLIED'])) {
+                $query->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif (in_array($dStatus, ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING'])) {
+                $query->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+            } elseif ($dStatus === 'PAID_SUPPLIED') {
+                $query->whereRaw("{$netBalanceSql} <= 0.01")->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif ($dStatus === 'PAID_NOT_SUPPLIED') {
+                $query->whereRaw("{$netBalanceSql} <= 0.01")->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+            } elseif ($dStatus === 'PART_PAID_SUPPLIED') {
+                $query->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01")->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+            } elseif ($dStatus === 'PART_PAID_NOT_SUPPLIED') {
+                $query->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01")->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
+            } else {
+                $query->where('deliveryStatus', $dStatus);
+            }
         }
 
         // Sale Type filter
@@ -651,12 +686,13 @@ class AccountingReportService
             });
         }
 
-        // Text Search
+        // Text Search (id, customerName, customerPhone, userName)
         if (!empty($filters['search'])) {
             $s = trim($filters['search']);
             $query->where(function ($sq) use ($s) {
                 $sq->where('id', 'like', "%{$s}%")
                    ->orWhere('customerName', 'like', "%{$s}%")
+                   ->orWhere('customerPhone', 'like', "%{$s}%")
                    ->orWhere('userName', 'like', "%{$s}%");
             });
         }
@@ -745,6 +781,19 @@ class AccountingReportService
             $query->where('productId', $filters['product_id']);
         }
 
+        if (!empty($filters['user_name'])) {
+            $query->where('userName', 'like', "%{$filters['user_name']}%");
+        }
+
+        if (!empty($filters['search'])) {
+            $sText = trim($filters['search']);
+            $query->where(function ($q) use ($sText) {
+                $q->where('saleId', 'like', "%{$sText}%")
+                  ->orWhere('customerName', 'like', "%{$sText}%")
+                  ->orWhere('productName', 'like', "%{$sText}%");
+            });
+        }
+
         return $query->orderBy('createdAt', 'desc');
     }
 
@@ -803,7 +852,8 @@ class AccountingReportService
 
         $query = Transfer::with(['source', 'destination', 'items']);
 
-        $query->whereBetween('createdAt', [$dates['startIso'], $dates['endIso']]);
+        $transferDateCol = \Illuminate\Support\Facades\Schema::hasColumn('transfers', 'created_at') ? 'created_at' : 'createdAt';
+        $query->whereBetween($transferDateCol, [$dates['startIso'], $dates['endIso']]);
 
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -829,11 +879,12 @@ class AccountingReportService
             }
         }
 
-        if (!empty($filters['status'])) {
-            $query->where('status', strtoupper($filters['status']));
+        $status = $filters['transfer_status'] ?? $filters['status'] ?? null;
+        if (!empty($status)) {
+            $query->where('status', strtoupper($status));
         }
 
-        return $query->orderBy('createdAt', 'desc');
+        return $query->orderBy($transferDateCol, 'desc');
     }
 
     /**
