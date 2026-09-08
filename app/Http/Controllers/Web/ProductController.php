@@ -21,10 +21,12 @@ class ProductController extends Controller
     {
         $this->stockService = $stockService;
     }
+
     /**
-     * Display all products with multi-criteria filters & stock breakdown across all shops.
+     * Build filtered products and attach branch-scoped stock levels.
+     * Returns: [$products, $warehouses, $categories, $isBranchScoped]
      */
-    public function index(Request $request)
+    protected function buildFilteredProducts(Request $request): array
     {
         $query = Product::where('archived', false);
 
@@ -32,12 +34,20 @@ class ProductController extends Controller
             $query->where('category', $request->category);
         }
 
-        if ($request->filled('min_price')) {
-            $query->where('unitPrice', '>=', (float) $request->min_price);
+        $minPrice = $request->filled('min_price') ? max(0.0, (float) $request->min_price) : null;
+        $maxPrice = $request->filled('max_price') ? max(0.0, (float) $request->max_price) : null;
+
+        if ($minPrice !== null && $maxPrice !== null && $minPrice > $maxPrice) {
+            // Swap if min > max so query remains valid
+            [$minPrice, $maxPrice] = [$maxPrice, $minPrice];
         }
 
-        if ($request->filled('max_price')) {
-            $query->where('unitPrice', '<=', (float) $request->max_price);
+        if ($minPrice !== null) {
+            $query->where('unitPrice', '>=', $minPrice);
+        }
+
+        if ($maxPrice !== null) {
+            $query->where('unitPrice', '<=', $maxPrice);
         }
 
         if ($request->filled('search')) {
@@ -50,24 +60,30 @@ class ProductController extends Controller
         }
 
         $authUser = Auth::user();
-        if ($authUser && $authUser->role !== 'admin' && $authUser->role !== 'viewer' && !empty($authUser->warehouse_id)) {
+        $isBranchScoped = ($authUser && $authUser->isBranchScoped());
+
+        if ($isBranchScoped) {
             $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
         } else {
             $warehouses = Warehouse::where('is_active', true)->get();
         }
 
-        $products = $query->orderBy('name')->get();
+        $warehouseIds = $warehouses->pluck('id');
+        $products = $query->orderBy('category')->orderBy('name')->get();
 
-        // Attach per-branch physical stocks and calculate total
-        $products = $products->map(function ($p) use ($warehouses) {
-            $p->branch_stocks = StockLevel::where('product_id', $p->id)->whereIn('warehouse_id', $warehouses->pluck('id'))->pluck('physical_stock', 'warehouse_id')->toArray();
+        // Attach per-branch physical stocks strictly scoped to authorized warehouses
+        $products = $products->map(function ($p) use ($warehouseIds) {
+            $p->branch_stocks = StockLevel::where('product_id', $p->id)
+                ->whereIn('warehouse_id', $warehouseIds)
+                ->pluck('physical_stock', 'warehouse_id')
+                ->toArray();
             $p->total_physical_stock = array_sum($p->branch_stocks);
             return $p;
         });
 
         // Stock status filter
         if ($request->filled('stock_status')) {
-            $status = $request->stock_status;
+            $status = strtoupper($request->stock_status);
             if ($status === 'OUT_OF_STOCK') {
                 $products = $products->filter(fn($p) => $p->total_physical_stock <= 0)->values();
             } elseif ($status === 'LOW_STOCK') {
@@ -78,6 +94,16 @@ class ProductController extends Controller
         }
 
         $categories = Product::distinct()->pluck('category')->filter()->values();
+
+        return [$products, $warehouses, $categories, $isBranchScoped];
+    }
+
+    /**
+     * Display all products with multi-criteria filters & stock breakdown across all authorized shops.
+     */
+    public function index(Request $request)
+    {
+        [$products, $warehouses, $categories] = $this->buildFilteredProducts($request);
 
         return view('products.index', compact('products', 'warehouses', 'categories'));
     }
@@ -230,11 +256,11 @@ class ProductController extends Controller
 
         return response()->stream(function () {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['name', 'code', 'category', 'brand', 'size', 'unitPrice', 'minStockLevel', 'initial_stock']);
+            fputcsv($handle, ['name', 'code', 'category', 'brand', 'size', 'unitPrice', 'minStockLevel', 'initial_stock', 'description']);
             // Sample demonstration rows
-            fputcsv($handle, ['Mama Gold Rice (50kg)', 'MAMA-RICE-50KG', 'Grains & Rice', 'Mama Gold', '50kg Bag', '78000', '10', '50']);
-            fputcsv($handle, ['Kings Vegetable Oil (25L)', 'KINGS-OIL-25L', 'Oils & Fats', 'Devon Kings', '25L Keg', '46500', '5', '30']);
-            fputcsv($handle, ['Peak Milk Powder (900g)', 'PEAK-MILK-900G', 'Provisions', 'Friesland', '900g Tin', '7200', '15', '100']);
+            fputcsv($handle, ['Mama Gold Rice (50kg)', 'MAMA-RICE-50KG', 'Grains & Rice', 'Mama Gold', '50kg Bag', '78000', '10', '50', 'Premium parboiled long grain rice']);
+            fputcsv($handle, ['Kings Vegetable Oil (25L)', 'KINGS-OIL-25L', 'Oils & Fats', 'Devon Kings', '25L Keg', '46500', '5', '30', 'Pure cholesterol free refined vegetable oil']);
+            fputcsv($handle, ['Peak Milk Powder (900g)', 'PEAK-MILK-900G', 'Provisions', 'Friesland', '900g Tin', '7200', '15', '100', 'Rich creamy whole milk powder']);
             fclose($handle);
         }, 200, $headers);
     }
@@ -289,10 +315,40 @@ class ProductController extends Controller
             $headerMap[$cleaned] = $index;
         }
 
+        // Validate required headers
+        $missingHeaders = [];
+        if (!isset($headerMap['name'])) {
+            $missingHeaders[] = 'name';
+        }
+        if (!isset($headerMap['code']) && !isset($headerMap['sku'])) {
+            $missingHeaders[] = 'code (or sku)';
+        }
+        if (!isset($headerMap['category'])) {
+            $missingHeaders[] = 'category';
+        }
+        if (!isset($headerMap['unitprice']) && !isset($headerMap['price'])) {
+            $missingHeaders[] = 'unitPrice (or price)';
+        }
+
+        if (!empty($missingHeaders)) {
+            fclose($handle);
+            return redirect()->route('products.index')->with('error', 'Uploaded CSV is missing required column headers: ' . implode(', ', $missingHeaders) . '. Required headers: name, code, category, unitPrice.');
+        }
+
+        $codeCol = $headerMap['code'] ?? $headerMap['sku'];
+        $nameCol = $headerMap['name'];
+        $catCol = $headerMap['category'];
+        $priceCol = $headerMap['unitprice'] ?? $headerMap['price'];
+        $stockCol = $headerMap['initialstock'] ?? $headerMap['stock'] ?? $headerMap['quantity'] ?? null;
+        $minStockCol = $headerMap['minstocklevel'] ?? $headerMap['minstock'] ?? null;
+        $brandCol = $headerMap['brand'] ?? null;
+        $sizeCol = $headerMap['size'] ?? null;
+        $descCol = $headerMap['description'] ?? null;
+
         $rows = [];
         $rowCount = 0;
         while (($row = fgetcsv($handle)) !== false) {
-            if (empty(array_filter($row))) continue; // Skip empty rows
+            if (empty(array_filter($row, fn($v) => trim((string)$v) !== ''))) continue; // Skip empty rows
             $rowCount++;
             if ($rowCount > 500) {
                 fclose($handle);
@@ -302,50 +358,123 @@ class ProductController extends Controller
         }
         fclose($handle);
 
+        if (empty($rows)) {
+            return redirect()->route('products.index')->with('error', 'Uploaded CSV does not contain any data rows.');
+        }
+
+        // Row-by-row pre-validation
+        $errors = [];
+        $seenCodesInBatch = [];
+        $validatedRows = [];
+
+        foreach ($rows as $idx => $row) {
+            $rowNum = $idx + 2; // Row 1 is header
+
+            $name = trim((string)($row[$nameCol] ?? ''));
+            $rawCode = trim((string)($row[$codeCol] ?? ''));
+            $cat = trim((string)($row[$catCol] ?? ''));
+            $rawPrice = trim((string)($row[$priceCol] ?? ''));
+
+            if ($name === '') {
+                $errors[] = "Row {$rowNum}: 'name' is required.";
+            }
+
+            if ($rawCode === '') {
+                $errors[] = "Row {$rowNum}: 'code' / 'sku' is required (silent auto-generation is disabled).";
+            } else {
+                $codeUpper = strtoupper($rawCode);
+                if (isset($seenCodesInBatch[$codeUpper])) {
+                    $errors[] = "Row {$rowNum}: Duplicate SKU '{$codeUpper}' found in upload (already defined on Row {$seenCodesInBatch[$codeUpper]}).";
+                } else {
+                    $seenCodesInBatch[$codeUpper] = $rowNum;
+                }
+            }
+
+            if ($cat === '') {
+                $errors[] = "Row {$rowNum}: 'category' is required.";
+            }
+
+            if ($rawPrice === '' || !is_numeric($rawPrice) || (float)$rawPrice < 0) {
+                $errors[] = "Row {$rowNum}: 'unitPrice' must be a valid non-negative number.";
+            }
+
+            $initialStock = 0;
+            if ($stockCol !== null && isset($row[$stockCol]) && trim((string)$row[$stockCol]) !== '') {
+                $rawStock = trim((string)$row[$stockCol]);
+                if (!is_numeric($rawStock) || (int)$rawStock < 0) {
+                    $errors[] = "Row {$rowNum}: 'initial_stock' must be a non-negative integer.";
+                } else {
+                    $initialStock = (int)$rawStock;
+                }
+            }
+
+            $minStock = 5;
+            if ($minStockCol !== null && isset($row[$minStockCol]) && trim((string)$row[$minStockCol]) !== '') {
+                $rawMin = trim((string)$row[$minStockCol]);
+                if (!is_numeric($rawMin) || (int)$rawMin < 0) {
+                    $errors[] = "Row {$rowNum}: 'minStockLevel' must be a non-negative integer.";
+                } else {
+                    $minStock = (int)$rawMin;
+                }
+            }
+
+            $brand = ($brandCol !== null && isset($row[$brandCol])) ? trim((string)$row[$brandCol]) : null;
+            $size = ($sizeCol !== null && isset($row[$sizeCol])) ? trim((string)$row[$sizeCol]) : null;
+            $description = ($descCol !== null && isset($row[$descCol])) ? trim((string)$row[$descCol]) : null;
+
+            $validatedRows[] = [
+                'name' => $name,
+                'code' => strtoupper($rawCode),
+                'category' => $cat,
+                'brand' => $brand !== '' ? $brand : null,
+                'size' => $size !== '' ? $size : null,
+                'description' => $description !== '' ? $description : null,
+                'unitPrice' => (float)$rawPrice,
+                'minStock' => $minStock,
+                'initialStock' => $initialStock,
+            ];
+        }
+
+        if (!empty($errors)) {
+            $sampleErrors = array_slice($errors, 0, 8);
+            $summary = "CSV Import Failed (" . count($errors) . " errors found): " . implode(' | ', $sampleErrors);
+            if (count($errors) > 8) {
+                $summary .= " ...and " . (count($errors) - 8) . " more errors.";
+            }
+            return redirect()->route('products.index')->with('error', $summary);
+        }
+
         $importedCount = 0;
         $updatedCount = 0;
 
-        DB::transaction(function () use ($rows, $headerMap, $warehouseId, &$importedCount, &$updatedCount) {
-            foreach ($rows as $row) {
-                $name = $row[$headerMap['name'] ?? -1] ?? null;
-                if (!$name) continue;
+        DB::transaction(function () use ($validatedRows, $warehouseId, &$importedCount, &$updatedCount) {
+            $stockService = app(\App\Services\StockService::class);
+            $userId = Auth::id() ?? 'ADMIN';
+            $userName = Auth::user()->name ?? 'Manager / Admin';
 
-                $code = $row[$headerMap['code'] ?? $headerMap['sku'] ?? -1] ?? null;
-                if (!$code) {
-                    $code = 'SKU-' . strtoupper(Str::random(6));
-                } else {
-                    $code = strtoupper(trim($code));
-                }
-
-                $category = $row[$headerMap['category'] ?? -1] ?? 'General Provisions';
-                $brand = $row[$headerMap['brand'] ?? -1] ?? null;
-                $size = $row[$headerMap['size'] ?? -1] ?? null;
-                $unitPrice = (float) ($row[$headerMap['unitprice'] ?? $headerMap['price'] ?? -1] ?? 0);
-                $minStock = (int) ($row[$headerMap['minstocklevel'] ?? $headerMap['minstock'] ?? -1] ?? 5);
-                $initialStock = (int) ($row[$headerMap['initialstock'] ?? $headerMap['stock'] ?? $headerMap['quantity'] ?? -1] ?? 0);
-
-                // Check if product exists by code
-                $product = Product::where('code', $code)->first();
+            foreach ($validatedRows as $v) {
+                $product = Product::where('code', $v['code'])->first();
                 if ($product) {
                     $product->update([
-                        'name' => $name,
-                        'category' => $category,
-                        'brand' => $brand,
-                        'size' => $size,
-                        'unitPrice' => $unitPrice > 0 ? $unitPrice : $product->unitPrice,
-                        'minStockLevel' => $minStock,
+                        'name' => $v['name'],
+                        'category' => $v['category'],
+                        'brand' => $v['brand'] ?? $product->brand,
+                        'size' => $v['size'] ?? $product->size,
+                        'description' => $v['description'] ?? $product->description,
+                        'unitPrice' => $v['unitPrice'] > 0 ? $v['unitPrice'] : $product->unitPrice,
+                        'minStockLevel' => $v['minStock'],
                         'archived' => false,
+                        'updatedAt' => now()->toIso8601String(),
                     ]);
 
-                    if ($initialStock > 0) {
-                        $stockService = app(\App\Services\StockService::class);
+                    if ($v['initialStock'] > 0) {
                         $stockService->recordStockIn(
                             $product->id,
                             $warehouseId,
-                            $initialStock,
+                            $v['initialStock'],
                             'CSV Stock In',
-                            Auth::id() ?? 'ADMIN',
-                            Auth::user()->name ?? 'Manager / Admin',
+                            $userId,
+                            $userName,
                             "Bulk CSV Import Additional Stock for {$product->name}"
                         );
                     }
@@ -355,27 +484,27 @@ class ProductController extends Controller
                     $productId = (string) Str::uuid();
                     $newProduct = Product::create([
                         'id' => $productId,
-                        'name' => $name,
-                        'code' => $code,
-                        'category' => $category,
-                        'brand' => $brand,
-                        'size' => $size,
-                        'unitPrice' => $unitPrice,
-                        'currentStock' => 0, // Canonical stock updated authoritatively by StockService
-                        'minStockLevel' => $minStock,
+                        'name' => $v['name'],
+                        'code' => $v['code'],
+                        'category' => $v['category'],
+                        'brand' => $v['brand'],
+                        'size' => $v['size'],
+                        'description' => $v['description'],
+                        'unitPrice' => $v['unitPrice'],
+                        'currentStock' => 0,
+                        'minStockLevel' => $v['minStock'],
                         'archived' => false,
                         'updatedAt' => now()->toIso8601String(),
                     ]);
 
-                    $stockService = app(\App\Services\StockService::class);
-                    if ($initialStock > 0) {
+                    if ($v['initialStock'] > 0) {
                         $stockService->recordStockIn(
                             $newProduct->id,
                             $warehouseId,
-                            $initialStock,
+                            $v['initialStock'],
                             'CSV Initial Balance',
-                            Auth::id() ?? 'ADMIN',
-                            Auth::user()->name ?? 'Manager / Admin',
+                            $userId,
+                            $userName,
                             "Bulk CSV Import Initial Stock for {$newProduct->name}"
                         );
                     } else {
@@ -386,12 +515,11 @@ class ProductController extends Controller
                 }
             }
 
-            $userName = Auth::user()->name ?? 'Manager / Admin';
             Activity::create([
                 'id' => (string) Str::uuid(),
                 'type' => 'CSV_PRODUCTS_IMPORT',
                 'description' => "{$userName} imported {$importedCount} new products and updated {$updatedCount} products via CSV bulk upload.",
-                'userId' => Auth::id() ?? 'ADMIN',
+                'userId' => $userId,
                 'userName' => $userName,
                 'timestamp' => now()->toIso8601String(),
             ]);
@@ -402,18 +530,19 @@ class ProductController extends Controller
 
     /**
      * Export Products Catalog to CSV for Excel / Google Sheets.
+     * Respects active filters and strictly enforces branch-scoped stock isolation.
      */
     public function exportCsv(Request $request)
     {
         $fileName = "hysam_products_catalog_" . date('Y_m_d_His') . ".csv";
+        [$products] = $this->buildFilteredProducts($request);
 
-        return response()->stream(function () {
+        return response()->stream(function () use ($products) {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, ['SKU / Code', 'Product Name', 'Category', 'Brand', 'Size', 'Selling Price (NGN)', 'Min Stock Alert', 'Total Physical Stock', 'Asset Value (NGN)']);
 
-            $products = Product::where('archived', false)->orderBy('category')->orderBy('name')->get();
             foreach ($products as $p) {
-                $stock = StockLevel::where('product_id', $p->id)->sum('physical_stock');
+                $stock = $p->total_physical_stock;
                 fputcsv($handle, [
                     $p->code,
                     $p->name,
@@ -435,12 +564,14 @@ class ProductController extends Controller
 
     /**
      * Export Products Catalog to Structured JSON format for AI analysis.
+     * Respects active filters and strictly enforces branch-scoped stock isolation.
      */
     public function exportJson(Request $request)
     {
         $fileName = "hysam_products_catalog_" . date('Y_m_d_His') . ".json";
+        [$products, , , $isBranchScoped] = $this->buildFilteredProducts($request);
 
-        $products = Product::with('stockLevels')->where('archived', false)->get()->map(function ($p) {
+        $mappedProducts = $products->map(function ($p) {
             return [
                 'id' => $p->id,
                 'code' => $p->code,
@@ -448,11 +579,12 @@ class ProductController extends Controller
                 'category' => $p->category,
                 'brand' => $p->brand,
                 'size' => $p->size,
+                'description' => $p->description,
                 'unitPrice' => (float) $p->unitPrice,
                 'minStockLevel' => (int) $p->minStockLevel,
-                'total_physical_stock' => $p->stockLevels->sum('physical_stock'),
-                'total_asset_value' => $p->stockLevels->sum('physical_stock') * (float) $p->unitPrice,
-                'branch_stock_breakdown' => $p->stockLevels->pluck('physical_stock', 'warehouse_id'),
+                'total_physical_stock' => $p->total_physical_stock,
+                'total_asset_value' => $p->total_physical_stock * (float) $p->unitPrice,
+                'branch_stock_breakdown' => $p->branch_stocks,
             ];
         });
 
@@ -461,9 +593,10 @@ class ProductController extends Controller
                 'business' => 'Hysam Ventures Ltd',
                 'report' => 'Master Products & Price Catalog',
                 'generated_at' => now()->toIso8601String(),
-                'total_skus' => $products->count(),
+                'total_skus' => $mappedProducts->count(),
+                'branch_scoped' => $isBranchScoped,
             ],
-            'products' => $products,
+            'products' => $mappedProducts,
         ], 200, [
             'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
         ], JSON_PRETTY_PRINT);

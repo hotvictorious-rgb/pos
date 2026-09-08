@@ -421,11 +421,16 @@ class ProductionHardeningPass9Test extends TestCase
         $this->app->detectEnvironment(fn() => 'production');
         putenv('SUPER_ADMIN_PASSWORD=changeme123');
 
-        $this->expectException(SecurityException::class);
-        $this->expectExceptionMessage("Production seeding requires a secure, non-default SUPER_ADMIN_PASSWORD");
+        try {
+            $this->expectException(SecurityException::class);
+            $this->expectExceptionMessage("Production seeding requires a secure, non-default SUPER_ADMIN_PASSWORD");
 
-        $seeder = new \Database\Seeders\DatabaseSeeder();
-        $seeder->run();
+            $seeder = new \Database\Seeders\DatabaseSeeder();
+            $seeder->run();
+        } finally {
+            putenv('SUPER_ADMIN_PASSWORD');
+            unset($_ENV['SUPER_ADMIN_PASSWORD'], $_SERVER['SUPER_ADMIN_PASSWORD']);
+        }
     }
 
     /**

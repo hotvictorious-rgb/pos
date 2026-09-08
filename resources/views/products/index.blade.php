@@ -64,10 +64,10 @@
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-            <a href="{{ route('products.export.csv') }}" class="btn btn-secondary" style="font-size: 0.85rem;">
+            <a href="{{ route('products.export.csv', request()->query()) }}" class="btn btn-secondary" style="font-size: 0.85rem;">
                 📥 Export CSV
             </a>
-            <a href="{{ route('products.export.json') }}" class="btn btn-secondary" style="font-size: 0.85rem; color: #93c5fd;">
+            <a href="{{ route('products.export.json', request()->query()) }}" class="btn btn-secondary" style="font-size: 0.85rem; color: #93c5fd;">
                 🤖 Export JSON (AI)
             </a>
             <button onclick="window.print()" class="btn btn-secondary" style="font-size: 0.85rem;">
@@ -105,8 +105,8 @@
                    🟢 In Stock
                 </a>
                 <a href="{{ route('products.index', array_merge(request()->except('stock_status'), ['stock_status' => 'LOW_STOCK'])) }}" 
-                   class="badge {{ request('stock_status') === 'LOW_STOCK' ? 'badge-warning' : 'badge-secondary' }}" style="padding: 0.4rem 0.85rem; text-decoration: none;">
-                   🟡 Low Stock (≤ 5 units)
+                   class="badge {{ request('stock_status') === 'LOW_STOCK' ? 'badge-warning' : 'badge-secondary' }}" title="Products at or below their individual minimum stock alert level" style="padding: 0.4rem 0.85rem; text-decoration: none;">
+                   🟡 Low Stock (≤ Min Alert)
                 </a>
                 <a href="{{ route('products.index', array_merge(request()->except('stock_status'), ['stock_status' => 'OUT_OF_STOCK'])) }}" 
                    class="badge {{ request('stock_status') === 'OUT_OF_STOCK' ? 'badge-danger' : 'badge-secondary' }}" style="padding: 0.4rem 0.85rem; text-decoration: none;">
@@ -136,8 +136,8 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Search SKU Code</label>
-                    <input type="text" name="search" value="{{ request('search') }}" placeholder="e.g. M10DE, 54X14-18D, P1">
+                    <label style="font-size: 0.75rem;">Search Product / SKU / Brand</label>
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="e.g. Rice, M10DE, Devon Kings">
                 </div>
 
                 <div style="display: flex; gap: 0.5rem;">
@@ -357,7 +357,10 @@
 
             <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; font-size: 0.8rem; color: #cbd5e1;">
                 <strong style="color: #93c5fd;">Required CSV Column Headers:</strong><br>
-                <code>name, code, category, brand, size, unitPrice, minStockLevel, initial_stock</code>
+                <code>name, code, category, unitPrice</code>
+                <div style="margin-top: 0.4rem; font-size: 0.75rem; color: #94a3b8;">
+                    <strong>Optional Headers:</strong> <code>brand, size, description, minStockLevel, initial_stock</code>
+                </div>
                 <div style="margin-top: 0.5rem;">
                     <a href="{{ route('products.template.csv') }}" style="color: #4ade80; text-decoration: underline; font-weight: 700;">
                         📥 Download Sample CSV Template

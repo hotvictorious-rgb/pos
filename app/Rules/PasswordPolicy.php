@@ -36,6 +36,9 @@ class PasswordPolicy
         return [
             'password.min' => 'Password must be at least 8 characters in length.',
             'password.regex' => 'Password must contain at least one uppercase letter and at least one number.',
+            'current_password.required' => 'Your current password is required.',
+            'new_password.required' => 'A new password is required.',
+            'new_password.confirmed' => 'The new password confirmation does not match.',
             'new_password.min' => 'Password must be at least 8 characters in length.',
             'new_password.regex' => 'Password must contain at least one uppercase letter and at least one number.',
             'admin_password.min' => 'Password must be at least 8 characters in length.',

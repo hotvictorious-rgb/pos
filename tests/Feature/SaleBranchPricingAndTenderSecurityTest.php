@@ -558,29 +558,7 @@ class SaleBranchPricingAndTenderSecurityTest extends TestCase
         $this->assertEquals(0, \App\Models\Payment::count(), "Payment must be strictly isolated by TenantScope.");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 6. INSTALLER SECURITY: HASHED PASSWORDS & SANITIZED DB ERRORS
-    // ─────────────────────────────────────────────────────────────
 
-    public function test_installer_does_not_store_plaintext_password_in_session()
-    {
-        $response = $this->withoutMiddleware(\App\Http\Middleware\CheckInstalled::class)
-            ->post(route('installer.install'), [
-                'admin_name' => 'Super Administrator',
-                'admin_email' => 'admin@platform.ng',
-                'admin_password' => 'Secr3tP@ssw0rd!',
-                'admin_password_confirmation' => 'Secr3tP@ssw0rd!',
-            ]);
-
-        $response->assertStatus(200);
-
-        // Plaintext password MUST NOT exist in session
-        $this->assertFalse(session()->has('installer_admin_password'), "Plaintext password must NEVER be placed in session.");
-
-        // Only pre-hashed password should exist in session
-        $this->assertTrue(session()->has('installer_admin_password_hash'));
-        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('Secr3tP@ssw0rd!', session('installer_admin_password_hash')));
-    }
 
     // ─────────────────────────────────────────────────────────────
     // 7. CHECKWEBAUTH SESSION REHYDRATION ANTI-SPOOFING

@@ -49,35 +49,13 @@ class ReportController extends Controller
 
         $categories = Product::distinct()->pluck('category')->filter()->values();
 
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         $datePreset = $request->get('date_preset', 'ALL');
         $fromDate = $request->get('from_date');
         $toDate = $request->get('to_date');
 
-        if ($fromDate && $toDate) {
-            $salesQuery->whereBetween('createdAt', [
-                Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
-                Carbon::parse($toDate)->endOfDay()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'TODAY') {
-            $salesQuery->whereDate('createdAt', Carbon::today());
-        } elseif ($datePreset === 'YESTERDAY') {
-            $salesQuery->whereDate('createdAt', Carbon::yesterday());
-        } elseif ($datePreset === 'THIS_WEEK') {
-            $salesQuery->whereBetween('createdAt', [
-                Carbon::now()->startOfWeek()->toIso8601String(),
-                Carbon::now()->endOfWeek()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'THIS_MONTH') {
-            $salesQuery->whereBetween('createdAt', [
-                Carbon::now()->startOfMonth()->toIso8601String(),
-                Carbon::now()->endOfMonth()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'THIS_YEAR') {
-            $salesQuery->whereBetween('createdAt', [
-                Carbon::now()->startOfYear()->toIso8601String(),
-                Carbon::now()->endOfYear()->toIso8601String()
-            ]);
-        }
+        $resolvedDates = $accountingService->resolveDateRange($datePreset, $fromDate, $toDate);
+        $salesQuery->whereBetween('createdAt', [$resolvedDates['startIso'], $resolvedDates['endIso']]);
 
         if ($request->filled('user_name')) {
             $salesQuery->where('userName', 'like', "%{$request->user_name}%");
@@ -153,7 +131,6 @@ class ReportController extends Controller
             $branchSales = Sale::where('warehouse_id', $authUser->warehouse_id)
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->get();
-            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
             $branchTotalDebt = 0.0;
             foreach ($branchSales as $bs) {
                 $branchTotalDebt += $accountingService->calculateInvoiceBalance($bs);
@@ -210,7 +187,8 @@ class ReportController extends Controller
             $p->branch_stocks = $stockLevelsQuery->pluck('physical_stock', 'warehouse_id')->toArray();
             $p->total_physical_stock = array_sum($p->branch_stocks);
             $p->total_valuation = $p->total_physical_stock * (float) $p->unitPrice;
-            $p->stock_status = $p->total_physical_stock <= 0 ? 'OUT_OF_STOCK' : ($p->total_physical_stock <= 5 ? 'LOW_STOCK' : 'IN_STOCK');
+            $threshold = (int) ($p->minStockLevel ?? 5);
+            $p->stock_status = $p->total_physical_stock <= 0 ? 'OUT_OF_STOCK' : ($p->total_physical_stock <= $threshold ? 'LOW_STOCK' : 'IN_STOCK');
             return $p;
         });
         $totalStockValuation = $products->sum('total_valuation');
@@ -238,7 +216,6 @@ class ReportController extends Controller
         }
 
         // 5. Debt Aging Analysis (Branch-Isolated)
-        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         if ($isBranchScoped) {
             $branchSales = Sale::where('warehouse_id', $authUser->warehouse_id)
                 ->whereNotNull('customerId')
@@ -417,7 +394,8 @@ class ReportController extends Controller
                         $stockQuery->where('warehouse_id', $branchWarehouseId);
                     }
                     $stock = $stockQuery->sum('physical_stock');
-                    $status = $stock <= 0 ? 'OUT_OF_STOCK' : ($stock <= 5 ? 'LOW_STOCK' : 'IN_STOCK');
+                    $threshold = (int) ($p->minStockLevel ?? 5);
+                    $status = $stock <= 0 ? 'OUT_OF_STOCK' : ($stock <= $threshold ? 'LOW_STOCK' : 'IN_STOCK');
                     fputcsv($handle, [$p->id, $p->code, $p->name, $p->category, $p->brand, $p->size, $p->unitPrice, $stock, $status, $stock * (float)$p->unitPrice]);
                 }
             } elseif ($type === 'transfers') {
