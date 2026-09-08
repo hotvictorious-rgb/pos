@@ -442,6 +442,39 @@ class ProductImportExportAndFilterHardeningTest extends TestCase
         // Verify total imported count
         $this->assertEquals(529, Product::where('tenant_id', $this->tenant->id)->count());
 
+        // Exhaustive verification: ALL 529 products must have unitPrice = 20000.0 and currentStock = 0
+        $this->assertEquals(
+            529,
+            Product::where('tenant_id', $this->tenant->id)->where('unitPrice', 20000)->count(),
+            'Not all imported products have unitPrice = 20000.'
+        );
+        $this->assertEquals(
+            0,
+            Product::where('tenant_id', $this->tenant->id)->where('unitPrice', '!=', 20000)->count(),
+            'Found imported products with unitPrice != 20000.'
+        );
+        $this->assertEquals(
+            529,
+            Product::where('tenant_id', $this->tenant->id)->where('currentStock', 0)->count(),
+            'Not all imported products have currentStock = 0.'
+        );
+
+        // Exhaustive verification: ALL 529 StockLevels at warehouseA must have physical_stock = 0 and allocated_stock = 0
+        $this->assertEquals(
+            529,
+            StockLevel::where('tenant_id', $this->tenant->id)->where('warehouse_id', $this->warehouseA->id)->count(),
+            'Expected exactly 529 branch stock level records created.'
+        );
+        $this->assertEquals(
+            529,
+            StockLevel::where('tenant_id', $this->tenant->id)
+                ->where('warehouse_id', $this->warehouseA->id)
+                ->where('physical_stock', 0)
+                ->where('allocated_stock', 0)
+                ->count(),
+            'Not all branch stock levels have physical_stock = 0 and allocated_stock = 0.'
+        );
+
         // Sample check first product M15DE
         $deluxe = Product::where('tenant_id', $this->tenant->id)->where('code', 'M15DE')->first();
         $this->assertNotNull($deluxe);
