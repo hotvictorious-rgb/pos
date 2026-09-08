@@ -483,10 +483,10 @@
                     <input type="text" id="liveSearchSales" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('salesTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'sales') }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
                         📥 Export CSV
                     </a>
-                    <a href="{{ route('reports.export.json', 'sales') }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
                         📊 Export JSON
                     </a>
                 </div>
@@ -602,7 +602,7 @@
                     <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('stockInTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'stock') }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'stock'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
                         📥 Export CSV
                     </a>
                 </div>
@@ -683,7 +683,7 @@
                     <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('stockOutTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'stock') }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'stock'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
                         📥 Export CSV
                     </a>
                 </div>
@@ -780,7 +780,7 @@
                     <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('inTransitTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'transfers') }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
                         📥 Export CSV
                     </a>
                 </div>
@@ -870,7 +870,7 @@
                     <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('incomingTransfersTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'transfers') }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
                         📥 Export CSV
                     </a>
                 </div>
@@ -1138,7 +1138,7 @@
                     <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('debtsTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', 'debtors') }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
                         📥 Export CSV
                     </a>
                 </div>

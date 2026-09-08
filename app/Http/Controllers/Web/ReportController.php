@@ -33,15 +33,14 @@ class ReportController extends Controller
             abort(403, '🔒 Access Restricted: You are not assigned to any branch location. Please contact an administrator.');
         }
 
-        // 1. Build Filter Query for Sales
-        $salesQuery = Sale::with('items');
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
         $shopStaffIds = collect();
 
         if ($isBranchScoped) {
             $warehouses = Warehouse::where('id', $authUser->warehouse_id)->get();
             $staffList = User::where('warehouse_id', $authUser->warehouse_id)->get();
-            $salesQuery->where('warehouse_id', $authUser->warehouse_id);
+            $shopStaffIds = $staffList->pluck('id');
         } else {
             $warehouses = Warehouse::where('is_active', true)->get();
             $staffList = User::all();
@@ -49,71 +48,31 @@ class ReportController extends Controller
 
         $categories = Product::distinct()->pluck('category')->filter()->values();
 
-        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         $datePreset = $request->get('date_preset', 'ALL');
         $fromDate = $request->get('from_date');
         $toDate = $request->get('to_date');
+        $filters = array_merge(['date_preset' => $datePreset], $request->all());
 
-        $resolvedDates = $accountingService->resolveDateRange($datePreset, $fromDate, $toDate);
-        $salesQuery->whereBetween('createdAt', [$resolvedDates['startIso'], $resolvedDates['endIso']]);
+        // 1. Unified Authoritative Sales Query via AccountingReportService
+        $salesQuery = $accountingService->buildSalesQuery($filters);
+        $sales = (clone $salesQuery)->get();
+        $saleIds = $sales->pluck('id');
 
-        if ($request->filled('user_name')) {
-            $salesQuery->where('userName', 'like', "%{$request->user_name}%");
+        $salesBalances = $accountingService->calculateInvoiceBalancesForSales($sales);
+        $returnsMap = \App\Models\SalesReturn::whereIn('saleId', $saleIds)
+            ->groupBy('saleId')
+            ->selectRaw('saleId, SUM(refundAmount) as total_refund')
+            ->pluck('total_refund', 'saleId');
+
+        foreach ($sales as $s) {
+            $debt = $salesBalances[$s->id] ?? 0.0;
+            $retCredit = (float) ($returnsMap[$s->id] ?? 0.0);
+            $s->debt_balance = $debt;
+            $s->event_paid_amount = max(0.0, round((float) $s->totalAmount - $retCredit - $debt, 2));
         }
-
-        // Authoritative event-based financial calculation subqueries:
-        $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method != 'REFUND_CASH'), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method = 'REFUND_CASH'), 0)";
-        $netPaidSql = "({$eventNetPaidSql})";
-        $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
-        $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$netPaidSql}))";
-
-        if ($request->filled('payment_status')) {
-            $pStatus = strtoupper($request->payment_status);
-            if ($pStatus === 'PAID') {
-                $salesQuery->whereRaw("{$netBalanceSql} <= 0.01");
-            } elseif (in_array($pStatus, ['PART_PAID', 'PARTIAL'])) {
-                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01");
-            } elseif (in_array($pStatus, ['NOT_PAID', 'UNPAID'])) {
-                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) <= 0.01");
-            } elseif ($pStatus === 'DEBT') {
-                $salesQuery->whereRaw("{$netBalanceSql} > 0.01");
-            }
-        }
-
-        if ($request->filled('delivery_status')) {
-            $dStatus = strtoupper($request->delivery_status);
-            if (in_array($dStatus, ['DELIVERED', 'SUPPLIED'])) {
-                $salesQuery->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
-            } elseif (in_array($dStatus, ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING'])) {
-                $salesQuery->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
-            } elseif ($dStatus === 'PAID_SUPPLIED') {
-                $salesQuery->whereRaw("{$netBalanceSql} <= 0.01")->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
-            } elseif ($dStatus === 'PAID_NOT_SUPPLIED') {
-                $salesQuery->whereRaw("{$netBalanceSql} <= 0.01")->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
-            } elseif ($dStatus === 'PART_PAID_SUPPLIED') {
-                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01")->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
-            } elseif ($dStatus === 'PART_PAID_NOT_SUPPLIED') {
-                $salesQuery->whereRaw("{$netBalanceSql} > 0.01 AND ({$netPaidSql}) > 0.01")->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
-            } else {
-                $salesQuery->where('deliveryStatus', $dStatus);
-            }
-        }
-
-        if ($request->filled('search')) {
-            $s = trim($request->search);
-            $salesQuery->where(function ($q) use ($s) {
-                $q->where('id', 'like', "%{$s}%")
-                  ->orWhere('customerName', 'like', "%{$s}%")
-                  ->orWhere('customerPhone', 'like', "%{$s}%");
-            });
-        }
-
-        // Executed Sales Collection
-        $sales = (clone $salesQuery)->orderBy('createdAt', 'desc')->get();
 
         // 2. High-Level Aggregates (Event-Authoritative)
         $totalRevenue = (float) $sales->sum('totalAmount');
-        $saleIds = $sales->pluck('id');
         $inflows = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
             ->where('amount', '>', 0)
             ->where('method', '!=', 'REFUND_CASH')
@@ -127,20 +86,79 @@ class ReportController extends Controller
         $totalDebtCreated = max(0.0, round($netPayable - $totalCollected, 2));
         $totalInvoices = $sales->count();
 
+        // 3. Debt Aging Analysis (Batch Calculated, Zero N+1 Queries)
         if ($isBranchScoped) {
             $branchSales = Sale::where('warehouse_id', $authUser->warehouse_id)
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->orderBy('createdAt', 'asc')
                 ->get();
+
+            $saleBalances = $accountingService->calculateInvoiceBalancesForSales($branchSales);
+
             $branchTotalDebt = 0.0;
+            $customerBranchDebts = [];
+            $oldestDebtDate = [];
+
             foreach ($branchSales as $bs) {
-                $branchTotalDebt += $accountingService->calculateInvoiceBalance($bs);
+                $bal = $saleBalances[$bs->id] ?? 0.0;
+                if ($bal > 0.01) {
+                    $branchTotalDebt += $bal;
+                    if (!empty($bs->customerId)) {
+                        $cId = $bs->customerId;
+                        $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                        if (!isset($oldestDebtDate[$cId])) {
+                            $oldestDebtDate[$cId] = $bs->createdAt ?: $bs->created_at;
+                        }
+                    }
+                }
             }
+
             $totalDebtOwedAllTime = round($branchTotalDebt, 2);
+
+            $debtors = Customer::whereIn('id', array_keys($customerBranchDebts))
+                ->get()
+                ->map(function ($c) use ($customerBranchDebts, $oldestDebtDate) {
+                    $debtDate = $oldestDebtDate[$c->id] ?? ($c->created_at ?: $c->updated_at);
+                    $daysOld = $debtDate ? Carbon::parse($debtDate)->diffInDays(now()) : 0;
+                    $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
+                    $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
+                    $c->branch_debt = $bDebt;
+                    $c->total_debt = $bDebt; // Never expose tenant-wide total_debt to branch personnel
+                    return $c;
+                })
+                ->sortByDesc('branch_debt')
+                ->values();
         } else {
             $totalDebtOwedAllTime = (float) Customer::sum('total_debt');
+
+            $debtorCustomerIds = Customer::where('total_debt', '>', 0)->pluck('id');
+            $oldestSales = Sale::whereIn('customerId', $debtorCustomerIds)
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->orderBy('createdAt', 'asc')
+                ->get();
+            $saleBalances = $accountingService->calculateInvoiceBalancesForSales($oldestSales);
+            $oldestDebtDate = [];
+            foreach ($oldestSales as $sale) {
+                if (($saleBalances[$sale->id] ?? 0.0) > 0.01) {
+                    if (!isset($oldestDebtDate[$sale->customerId])) {
+                        $oldestDebtDate[$sale->customerId] = $sale->createdAt ?: $sale->created_at;
+                    }
+                }
+            }
+
+            $debtors = Customer::where('total_debt', '>', 0)
+                ->orderBy('total_debt', 'desc')
+                ->get()
+                ->map(function ($c) use ($oldestDebtDate) {
+                    $debtDate = $oldestDebtDate[$c->id] ?? ($c->created_at ?: $c->updated_at);
+                    $daysOld = $debtDate ? Carbon::parse($debtDate)->diffInDays(now()) : 0;
+                    $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
+                    $c->branch_debt = $c->total_debt;
+                    return $c;
+                });
         }
 
-        // Top Selling Products (by revenue) - Strictly scoped to filtered sales within tenant & branch
+        // 4. Top Selling Products (by revenue) - Strictly scoped to filtered sales within tenant & branch
         $topProductsQuery = SaleItem::selectRaw('productName, code, sum(quantity) as total_qty, sum(totalPrice) as total_revenue');
         if ($sales->isNotEmpty()) {
             $topProductsQuery->whereIn('saleId', $sales->pluck('id'));
@@ -153,7 +171,7 @@ class ReportController extends Controller
             ->take(5)
             ->get();
 
-        // Top Staff by Sales Volume (Event-Authoritative)
+        // 5. Top Staff by Sales Volume (Event-Authoritative)
         $topStaff = $sales->groupBy('userName')->map(function ($group, $name) {
             $groupSaleIds = $group->pluck('id');
             $inflows = (float) \App\Models\Payment::whereIn('saleId', $groupSaleIds)
@@ -173,18 +191,24 @@ class ReportController extends Controller
             ];
         })->sortByDesc('total')->take(5);
 
-        // 3. Physical Stock & Valuation Matrix
+        // 6. Physical Stock & Valuation Matrix
         $prodQuery = Product::where('archived', false);
         if ($request->filled('category')) {
             $prodQuery->where('category', $request->category);
         }
 
-        $products = $prodQuery->get()->map(function ($p) use ($isBranchScoped, $authUser) {
-            $stockLevelsQuery = StockLevel::where('product_id', $p->id);
-            if ($isBranchScoped) {
-                $stockLevelsQuery->where('warehouse_id', $authUser->warehouse_id);
-            }
-            $p->branch_stocks = $stockLevelsQuery->pluck('physical_stock', 'warehouse_id')->toArray();
+        $productsList = $prodQuery->get();
+        $productIds = $productsList->pluck('id');
+
+        $stockLevelsQuery = StockLevel::whereIn('product_id', $productIds);
+        if ($isBranchScoped) {
+            $stockLevelsQuery->where('warehouse_id', $authUser->warehouse_id);
+        }
+        $stockLevelsGrouped = $stockLevelsQuery->get()->groupBy('product_id');
+
+        $products = $productsList->map(function ($p) use ($stockLevelsGrouped) {
+            $levels = $stockLevelsGrouped->get($p->id, collect());
+            $p->branch_stocks = $levels->pluck('physical_stock', 'warehouse_id')->toArray();
             $p->total_physical_stock = array_sum($p->branch_stocks);
             $p->total_valuation = $p->total_physical_stock * (float) $p->unitPrice;
             $threshold = (int) ($p->minStockLevel ?? 5);
@@ -194,18 +218,9 @@ class ReportController extends Controller
         $totalStockValuation = $products->sum('total_valuation');
         $totalPhysicalUnits = $products->sum('total_physical_stock');
 
-        // 4. Transfers & Logistics
-        $transfersQuery = Transfer::with(['source', 'destination', 'items']);
-        if ($isBranchScoped) {
-            $transfersQuery->where(function ($q) use ($authUser) {
-                $q->where('source_warehouse_id', $authUser->warehouse_id)
-                  ->orWhere('destination_warehouse_id', $authUser->warehouse_id);
-            });
-        }
-        if ($request->filled('transfer_status')) {
-            $transfersQuery->where('status', $request->transfer_status);
-        }
-        $transfers = $transfersQuery->orderBy('created_at', 'desc')->take(50)->get();
+        // 7. Transfers & Logistics via AccountingReportService
+        $transfersQuery = $accountingService->buildTransfersQuery($filters);
+        $transfers = $transfersQuery->take(50)->get();
         $totalDiscrepancyUnits = 0;
         foreach ($transfers as $trf) {
             if ($trf->status === 'DISCREPANCY') {
@@ -215,47 +230,7 @@ class ReportController extends Controller
             }
         }
 
-        // 5. Debt Aging Analysis (Branch-Isolated)
-        if ($isBranchScoped) {
-            $branchSales = Sale::where('warehouse_id', $authUser->warehouse_id)
-                ->whereNotNull('customerId')
-                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->get();
-
-            $customerBranchDebts = [];
-            foreach ($branchSales as $bs) {
-                $cId = $bs->customerId;
-                $bal = $accountingService->calculateInvoiceBalance($bs);
-                if ($bal > 0) {
-                    $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
-                }
-            }
-
-            $debtors = Customer::whereIn('id', array_keys($customerBranchDebts))
-                ->get()
-                ->map(function ($c) use ($customerBranchDebts) {
-                    $daysOld = $c->updated_at ? Carbon::parse($c->updated_at)->diffInDays(now()) : 0;
-                    $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
-                    $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
-                    $c->branch_debt = $bDebt;
-                    $c->total_debt = $bDebt; // Never expose tenant-wide total_debt to branch personnel
-                    return $c;
-                })
-                ->sortByDesc('branch_debt')
-                ->values();
-        } else {
-            $debtors = Customer::where('total_debt', '>', 0)
-                ->orderBy('total_debt', 'desc')
-                ->get()
-                ->map(function ($c) {
-                    $daysOld = $c->updated_at ? Carbon::parse($c->updated_at)->diffInDays(now()) : 0;
-                    $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
-                    $c->branch_debt = $c->total_debt;
-                    return $c;
-                });
-        }
-
-        // 6. Damaged Goods Write-offs
+        // 8. Damaged Goods Write-offs
         $adjustmentsQuery = StockAdjustment::with('warehouse');
         if ($isBranchScoped) {
             $adjustmentsQuery->where('warehouse_id', $authUser->warehouse_id);
@@ -263,59 +238,17 @@ class ReportController extends Controller
         $adjustments = $adjustmentsQuery->orderBy('created_at', 'desc')->take(50)->get();
         $totalDamagedUnits = $adjustments->sum('quantity');
 
-        // 7. Immutable Activity Logs
+        // 9. Immutable Activity Logs
         $activitiesQuery = Activity::query();
         if ($isBranchScoped && $shopStaffIds->isNotEmpty()) {
             $activitiesQuery->whereIn('userId', $shopStaffIds);
         }
         $activities = $activitiesQuery->orderBy('timestamp', 'desc')->take(50)->get();
 
-        // 8. Returns & Refunds Query
-        $returnsQuery = SalesReturn::query();
-        if ($isBranchScoped && $sales->isNotEmpty()) {
-            $returnsQuery->whereIn('saleId', $sales->pluck('id'));
-        }
-        if ($fromDate && $toDate) {
-            $returnsQuery->whereBetween('createdAt', [
-                Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
-                Carbon::parse($toDate)->endOfDay()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'TODAY') {
-            $returnsQuery->whereDate('createdAt', Carbon::today());
-        } elseif ($datePreset === 'YESTERDAY') {
-            $returnsQuery->whereDate('createdAt', Carbon::yesterday());
-        } elseif ($datePreset === 'THIS_WEEK') {
-            $returnsQuery->whereBetween('createdAt', [
-                Carbon::now()->startOfWeek()->toIso8601String(),
-                Carbon::now()->endOfWeek()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'THIS_MONTH') {
-            $returnsQuery->whereBetween('createdAt', [
-                Carbon::now()->startOfMonth()->toIso8601String(),
-                Carbon::now()->endOfMonth()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'THIS_YEAR') {
-            $returnsQuery->whereBetween('createdAt', [
-                Carbon::now()->startOfYear()->toIso8601String(),
-                Carbon::now()->endOfYear()->toIso8601String()
-            ]);
-        }
-
-        if ($request->filled('user_name')) {
-            $returnsQuery->where('userName', 'like', "%{$request->user_name}%");
-        }
-
-        if ($request->filled('search')) {
-            $sText = trim($request->search);
-            $returnsQuery->where(function ($q) use ($sText) {
-                $q->where('saleId', 'like', "%{$sText}%")
-                  ->orWhere('customerName', 'like', "%{$sText}%")
-                  ->orWhere('productName', 'like', "%{$sText}%");
-            });
-        }
-
-        $returns = $returnsQuery->orderBy('createdAt', 'desc')->get();
-        $totalRefunded = $returns->sum('refundAmount');
+        // 10. Returns & Refunds Query via AccountingReportService
+        $returnsQuery = $accountingService->buildReturnsQuery($filters);
+        $returns = $returnsQuery->get();
+        $totalRefunded = (float) $returns->sum('refundAmount');
 
         return view('reports.index', compact(
             'activeTab',
@@ -362,7 +295,7 @@ class ReportController extends Controller
         $fileName = "hysam_{$type}_report_" . date('Y_m_d_His') . ".csv";
 
         $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-        $filters = $request->all();
+        $filters = array_merge(['date_preset' => $request->get('date_preset', 'ALL')], $request->all());
 
         return new StreamedResponse(function () use ($type, $isBranchScoped, $branchWarehouseId, $accountingService, $filters) {
             $handle = fopen('php://output', 'w');
@@ -370,30 +303,41 @@ class ReportController extends Controller
             if ($type === 'sales') {
                 fputcsv($handle, ['SALE ID', 'DATE', 'CUSTOMER', 'BRANCH', 'TOTAL AMOUNT', 'PAID AMOUNT', 'DEBT BALANCE', 'DELIVERY STATUS', 'CASHIER']);
                 $salesQuery = $accountingService->buildSalesQuery($filters);
-                foreach ($salesQuery->cursor() as $s) {
-                    $debt = $accountingService->calculateInvoiceBalance($s);
-                    $returnCredits = (float) \App\Models\SalesReturn::where('saleId', $s->id)->sum('refundAmount');
-                    $paid = max(0.0, round((float) $s->totalAmount - $returnCredits - $debt, 2));
-                    fputcsv($handle, [
-                        $s->id,
-                        $s->createdAt,
-                        $s->customerName,
-                        $s->warehouse->name ?? 'Main Branch',
-                        $s->totalAmount,
-                        $paid,
-                        $debt,
-                        $s->deliveryStatus,
-                        $s->userName
-                    ]);
-                }
+                $salesQuery->chunk(250, function ($salesChunk) use ($handle, $accountingService) {
+                    $balances = $accountingService->calculateInvoiceBalancesForSales($salesChunk);
+                    $chunkSaleIds = $salesChunk->pluck('id');
+                    $returnsMap = \App\Models\SalesReturn::whereIn('saleId', $chunkSaleIds)
+                        ->groupBy('saleId')
+                        ->selectRaw('saleId, SUM(refundAmount) as total_refund')
+                        ->pluck('total_refund', 'saleId');
+
+                    foreach ($salesChunk as $s) {
+                        $debt = $balances[$s->id] ?? 0.0;
+                        $returnCredits = (float) ($returnsMap[$s->id] ?? 0.0);
+                        $paid = max(0.0, round((float) $s->totalAmount - $returnCredits - $debt, 2));
+                        fputcsv($handle, [
+                            $s->id,
+                            $s->createdAt,
+                            $s->customerName,
+                            $s->warehouse->name ?? 'Main Branch',
+                            $s->totalAmount,
+                            $paid,
+                            $debt,
+                            $s->deliveryStatus,
+                            $s->userName
+                        ]);
+                    }
+                });
             } elseif ($type === 'inventory') {
                 fputcsv($handle, ['Product ID', 'SKU', 'Product Name', 'Category', 'Brand', 'Size', 'Selling Price (NGN)', 'Total Physical Shelf Units', 'Stock Status', 'Total Asset Valuation (NGN)']);
-                foreach (Product::where('archived', false)->cursor() as $p) {
-                    $stockQuery = StockLevel::where('product_id', $p->id);
+                $productsQuery = Product::with(['stockLevels' => function ($sq) use ($isBranchScoped, $branchWarehouseId) {
                     if ($isBranchScoped) {
-                        $stockQuery->where('warehouse_id', $branchWarehouseId);
+                        $sq->where('warehouse_id', $branchWarehouseId);
                     }
-                    $stock = $stockQuery->sum('physical_stock');
+                }])->where('archived', false);
+
+                foreach ($productsQuery->lazy(100) as $p) {
+                    $stock = (float) $p->stockLevels->sum('physical_stock');
                     $threshold = (int) ($p->minStockLevel ?? 5);
                     $status = $stock <= 0 ? 'OUT_OF_STOCK' : ($stock <= $threshold ? 'LOW_STOCK' : 'IN_STOCK');
                     fputcsv($handle, [$p->id, $p->code, $p->name, $p->category, $p->brand, $p->size, $p->unitPrice, $stock, $status, $stock * (float)$p->unitPrice]);
@@ -421,12 +365,12 @@ class ReportController extends Controller
                         ->whereNotNull('customerId')
                         ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                         ->get();
+                    $saleBalances = $accountingService->calculateInvoiceBalancesForSales($branchSales);
                     $customerBranchDebts = [];
                     foreach ($branchSales as $bs) {
-                        $cId = $bs->customerId;
-                        $bal = $accountingService->calculateInvoiceBalance($bs);
-                        if ($bal > 0) {
-                            $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                        $bal = $saleBalances[$bs->id] ?? 0.0;
+                        if ($bal > 0.01) {
+                            $customerBranchDebts[$bs->customerId] = ($customerBranchDebts[$bs->customerId] ?? 0.0) + $bal;
                         }
                     }
                     $debtors = Customer::whereIn('id', array_keys($customerBranchDebts))->get();
@@ -440,7 +384,7 @@ class ReportController extends Controller
                         fputcsv($handle, [$c->name, $c->phone, $c->address, $c->total_debt, $c->updated_at]);
                     }
                 }
-            } elseif ($type === 'damages') {
+            } elseif (in_array($type, ['damages', 'stock'])) {
                 fputcsv($handle, ['Date & Time', 'Shop Location', 'SKU', 'Product Name', 'Incident Category', 'Quantity Deducted', 'Reason / Notes', 'Staff Responsible']);
                 $damagesQuery = StockAdjustment::with('warehouse')->orderBy('created_at', 'desc');
                 if ($isBranchScoped) {
@@ -498,7 +442,7 @@ class ReportController extends Controller
         $fileName = "hysam_{$type}_business_data_" . date('Y_m_d_His') . ".json";
 
         $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-        $filters = $request->all();
+        $filters = array_merge(['date_preset' => $request->get('date_preset', 'ALL')], $request->all());
 
         $salesQuery = $accountingService->buildSalesQuery($filters);
         $transfersQuery = $accountingService->buildTransfersQuery($filters);
@@ -510,12 +454,12 @@ class ReportController extends Controller
                 ->whereNotNull('customerId')
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->get();
+            $saleBalances = $accountingService->calculateInvoiceBalancesForSales($branchSales);
             $customerBranchDebts = [];
             foreach ($branchSales as $bs) {
-                $cId = $bs->customerId;
-                $bal = $accountingService->calculateInvoiceBalance($bs);
-                if ($bal > 0) {
-                    $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                $bal = $saleBalances[$bs->id] ?? 0.0;
+                if ($bal > 0.01) {
+                    $customerBranchDebts[$bs->customerId] = ($customerBranchDebts[$bs->customerId] ?? 0.0) + $bal;
                 }
             }
             $debtorsData = Customer::whereIn('id', array_keys($customerBranchDebts))
@@ -541,16 +485,26 @@ class ReportController extends Controller
             'sales' => [
                 'meta' => ['report' => 'Sales & Revenue Analysis', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Sales & Revenue Analysis', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => $salesQuery->get()->map(function ($s) use ($accountingService) {
-                    $arr = $s->toArray();
-                    $debt = $accountingService->calculateInvoiceBalance($s);
-                    $returnCredits = (float) \App\Models\SalesReturn::where('saleId', $s->id)->sum('refundAmount');
-                    $paid = max(0.0, round((float) $s->totalAmount - $returnCredits - $debt, 2));
-                    $arr['paidAmount'] = $paid;
-                    $arr['event_paid_amount'] = $paid;
-                    $arr['invoice_balance'] = $debt;
-                    return $arr;
-                })
+                'data' => (function () use ($salesQuery, $accountingService) {
+                    $salesList = $salesQuery->get();
+                    $balances = $accountingService->calculateInvoiceBalancesForSales($salesList);
+                    $saleIds = $salesList->pluck('id');
+                    $returnsMap = \App\Models\SalesReturn::whereIn('saleId', $saleIds)
+                        ->groupBy('saleId')
+                        ->selectRaw('saleId, SUM(refundAmount) as total_refund')
+                        ->pluck('total_refund', 'saleId');
+
+                    return $salesList->map(function ($s) use ($balances, $returnsMap) {
+                        $arr = $s->toArray();
+                        $debt = $balances[$s->id] ?? 0.0;
+                        $returnCredits = (float) ($returnsMap[$s->id] ?? 0.0);
+                        $paid = max(0.0, round((float) $s->totalAmount - $returnCredits - $debt, 2));
+                        $arr['paidAmount'] = $paid;
+                        $arr['event_paid_amount'] = $paid;
+                        $arr['invoice_balance'] = $debt;
+                        return $arr;
+                    });
+                })()
             ],
             'inventory' => [
                 'meta' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
@@ -572,7 +526,7 @@ class ReportController extends Controller
                 'metadata' => ['report' => 'Debtors Ledger & Credit Exposure', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'data' => $debtorsData
             ],
-            'damages' => [
+            'damages', 'stock' => [
                 'meta' => ['report' => 'Damaged Goods & Loss Audit Trail', 'generated_at' => now()->toIso8601String()],
                 'metadata' => ['report' => 'Damaged Goods & Loss Audit Trail', 'generated_at' => now()->toIso8601String()],
                 'data' => $damagesQuery->get()
