@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
 
+use Illuminate\Support\Facades\Auth;
+
 class TenantScope implements Scope
 {
     /**
@@ -18,15 +20,15 @@ class TenantScope implements Scope
             return;
         }
 
-        // 2. Authoritative identity chain: authenticated user tenant takes precedence over session
-        $authUser = auth()->check() ? auth()->user() : null;
+        // Authoritative identity chain: check if auth already has a loaded user instance without triggering re-entrant database retrieval
+        $authUser = Auth::hasUser() ? Auth::user() : null;
         $tenantId = $authUser?->tenant_id ?? (session()->has('tenant_id') && !empty(session('tenant_id')) ? session('tenant_id') : null);
 
         if (!empty($tenantId)) {
             $tableName = $model->getTable();
             $builder->where("{$tableName}.tenant_id", $tenantId);
         } else {
-            // 3. FAIL-CLOSED GUARD: When SaaS is enabled and tenant context is missing or null, return 0 rows
+            // 2. FAIL-CLOSED GUARD: When SaaS is enabled and tenant context is missing or null, return 0 rows
             $builder->whereRaw('1 = 0');
         }
     }
