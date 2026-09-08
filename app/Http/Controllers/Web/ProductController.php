@@ -355,9 +355,9 @@ class ProductController extends Controller
         while (($row = fgetcsv($handle)) !== false) {
             if (empty(array_filter($row, fn($v) => trim((string)$v) !== ''))) continue; // Skip empty rows
             $rowCount++;
-            if ($rowCount > 500) {
+            if ($rowCount > 1000) {
                 fclose($handle);
-                return redirect()->route('products.index')->with('error', 'Uploaded CSV exceeds maximum limit of 500 rows per batch import.');
+                return redirect()->route('products.index')->with('error', 'Uploaded CSV exceeds maximum limit of 1000 rows per batch import.');
             }
             $rows[] = $row;
         }

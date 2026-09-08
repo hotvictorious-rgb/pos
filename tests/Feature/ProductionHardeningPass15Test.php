@@ -282,7 +282,7 @@ class ProductionHardeningPass15Test extends TestCase
 
     /**
      * PASS 15 - PRODUCT CSV IMPORT RESOURCE LIMITS:
-     * Rejects CSVs with > 20 columns or > 500 rows to prevent DoS resource exhaustion.
+     * Rejects CSVs with > 20 columns or > 1000 rows to prevent DoS resource exhaustion.
      */
     public function test_product_csv_import_enforces_column_and_row_limits(): void
     {
@@ -301,21 +301,21 @@ class ProductionHardeningPass15Test extends TestCase
         $responseCols->assertRedirect(route('products.index'));
         $responseCols->assertSessionHas('error', 'Uploaded CSV has too many columns. Maximum allowed is 20 columns.');
 
-        // 2. CSV with 501 rows (> 500 limit)
+        // 2. CSV with 1001 rows (> 1000 limit)
         $csvContent = "Name,Code,Category,UnitPrice,InitialStock\n";
-        for ($i = 1; $i <= 501; $i++) {
+        for ($i = 1; $i <= 1001; $i++) {
             $csvContent .= "Product $i,CODE-$i,Category,1000,5\n";
         }
-        $csv501 = UploadedFile::fake()->createWithContent('long.csv', $csvContent);
+        $csv1001 = UploadedFile::fake()->createWithContent('long.csv', $csvContent);
 
         $responseRows = $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id])
             ->post(route('products.import.csv'), [
-                'csv_file' => $csv501,
+                'csv_file' => $csv1001,
                 'warehouse_id' => $this->branch->id,
             ]);
 
         $responseRows->assertRedirect(route('products.index'));
-        $responseRows->assertSessionHas('error', 'Uploaded CSV exceeds maximum limit of 500 rows per batch import.');
+        $responseRows->assertSessionHas('error', 'Uploaded CSV exceeds maximum limit of 1000 rows per batch import.');
     }
 }

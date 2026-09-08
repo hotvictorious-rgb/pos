@@ -410,4 +410,60 @@ class ProductImportExportAndFilterHardeningTest extends TestCase
         $this->assertStringContainsString('LVG-200', $csvContent);
         $this->assertStringContainsString('3,IN_STOCK,1500000', $csvContent);
     }
+
+    /**
+     * TEST 10: Real catalog import test for restructured hysam_products_import_nwaniba.csv.
+     * Verifies that all 529 items import with unitPrice = 20000 and initial_stock = 0.
+     */
+    public function test_actual_nwaniba_products_csv_imports_successfully_with_authoritative_prices_and_zero_initial_stock(): void
+    {
+        $csvPath = base_path('hysam_products_import_nwaniba.csv');
+        $this->assertFileExists($csvPath);
+
+        $uploadedFile = new \Illuminate\Http\UploadedFile(
+            $csvPath,
+            'hysam_products_import_nwaniba.csv',
+            'text/csv',
+            null,
+            true
+        );
+
+        $response = $this->actingAs($this->tenantAdmin)
+            ->withSession(['tenant_id' => $this->tenant->id])
+            ->post(route('products.import.csv'), [
+                'csv_file' => $uploadedFile,
+                'warehouse_id' => $this->warehouseA->id,
+            ]);
+
+        $response->assertRedirect(route('products.index'));
+        $response->assertSessionHas('success');
+        $response->assertSessionHasNoErrors();
+
+        // Verify total imported count
+        $this->assertEquals(529, Product::where('tenant_id', $this->tenant->id)->count());
+
+        // Sample check first product M15DE
+        $deluxe = Product::where('tenant_id', $this->tenant->id)->where('code', 'M15DE')->first();
+        $this->assertNotNull($deluxe);
+        $this->assertEquals('Deluxe Mattress (75x30x3)', $deluxe->name);
+        $this->assertEquals('Standard Foam Mattresses', $deluxe->category);
+        $this->assertEquals('Deluxe', $deluxe->brand);
+        $this->assertEquals('75x30x3', $deluxe->size);
+        $this->assertEquals(20000.0, (float)$deluxe->unitPrice);
+        $this->assertEquals(0, $deluxe->currentStock);
+
+        $deluxeStock = StockLevel::where('tenant_id', $this->tenant->id)
+            ->where('product_id', $deluxe->id)
+            ->where('warehouse_id', $this->warehouseA->id)
+            ->first();
+        $this->assertNotNull($deluxeStock);
+        $this->assertEquals(0, $deluxeStock->physical_stock);
+        $this->assertEquals(0, $deluxeStock->allocated_stock);
+
+        // Sample check pillow PVL
+        $vitalite = Product::where('tenant_id', $this->tenant->id)->where('code', 'PVL')->first();
+        $this->assertNotNull($vitalite);
+        $this->assertEquals(20000.0, (float)$vitalite->unitPrice);
+        $this->assertEquals(0, $vitalite->currentStock);
+    }
 }

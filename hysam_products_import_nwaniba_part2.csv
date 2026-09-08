@@ -1,0 +1,230 @@
+name,code,category,brand,size,unitPrice,minStockLevel,initial_stock
+"Haven Mattress (75x84x8)",M7VH,"Standard Foam Mattresses",Haven,75x84x8,20000,5,0
+"Haven Mattress (75x84x10)",M72VH,"Standard Foam Mattresses",Haven,75x84x10,20000,5,0
+"Haven Mattress (75x84x12)",M73VH,"Standard Foam Mattresses",Haven,75x84x12,20000,5,0
+"Haven Mattress (75x84x14)",M74VH,"Standard Foam Mattresses",Haven,75x84x14,20000,5,0
+"Haven Mattress (75x84x16)",M76VH,"Standard Foam Mattresses",Haven,75x84x16,20000,5,0
+"Haven Mattress (75x84x18)",M78VH,"Standard Foam Mattresses",Haven,75x84x18,20000,5,0
+"Haven Mattress (75x84x20)",M80VH,"Standard Foam Mattresses",Haven,75x84x20,20000,5,0
+"Haven Mattress (84x84x8)",M8VH,"Standard Foam Mattresses",Haven,84x84x8,20000,5,0
+"Haven Mattress (84x84x10)",M82VH,"Standard Foam Mattresses",Haven,84x84x10,20000,5,0
+"Haven Mattress (84x84x12)",M83VH,"Standard Foam Mattresses",Haven,84x84x12,20000,5,0
+"Haven Mattress (84x84x14)",M94VH,"Standard Foam Mattresses",Haven,84x84x14,20000,5,0
+"Haven Mattress (84x84x16)",M96VH,"Standard Foam Mattresses",Haven,84x84x16,20000,5,0
+"Haven Mattress (84x84x18)",M98VH,"Standard Foam Mattresses",Haven,84x84x18,20000,5,0
+"Haven Mattress (84x84x20)",M90VH,"Standard Foam Mattresses",Haven,84x84x20,20000,5,0
+"Haven Mattress (79x42x8)",M84VH,"Standard Foam Mattresses",Haven,79x42x8,20000,5,0
+"Haven Mattress (79x42x10)",M85VH,"Standard Foam Mattresses",Haven,79x42x10,20000,5,0
+"Haven Mattress (79x63x8)",M86VH,"Standard Foam Mattresses",Haven,79x63x8,20000,5,0
+"Haven Mattress (79x71x8)",M87VH,"Standard Foam Mattresses",Haven,79x71x8,20000,5,0
+"Haven Mattress (79x71x10)",M91VH,"Standard Foam Mattresses",Haven,79x71x10,20000,5,0
+"Haven Mattress (79x71x12)",M93VH,"Standard Foam Mattresses",Haven,79x71x12,20000,5,0
+"Haven Mattress (79x72x8)",M88VH,"Standard Foam Mattresses",Haven,79x72x8,20000,5,0
+"Supreme Mattress (75x30x4)",M10VS,"Standard Foam Mattresses",Supreme,75x30x4,20000,5,0
+"Supreme Mattress (75x36x4)",M9VS,"Standard Foam Mattresses",Supreme,75x36x4,20000,5,0
+"Supreme Mattress (75x36x6)",M4VS6,"Standard Foam Mattresses",Supreme,75x36x6,20000,5,0
+"Supreme Mattress (75x36x8)",M4VS,"Standard Foam Mattresses",Supreme,75x36x8,20000,5,0
+"Supreme Mattress (75x36x10)",M42VS,"Standard Foam Mattresses",Supreme,75x36x10,20000,5,0
+"Supreme Mattress (75x42x6)",M3VS6,"Standard Foam Mattresses",Supreme,75x42x6,20000,5,0
+"Supreme Mattress (75x42x8)",M3VS,"Standard Foam Mattresses",Supreme,75x42x8,20000,5,0
+"Supreme Mattress (75x42x10)",M32VS,"Standard Foam Mattresses",Supreme,75x42x10,20000,5,0
+"Supreme Mattress (75x42x12)",M33VS,"Standard Foam Mattresses",Supreme,75x42x12,20000,5,0
+"Supreme Mattress (75x48x6)",M2VS6,"Standard Foam Mattresses",Supreme,75x48x6,20000,5,0
+"Supreme Mattress (75x48x8)",M2VS,"Standard Foam Mattresses",Supreme,75x48x8,20000,5,0
+"Supreme Mattress (75x48x10)",M22VS,"Standard Foam Mattresses",Supreme,75x48x10,20000,5,0
+"Supreme Mattress (75x48x12)",M23VS,"Standard Foam Mattresses",Supreme,75x48x12,20000,5,0
+"Supreme Mattress (75x54x6)",M1VS6,"Standard Foam Mattresses",Supreme,75x54x6,20000,5,0
+"Supreme Mattress (75x54x8)",M1VS,"Standard Foam Mattresses",Supreme,75x54x8,20000,5,0
+"Supreme Mattress (75x54x10)",M12VS,"Standard Foam Mattresses",Supreme,75x54x10,20000,5,0
+"Supreme Mattress (75x54x12)",M13VS,"Standard Foam Mattresses",Supreme,75x54x12,20000,5,0
+"Supreme Mattress (75x54x14)",M14VS,"Standard Foam Mattresses",Supreme,75x54x14,20000,5,0
+"Supreme Mattress (75x54x16)",M16VS,"Standard Foam Mattresses",Supreme,75x54x16,20000,5,0
+"Supreme Mattress (75x54x18)",M18VS,"Standard Foam Mattresses",Supreme,75x54x18,20000,5,0
+"Supreme Mattress (75x54x20)",M20VS,"Standard Foam Mattresses",Supreme,75x54x20,20000,5,0
+"Supreme Mattress (75x60x8)",M5VS,"Standard Foam Mattresses",Supreme,75x60x8,20000,5,0
+"Supreme Mattress (75x60x10)",M52VS,"Standard Foam Mattresses",Supreme,75x60x10,20000,5,0
+"Supreme Mattress (75x60x12)",M53VS,"Standard Foam Mattresses",Supreme,75x60x12,20000,5,0
+"Supreme Mattress (75x60x14)",M54VS,"Standard Foam Mattresses",Supreme,75x60x14,20000,5,0
+"Supreme Mattress (75x60x16)",M56VS,"Standard Foam Mattresses",Supreme,75x60x16,20000,5,0
+"Supreme Mattress (75x60x18)",M58VS,"Standard Foam Mattresses",Supreme,75x60x18,20000,5,0
+"Supreme Mattress (75x60x20)",M50VS,"Standard Foam Mattresses",Supreme,75x60x20,20000,5,0
+"Supreme Mattress (75x72x8)",M6VS,"Standard Foam Mattresses",Supreme,75x72x8,20000,5,0
+"Supreme Mattress (75x72x10)",M62VS,"Standard Foam Mattresses",Supreme,75x72x10,20000,5,0
+"Supreme Mattress (75x72x12)",M63VS,"Standard Foam Mattresses",Supreme,75x72x12,20000,5,0
+"Supreme Mattress (75x72x14)",M64VS,"Standard Foam Mattresses",Supreme,75x72x14,20000,5,0
+"Supreme Mattress (75x72x16)",M66VS,"Standard Foam Mattresses",Supreme,75x72x16,20000,5,0
+"Supreme Mattress (75x72x18)",M68VS,"Standard Foam Mattresses",Supreme,75x72x18,20000,5,0
+"Supreme Mattress (75x72x20)",M70VS,"Standard Foam Mattresses",Supreme,75x72x20,20000,5,0
+"Supreme Mattress (75x84x8)",M7VS,"Standard Foam Mattresses",Supreme,75x84x8,20000,5,0
+"Supreme Mattress (75x84x10)",M72VS,"Standard Foam Mattresses",Supreme,75x84x10,20000,5,0
+"Supreme Mattress (75x84x12)",M73VS,"Standard Foam Mattresses",Supreme,75x84x12,20000,5,0
+"Supreme Mattress (75x84x14)",M74VS,"Standard Foam Mattresses",Supreme,75x84x14,20000,5,0
+"Supreme Mattress (75x84x16)",M76VS,"Standard Foam Mattresses",Supreme,75x84x16,20000,5,0
+"Supreme Mattress (75x84x18)",M78VS,"Standard Foam Mattresses",Supreme,75x84x18,20000,5,0
+"Supreme Mattress (75x84x20)",M80VS,"Standard Foam Mattresses",Supreme,75x84x20,20000,5,0
+"Supreme Mattress (84x84x8)",M8VS,"Standard Foam Mattresses",Supreme,84x84x8,20000,5,0
+"Supreme Mattress (84x84x10)",M82VS,"Standard Foam Mattresses",Supreme,84x84x10,20000,5,0
+"Supreme Mattress (84x84x12)",M83VS,"Standard Foam Mattresses",Supreme,84x84x12,20000,5,0
+"Supreme Mattress (84x84x14)",M94VS,"Standard Foam Mattresses",Supreme,84x84x14,20000,5,0
+"Supreme Mattress (84x84x16)",M9VS-2,"Standard Foam Mattresses",Supreme,84x84x16,20000,5,0
+"Supreme Mattress (84x84x18)",M98VS,"Standard Foam Mattresses",Supreme,84x84x18,20000,5,0
+"Supreme Mattress (84x84x20)",M90VS,"Standard Foam Mattresses",Supreme,84x84x20,20000,5,0
+"Supreme Mattress (79x42x8)",M84VS,"Standard Foam Mattresses",Supreme,79x42x8,20000,5,0
+"Supreme Mattress (79x42x10)",M85VS,"Standard Foam Mattresses",Supreme,79x42x10,20000,5,0
+"Supreme Mattress (79x63x8)",M86VS,"Standard Foam Mattresses",Supreme,79x63x8,20000,5,0
+"Supreme Mattress (79x71x8)",M87VS,"Standard Foam Mattresses",Supreme,79x71x8,20000,5,0
+"Supreme Mattress (79x71x10)",M91VS,"Standard Foam Mattresses",Supreme,79x71x10,20000,5,0
+"Supreme Mattress (79x71x12)",M93VS,"Standard Foam Mattresses",Supreme,79x71x12,20000,5,0
+"Supreme Mattress (79x72x8)",M88VS,"Standard Foam Mattresses",Supreme,79x72x8,20000,5,0
+"Classic Mattress (75x36x4)",M9GS,"Standard Foam Mattresses",Classic,75x36x4,20000,5,0
+"Classic Mattress (75x36x6)",M4GS6,"Standard Foam Mattresses",Classic,75x36x6,20000,5,0
+"Classic Mattress (75x36x8)",M4GS,"Standard Foam Mattresses",Classic,75x36x8,20000,5,0
+"Classic Mattress (75x36x10)",M42GS,"Standard Foam Mattresses",Classic,75x36x10,20000,5,0
+"Classic Mattress (75x42x6)",M3GS6,"Standard Foam Mattresses",Classic,75x42x6,20000,5,0
+"Classic Mattress (75x42x8)",M3GS,"Standard Foam Mattresses",Classic,75x42x8,20000,5,0
+"Classic Mattress (75x42x10)",M32GS,"Standard Foam Mattresses",Classic,75x42x10,20000,5,0
+"Classic Mattress (75x42x12)",M33GS,"Standard Foam Mattresses",Classic,75x42x12,20000,5,0
+"Classic Mattress (75x48x6)",M2GS6,"Standard Foam Mattresses",Classic,75x48x6,20000,5,0
+"Classic Mattress (75x48x8)",M2GS,"Standard Foam Mattresses",Classic,75x48x8,20000,5,0
+"Classic Mattress (75x48x10)",M22GS,"Standard Foam Mattresses",Classic,75x48x10,20000,5,0
+"Classic Mattress (75x48x12)",M23GS,"Standard Foam Mattresses",Classic,75x48x12,20000,5,0
+"Classic Mattress (75x54x6)",M1GS6,"Standard Foam Mattresses",Classic,75x54x6,20000,5,0
+"Classic Mattress (75x54x8)",M1GS,"Standard Foam Mattresses",Classic,75x54x8,20000,5,0
+"Classic Mattress (75x54x10)",M12GS,"Standard Foam Mattresses",Classic,75x54x10,20000,5,0
+"Classic Mattress (75x54x12)",M13GS,"Standard Foam Mattresses",Classic,75x54x12,20000,5,0
+"Classic Mattress (75x54x14)",M14GS,"Standard Foam Mattresses",Classic,75x54x14,20000,5,0
+"Classic Mattress (75x54x16)",M16GS,"Standard Foam Mattresses",Classic,75x54x16,20000,5,0
+"Classic Mattress (75x54x18)",M18GS,"Standard Foam Mattresses",Classic,75x54x18,20000,5,0
+"Classic Mattress (75x54x20)",M20GS,"Standard Foam Mattresses",Classic,75x54x20,20000,5,0
+"Classic Mattress (75x60x8)",M5GS,"Standard Foam Mattresses",Classic,75x60x8,20000,5,0
+"Classic Mattress (75x60x10)",M52GS,"Standard Foam Mattresses",Classic,75x60x10,20000,5,0
+"Classic Mattress (75x60x12)",M53GS,"Standard Foam Mattresses",Classic,75x60x12,20000,5,0
+"Classic Mattress (75x60x14)",M54GS,"Standard Foam Mattresses",Classic,75x60x14,20000,5,0
+"Classic Mattress (75x60x16)",M56GS,"Standard Foam Mattresses",Classic,75x60x16,20000,5,0
+"Classic Mattress (75x60x18)",M58GS,"Standard Foam Mattresses",Classic,75x60x18,20000,5,0
+"Classic Mattress (75x60x20)",M50GS,"Standard Foam Mattresses",Classic,75x60x20,20000,5,0
+"Classic Mattress (75x72x8)",M6GS,"Standard Foam Mattresses",Classic,75x72x8,20000,5,0
+"Classic Mattress (75x72x10)",M62GS,"Standard Foam Mattresses",Classic,75x72x10,20000,5,0
+"Classic Mattress (75x72x12)",M63GS,"Standard Foam Mattresses",Classic,75x72x12,20000,5,0
+"Classic Mattress (75x72x14)",M64GS,"Standard Foam Mattresses",Classic,75x72x14,20000,5,0
+"Classic Mattress (75x72x16)",M66GS,"Standard Foam Mattresses",Classic,75x72x16,20000,5,0
+"Classic Mattress (75x72x18)",M68GS,"Standard Foam Mattresses",Classic,75x72x18,20000,5,0
+"Classic Mattress (75x72x20)",M70GS,"Standard Foam Mattresses",Classic,75x72x20,20000,5,0
+"Classic Mattress (75x84x8)",M7GS,"Standard Foam Mattresses",Classic,75x84x8,20000,5,0
+"Classic Mattress (75x84x10)",M72GS,"Standard Foam Mattresses",Classic,75x84x10,20000,5,0
+"Classic Mattress (75x84x12)",M73GS,"Standard Foam Mattresses",Classic,75x84x12,20000,5,0
+"Classic Mattress (75x84x14)",M74GS,"Standard Foam Mattresses",Classic,75x84x14,20000,5,0
+"Classic Mattress (75x84x16)",M76GS,"Standard Foam Mattresses",Classic,75x84x16,20000,5,0
+"Classic Mattress (75x84x18)",M78GS,"Standard Foam Mattresses",Classic,75x84x18,20000,5,0
+"Classic Mattress (75x84x20)",M80GS,"Standard Foam Mattresses",Classic,75x84x20,20000,5,0
+"Classic Mattress (84x84x8)",M8GS,"Standard Foam Mattresses",Classic,84x84x8,20000,5,0
+"Classic Mattress (84x84x10)",M82GS,"Standard Foam Mattresses",Classic,84x84x10,20000,5,0
+"Classic Mattress (84x84x12)",M83GS,"Standard Foam Mattresses",Classic,84x84x12,20000,5,0
+"Classic Mattress (84x84x14)",M94GS,"Standard Foam Mattresses",Classic,84x84x14,20000,5,0
+"Classic Mattress (84x84x16)",M96GS,"Standard Foam Mattresses",Classic,84x84x16,20000,5,0
+"Classic Mattress (84x84x18)",M98GS,"Standard Foam Mattresses",Classic,84x84x18,20000,5,0
+"Classic Mattress (84x84x20)",M90GS,"Standard Foam Mattresses",Classic,84x84x20,20000,5,0
+"Classic Mattress (79x42x8)",M84GS,"Standard Foam Mattresses",Classic,79x42x8,20000,5,0
+"Classic Mattress (79x42x10)",M85GS,"Standard Foam Mattresses",Classic,79x42x10,20000,5,0
+"Classic Mattress (79x63x8)",M86GS,"Standard Foam Mattresses",Classic,79x63x8,20000,5,0
+"Classic Mattress (79x71x8)",M87GS,"Standard Foam Mattresses",Classic,79x71x8,20000,5,0
+"Classic Mattress (79x71x10)",M91GS,"Standard Foam Mattresses",Classic,79x71x10,20000,5,0
+"Classic Mattress (79x71x12)",M93GS,"Standard Foam Mattresses",Classic,79x71x12,20000,5,0
+"Classic Mattress (79x72x8)",M88GS,"Standard Foam Mattresses",Classic,79x72x8,20000,5,0
+"Orthopedic Mattress (75x30x4)",M10RQ,"Orthopedic Mattresses",Orthopedic,75x30x4,20000,5,0
+"Orthopedic Mattress (75x36x4)",M9RQ,"Orthopedic Mattresses",Orthopedic,75x36x4,20000,5,0
+"Orthopedic Mattress (75x36x6)",M4RQ6,"Orthopedic Mattresses",Orthopedic,75x36x6,20000,5,0
+"Orthopedic Mattress (75x36x8)",M4RQ,"Orthopedic Mattresses",Orthopedic,75x36x8,20000,5,0
+"Orthopedic Mattress (75x36x10)",M42RQ,"Orthopedic Mattresses",Orthopedic,75x36x10,20000,5,0
+"Orthopedic Mattress (75x42x6)",M3RQ6,"Orthopedic Mattresses",Orthopedic,75x42x6,20000,5,0
+"Orthopedic Mattress (75x42x8)",M3RQ,"Orthopedic Mattresses",Orthopedic,75x42x8,20000,5,0
+"Orthopedic Mattress (75x42x10)",M32RQ,"Orthopedic Mattresses",Orthopedic,75x42x10,20000,5,0
+"Orthopedic Mattress (75x42x12)",M33RQ,"Orthopedic Mattresses",Orthopedic,75x42x12,20000,5,0
+"Orthopedic Mattress (75x48x6)",M2RQ6,"Orthopedic Mattresses",Orthopedic,75x48x6,20000,5,0
+"Orthopedic Mattress (75x48x8)",M2RQ,"Orthopedic Mattresses",Orthopedic,75x48x8,20000,5,0
+"Orthopedic Mattress (75x48x10)",M22RQ,"Orthopedic Mattresses",Orthopedic,75x48x10,20000,5,0
+"Orthopedic Mattress (75x48x12)",M23RQ,"Orthopedic Mattresses",Orthopedic,75x48x12,20000,5,0
+"Orthopedic Mattress (75x54x6)",M1RQ6,"Orthopedic Mattresses",Orthopedic,75x54x6,20000,5,0
+"Orthopedic Mattress (75x54x8)",M1RQ,"Orthopedic Mattresses",Orthopedic,75x54x8,20000,5,0
+"Orthopedic Mattress (75x54x10)",M12RQ,"Orthopedic Mattresses",Orthopedic,75x54x10,20000,5,0
+"Orthopedic Mattress (75x54x12)",M13RQ,"Orthopedic Mattresses",Orthopedic,75x54x12,20000,5,0
+"Orthopedic Mattress (75x54x14)",M14RQ,"Orthopedic Mattresses",Orthopedic,75x54x14,20000,5,0
+"Orthopedic Mattress (75x54x16)",M16RQ,"Orthopedic Mattresses",Orthopedic,75x54x16,20000,5,0
+"Orthopedic Mattress (75x54x18)",M18RQ,"Orthopedic Mattresses",Orthopedic,75x54x18,20000,5,0
+"Orthopedic Mattress (75x54x20)",M20RQ,"Orthopedic Mattresses",Orthopedic,75x54x20,20000,5,0
+"Orthopedic Mattress (75x60x8)",M5RQ,"Orthopedic Mattresses",Orthopedic,75x60x8,20000,5,0
+"Orthopedic Mattress (75x60x10)",M52RQ,"Orthopedic Mattresses",Orthopedic,75x60x10,20000,5,0
+"Orthopedic Mattress (75x60x12)",M53RQ,"Orthopedic Mattresses",Orthopedic,75x60x12,20000,5,0
+"Orthopedic Mattress (75x60x14)",M54RQ,"Orthopedic Mattresses",Orthopedic,75x60x14,20000,5,0
+"Orthopedic Mattress (75x60x16)",M56RQ,"Orthopedic Mattresses",Orthopedic,75x60x16,20000,5,0
+"Orthopedic Mattress (75x60x18)",M58RQ,"Orthopedic Mattresses",Orthopedic,75x60x18,20000,5,0
+"Orthopedic Mattress (75x60x20)",M50RQ,"Orthopedic Mattresses",Orthopedic,75x60x20,20000,5,0
+"Orthopedic Mattress (75x72x8)",M6RQ,"Orthopedic Mattresses",Orthopedic,75x72x8,20000,5,0
+"Orthopedic Mattress (75x72x10)",M62RQ,"Orthopedic Mattresses",Orthopedic,75x72x10,20000,5,0
+"Orthopedic Mattress (75x72x12)",M63RQ,"Orthopedic Mattresses",Orthopedic,75x72x12,20000,5,0
+"Orthopedic Mattress (75x72x14)",M64RQ,"Orthopedic Mattresses",Orthopedic,75x72x14,20000,5,0
+"Orthopedic Mattress (75x72x16)",M66RQ,"Orthopedic Mattresses",Orthopedic,75x72x16,20000,5,0
+"Orthopedic Mattress (75x72x18)",M68RQ,"Orthopedic Mattresses",Orthopedic,75x72x18,20000,5,0
+"Orthopedic Mattress (75x72x20)",M70RQ,"Orthopedic Mattresses",Orthopedic,75x72x20,20000,5,0
+"Orthopedic Mattress (75x84x8)",M7RQ,"Orthopedic Mattresses",Orthopedic,75x84x8,20000,5,0
+"Orthopedic Mattress (75x84x10)",M72RQ,"Orthopedic Mattresses",Orthopedic,75x84x10,20000,5,0
+"Orthopedic Mattress (75x84x12)",M73RQ,"Orthopedic Mattresses",Orthopedic,75x84x12,20000,5,0
+"Orthopedic Mattress (75x84x14)",M74RQ,"Orthopedic Mattresses",Orthopedic,75x84x14,20000,5,0
+"Orthopedic Mattress (75x84x16)",M76RQ,"Orthopedic Mattresses",Orthopedic,75x84x16,20000,5,0
+"Orthopedic Mattress (75x84x18)",M78RQ,"Orthopedic Mattresses",Orthopedic,75x84x18,20000,5,0
+"Orthopedic Mattress (75x84x20)",M80RQ,"Orthopedic Mattresses",Orthopedic,75x84x20,20000,5,0
+"Orthopedic Mattress (84x84x8)",M8RQ,"Orthopedic Mattresses",Orthopedic,84x84x8,20000,5,0
+"Orthopedic Mattress (84x84x10)",M82RQ,"Orthopedic Mattresses",Orthopedic,84x84x10,20000,5,0
+"Orthopedic Mattress (84x84x12)",M83RQ,"Orthopedic Mattresses",Orthopedic,84x84x12,20000,5,0
+"Orthopedic Mattress (84x84x14)",M94RQ,"Orthopedic Mattresses",Orthopedic,84x84x14,20000,5,0
+"Orthopedic Mattress (84x84x16)",M96RQ,"Orthopedic Mattresses",Orthopedic,84x84x16,20000,5,0
+"Orthopedic Mattress (84x84x18)",M98RQ,"Orthopedic Mattresses",Orthopedic,84x84x18,20000,5,0
+"Orthopedic Mattress (84x84x20)",M90RQ,"Orthopedic Mattresses",Orthopedic,84x84x20,20000,5,0
+"Orthopedic Mattress (79x42x8)",M84RQ,"Orthopedic Mattresses",Orthopedic,79x42x8,20000,5,0
+"Orthopedic Mattress (79x42x10)",M85RQ,"Orthopedic Mattresses",Orthopedic,79x42x10,20000,5,0
+"Orthopedic Mattress (79x63x8)",M86RQ,"Orthopedic Mattresses",Orthopedic,79x63x8,20000,5,0
+"Orthopedic Mattress (79x71x8)",M87RQ,"Orthopedic Mattresses",Orthopedic,79x71x8,20000,5,0
+"Orthopedic Mattress (79x71x10)",M91RQ,"Orthopedic Mattresses",Orthopedic,79x71x10,20000,5,0
+"Orthopedic Mattress (79x71x12)",M93RQ,"Orthopedic Mattresses",Orthopedic,79x71x12,20000,5,0
+"Orthopedic Mattress (79x72x8)",M88RQ,"Orthopedic Mattresses",Orthopedic,79x72x8,20000,5,0
+"Spring Mattress (75x72x10)",M62SF,"Spring Mattresses",Spring,75x72x10,20000,5,0
+"ABEEC Mattress (75x42x6)",GUM-42X6,"Standard Foam Mattresses",ABEEC,75x42x6,20000,5,0
+"ABEEC Mattress (75x42x8)",GUM-42X8,"Standard Foam Mattresses",ABEEC,75x42x8,20000,5,0
+"ABEEC Mattress (75x54x6)",GUM-54X6,"Standard Foam Mattresses",ABEEC,75x54x6,20000,5,0
+"ABEEC Mattress (75x54x8)",GUM-54X8,"Standard Foam Mattresses",ABEEC,75x54x8,20000,5,0
+"ABEEC Mattress (75x54x10)",TOF-54X10,"Standard Foam Mattresses",ABEEC,75x54x10,20000,5,0
+"ABEEC Mattress (75x54x12)",TOF-54X12,"Standard Foam Mattresses",ABEEC,75x54x12,20000,5,0
+"Naked Foam 54X10",54X10,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 72X8-30D",72X8-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X12-25D",54X12-25D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 72X8-25D",72X8-25D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 72X12-30D",72X12-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X10-22D",54X10-22D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 42X10-22D",42X10-22D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 42X8-22D",42X8-22D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 42X8-30D",42X8-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 42X12-22D",42X12-22D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 42X6-25D",42X6-25D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 42X10-25D",42X10-25D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X14-18D",54X14-18D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X6-18D",54X6-18D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X4-18D",54X4-18D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X16-30D",54X16-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X8-30D",54X8-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X8-25D",54X8-25D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X18-30D",54X18-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Naked Foam 54X12-30D",54X12-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"VitaLuxe Mattress (75X84X10)",M72LX,"Standard Foam Mattresses",VitaLuxe,75X84X10,20000,5,0
+"VitaLuxe Mattress (75X72X10)",M62LX,"Standard Foam Mattresses",VitaLuxe,75X72X10,20000,5,0
+"General Foam Mattress (Unknown)","UNKNOWN FOAM","Standard Foam Mattresses","General Foam",Unknown,20000,5,0
+"Naked Foam 54X14-30D",54X14-30D,"Naked Foam & Blocks",Naked,Standard,20000,5,0
+"Dove Pillow (P1)",P1,"Pillows & Bedding",Pillow,Dove,20000,10,0
+"Gazelle Pillow (P4)",P4,"Pillows & Bedding",Pillow,Gazelle,20000,10,0
+"Quited Pillow (P8)",P8,"Pillows & Bedding",Pillow,Quited,20000,10,0
+"Vitarev Pillow (VRP)",VRP,"Pillows & Bedding",Pillow,Vitarev,20000,10,0
+"Vitacool Pillow (PVE)",PVE,"Pillows & Bedding",Pillow,Vitacool,20000,10,0
+"Haven Pillow (HMP)",HMP,"Pillows & Bedding",Pillow,Haven,20000,10,0
+"DELIGHT Pillow (DELIGHT)",DELIGHT,"Pillows & Bedding",Pillow,DELIGHT,20000,10,0
+"Jumbo Pillow (P5)",P5,"Pillows & Bedding",Pillow,Jumbo,20000,10,0
+"Pama Pillow (P11)",P11,"Pillows & Bedding",Pillow,Pama,20000,10,0
+"VITALITE Pillow (PVL)",PVL,"Pillows & Bedding",Pillow,VITALITE,20000,10,0
