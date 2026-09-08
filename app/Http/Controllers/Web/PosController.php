@@ -259,7 +259,7 @@ class PosController extends Controller
                 'paidAmount' => (float) ($request->paidAmount ?? $paidAmount),
                 'cashAmount' => (float) ($request->cashAmount ?? 0),
                 'posAmount' => (float) ($request->posAmount ?? 0),
-                'transferAmount' => (float) ($request->transferAmount ?? 0),
+                'transferAmount' => 0.0,
                 'customerId' => $customerId,
                 'customerPhone' => $customerPhone,
                 'is_supplied' => $isSuppliedNow,

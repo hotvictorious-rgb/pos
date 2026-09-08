@@ -338,7 +338,6 @@
             <input type="hidden" name="paidAmount" id="hiddenPaid" value="0">
             <input type="hidden" name="cashAmount" id="hiddenCash" value="0">
             <input type="hidden" name="posAmount" id="hiddenPos" value="0">
-            <input type="hidden" name="transferAmount" id="hiddenTransfer" value="0">
 
             <!-- Cart Items Container -->
             <div class="cart-items-list" id="cartItemsList">
@@ -724,19 +723,16 @@ function updateDebtCalculation() {
         document.getElementById('hiddenPaid').value = partPay;
         document.getElementById('hiddenCash').value = partPay;
         document.getElementById('hiddenPos').value = 0;
-        document.getElementById('hiddenTransfer').value = 0;
     } else if (paymentMode === 'POS') {
         if (remainingEl) remainingEl.textContent = '₦0';
         document.getElementById('hiddenPaid').value = total;
         document.getElementById('hiddenPos').value = total;
         document.getElementById('hiddenCash').value = 0;
-        document.getElementById('hiddenTransfer').value = 0;
     } else { // CASH
         if (remainingEl) remainingEl.textContent = '₦0';
         document.getElementById('hiddenPaid').value = total;
         document.getElementById('hiddenCash').value = total;
         document.getElementById('hiddenPos').value = 0;
-        document.getElementById('hiddenTransfer').value = 0;
     }
 }
 
