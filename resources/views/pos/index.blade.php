@@ -620,9 +620,11 @@ function renderCart() {
 
         const priceDisplay = `<div style="font-size:0.75rem;color:#94a3b8;display:flex;align-items:center;gap:0.35rem;margin-top:0.25rem;">
                     <span>Price (₦):</span>
-                    <input type="number" step="any" min="0" value="${item.price}" 
-                           style="width:90px;padding:0.2rem 0.4rem;font-size:0.8rem;background:#0b0f19;border:1px solid #475569;border-radius:6px;color:#4ade80;font-weight:700;" 
-                           onchange="updateItemPrice('${item.id}', this.value)" title="Click to edit selling price for market negotiation / bulk discount">
+                    <input type="number" step="any" min="0" value="${item.price}" id="cart_price_input_${item.id}"
+                           style="width:95px;padding:0.25rem 0.4rem;font-size:0.82rem;background:#0b0f19;border:1px solid #475569;border-radius:6px;color:#4ade80;font-weight:700;" 
+                           onchange="updateItemPrice('${item.id}', this.value)"
+                           onkeyup="if(event.key==='Enter'){ this.blur(); updateItemPrice('${item.id}', this.value); }"
+                           title="Click to edit selling price for market negotiation / bulk discount">
                     <span>x ${item.qty}</span>
                 </div>`;
 
@@ -631,7 +633,7 @@ function renderCart() {
             <div>
                 <input type="hidden" name="items[${index}][productId]" value="${item.id}">
                 <input type="hidden" name="items[${index}][quantity]" value="${item.qty}">
-                <input type="hidden" name="items[${index}][unitPrice]" value="${item.price}">
+                <input type="hidden" name="items[${index}][unitPrice]" id="cart_hidden_price_${item.id}" value="${item.price}">
                 <div style="font-weight:700;font-size:0.9rem;">${item.name}</div>
                 ${priceDisplay}
             </div>
@@ -652,6 +654,21 @@ function renderCart() {
     btn.disabled = false;
     btn.style.opacity = 1;
     btn.style.cursor = 'pointer';
+}
+
+function syncCartPricesFromDom() {
+    let changed = false;
+    cart.forEach(item => {
+        const inp = document.getElementById(`cart_price_input_${item.id}`);
+        if (inp) {
+            const val = parseFloat(inp.value);
+            if (!isNaN(val) && val >= 0 && val !== item.price) {
+                item.price = val;
+                changed = true;
+            }
+        }
+    });
+    return changed;
 }
 
 function updateItemPrice(id, newPrice) {
@@ -893,6 +910,9 @@ function submitQuickCustomer(e) {
 }
 
 function submitSale() {
+    if (syncCartPricesFromDom()) {
+        renderCart();
+    }
     const total = parseFloat(document.getElementById('hiddenTotal').value) || 0;
     const custName = document.getElementById('customerNameInput').value.trim() || 'Walk-in Customer';
     const rawCustPhone = document.getElementById('customerPhoneInput').value.trim();

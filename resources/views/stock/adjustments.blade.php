@@ -256,12 +256,14 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Select Product SKU</label>
-                    <select name="product_id" id="adjProduct" required>
-                        @foreach($products as $p)
-                            <option value="{{ $p->id }}">{{ $p->code }}</option>
-                        @endforeach
-                    </select>
+                    <label>Select Product (Search by Name or SKU)</label>
+                    @include('components.searchable-product-picker', [
+                        'id' => 'adjProduct',
+                        'name' => 'product_id',
+                        'products' => $products,
+                        'placeholder' => '🔍 Search damaged item by name, brand, or SKU...',
+                        'required' => true
+                    ])
                 </div>
 
                 <div class="form-group">
@@ -308,6 +310,9 @@ function filterTableRows(tableId, query) {
 
 function openModal(id) {
     document.getElementById(id).style.display = 'flex';
+    if (window.initSearchableProductPickers) {
+        window.initSearchableProductPickers();
+    }
 }
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
@@ -325,7 +330,7 @@ function confirmAdjustment() {
         errors.push({
             title: 'Product Selection Required',
             desc: 'Please select which product suffered damage or physical shrinkage.',
-            focus: 'adjProduct'
+            focus: 'spc_input_adjProduct'
         });
     }
 

@@ -474,12 +474,14 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Select Product SKU</label>
-                    <select name="items[0][productId]" id="dispProduct" required>
-                        @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->code }}</option>
-                        @endforeach
-                    </select>
+                    <label>Select Product to Send (Search by Name or SKU)</label>
+                    @include('components.searchable-product-picker', [
+                        'id' => 'dispProduct',
+                        'name' => 'items[0][productId]',
+                        'products' => $allProducts,
+                        'placeholder' => '🔍 Type product name, brand, or SKU code...',
+                        'required' => true
+                    ])
                 </div>
 
                 <div class="form-group">
@@ -547,6 +549,9 @@ function filterTableRows(tableId, query) {
 
 function openModal(id) {
     document.getElementById(id).style.display = 'flex';
+    if (window.initSearchableProductPickers) {
+        window.initSearchableProductPickers();
+    }
 }
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
@@ -577,12 +582,21 @@ function openAcceptModal(trf) {
 }
 
 function validateTransferDispatch(e) {
+    const prodSelect = document.getElementById('dispProduct');
     const sourceWh = document.getElementById('dispSourceWh').value;
     const destWh = document.getElementById('dispDestWh').value;
     const qty = parseInt(document.getElementById('dispQty').value) || 0;
     const carrier = document.getElementById('dispCarrier').value.trim();
 
     const errors = [];
+
+    if (!prodSelect || !prodSelect.value) {
+        errors.push({
+            title: 'Product Selection Required',
+            desc: 'Please search and select which product to dispatch to the destination branch.',
+            focus: 'spc_input_dispProduct'
+        });
+    }
 
     if (sourceWh === destWh) {
         errors.push({

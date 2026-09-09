@@ -151,10 +151,14 @@ class AccountingReportService
             $product = Product::findOrFail($pId);
             $qty = $cItem['quantity'];
 
-            // Server authoritative pricing: product catalog unitPrice is default.
-            // Client tampering is strictly ignored; catalog price is enforced.
+            // Server authoritative pricing with worker-negotiated price support (Option 3: Unrestricted Price Negotiation):
+            // 1. Authorized price override (e.g. supervisor override) has top priority.
+            // 2. Negotiated unitPrice from POS cart input is accepted and enforced.
+            // 3. Defaults to product catalog unitPrice if no custom price is specified.
             if (isset($cItem['authorized_unit_price']) && (float)$cItem['authorized_unit_price'] >= 0) {
                 $unitPrice = (float) $cItem['authorized_unit_price'];
+            } elseif (isset($cItem['unitPrice']) && $cItem['unitPrice'] !== null && (float)$cItem['unitPrice'] >= 0) {
+                $unitPrice = (float) $cItem['unitPrice'];
             } else {
                 $unitPrice = (float) $product->unitPrice;
             }

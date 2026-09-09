@@ -359,12 +359,14 @@
                 <input type="hidden" name="warehouse_id" value="{{ $activeWarehouse->id }}">
 
                 <div class="form-group">
-                    <label>Select Product SKU</label>
-                    <select name="product_id" id="stockInProduct" required>
-                        @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->code }}</option>
-                        @endforeach
-                    </select>
+                    <label>Select Product (Search by Name or SKU)</label>
+                    @include('components.searchable-product-picker', [
+                        'id' => 'stockInProduct',
+                        'name' => 'product_id',
+                        'products' => $allProducts,
+                        'placeholder' => '🔍 Type product name, brand, or SKU code...',
+                        'required' => true
+                    ])
                 </div>
 
                 <div class="form-group">
@@ -414,12 +416,14 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Select Product SKU</label>
-                    <select name="items[0][productId]" id="transferProduct" required>
-                        @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->code }}</option>
-                        @endforeach
-                    </select>
+                    <label>Select Product to Send (Search by Name or SKU)</label>
+                    @include('components.searchable-product-picker', [
+                        'id' => 'transferProduct',
+                        'name' => 'items[0][productId]',
+                        'products' => $allProducts,
+                        'placeholder' => '🔍 Type product name, brand, or SKU code...',
+                        'required' => true
+                    ])
                 </div>
 
                 <div class="form-group">
@@ -506,19 +510,35 @@ function filterTableRows(tableId, query) {
 
 function openModal(id) {
     document.getElementById(id).style.display = 'flex';
+    if (window.initSearchableProductPickers) {
+        window.initSearchableProductPickers();
+    }
 }
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
 }
 
 function confirmStockIn() {
+    const prodSelect = document.getElementById('stockInProduct');
+    if (!prodSelect || !prodSelect.value) {
+        showActionBlockedModal({
+            title: 'Product Selection Required',
+            subtitle: 'Missing Product for Stock In',
+            errors: [{
+                title: 'Please Select a Product',
+                desc: 'You must search and select which product arrived before saving.',
+                focus: 'spc_input_stockInProduct'
+            }]
+        });
+        return;
+    }
+
     const form = document.getElementById('stockInForm');
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
 
-    const prodSelect = document.getElementById('stockInProduct');
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
     const qty = document.getElementById('stockInQty').value;
     const supplier = document.getElementById('stockInSupplier').value || 'Unspecified Supplier';
@@ -547,6 +567,20 @@ function confirmStockIn() {
 }
 
 function confirmTransferOut() {
+    const prodSelect = document.getElementById('transferProduct');
+    if (!prodSelect || !prodSelect.value) {
+        showActionBlockedModal({
+            title: 'Product Selection Required',
+            subtitle: 'Missing Product for Dispatch',
+            errors: [{
+                title: 'Please Select a Product',
+                desc: 'You must search and select which product to send before dispatching.',
+                focus: 'spc_input_transferProduct'
+            }]
+        });
+        return;
+    }
+
     const form = document.getElementById('transferOutForm');
     if (!form.checkValidity()) {
         form.reportValidity();
@@ -555,7 +589,6 @@ function confirmTransferOut() {
 
     const destSelect = document.getElementById('transferDestWh');
     const destName = destSelect.options[destSelect.selectedIndex].text;
-    const prodSelect = document.getElementById('transferProduct');
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
     const qty = document.getElementById('transferQty').value;
     const carrier = document.getElementById('transferCarrier').value;
