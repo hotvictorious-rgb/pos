@@ -485,6 +485,7 @@
                         'placeholder' => '🔍 Type product name, brand, or SKU code...',
                         'required' => true
                     ])
+                    <div id="dispStockBadge" style="display: none; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.82rem; font-weight: 700;"></div>
                 </div>
 
                 <div class="form-group">
@@ -563,6 +564,46 @@ function closeModal(id) {
     document.getElementById(id).style.display = 'none';
 }
 
+window.warehouseStockMap = @json($warehouseStockMap ?? []);
+
+function updateDispStockBadge() {
+    const prodEl = document.getElementById('dispProduct');
+    const badge = document.getElementById('dispStockBadge');
+    const sourceEl = document.getElementById('dispSourceWh');
+    const qtyInput = document.getElementById('dispQty');
+    if (!prodEl || !badge || !sourceEl) return;
+
+    const prodId = prodEl.value;
+    const sourceWh = sourceEl.value;
+    if (!prodId || !sourceWh) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    const avail = (window.warehouseStockMap && window.warehouseStockMap[sourceWh] && window.warehouseStockMap[sourceWh][prodId] !== undefined)
+        ? parseInt(window.warehouseStockMap[sourceWh][prodId], 10)
+        : 0;
+    const reqQty = parseInt(qtyInput ? qtyInput.value : 0, 10) || 0;
+
+    badge.style.display = 'block';
+    if (avail <= 0) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '❌ <strong>0 physical units available</strong> in selected source shop (Transfer Blocked: No stock on ground)';
+    } else if (reqQty > avail) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '⚠️ Requested <strong>' + reqQty + ' unit(s)</strong> exceeds physical ground count of <strong>' + avail + ' unit(s)</strong> in source shop';
+    } else {
+        badge.style.background = 'rgba(16, 185, 129, 0.12)';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        badge.style.color = '#6ee7b7';
+        badge.innerHTML = '✅ <strong>' + avail + ' physical unit(s)</strong> available on ground in source shop';
+    }
+}
+
 function updateTransferDestinationOptions() {
     const sourceEl = document.getElementById('dispSourceWh');
     const destEl = document.getElementById('dispDestWh');
@@ -587,6 +628,7 @@ function updateTransferDestinationOptions() {
         }
     }
     checkTransferDestinationDistinct();
+    updateDispStockBadge();
 }
 
 function checkTransferDestinationDistinct() {
@@ -608,6 +650,21 @@ function checkTransferDestinationDistinct() {
 
 document.addEventListener('DOMContentLoaded', function() {
     updateTransferDestinationOptions();
+    const prodEl = document.getElementById('dispProduct');
+    if (prodEl) {
+        prodEl.addEventListener('change', updateDispStockBadge);
+    }
+    const qtyEl = document.getElementById('dispQty');
+    if (qtyEl) {
+        qtyEl.addEventListener('input', updateDispStockBadge);
+    }
+    const sourceEl = document.getElementById('dispSourceWh');
+    if (sourceEl) {
+        sourceEl.addEventListener('change', function() {
+            updateTransferDestinationOptions();
+            updateDispStockBadge();
+        });
+    }
 });
 
 function openAcceptModal(trf) {
@@ -665,6 +722,27 @@ function validateTransferDispatch(e) {
             desc: 'Quantity to send must be at least 1 unit.',
             focus: 'dispQty'
         });
+    }
+
+    const prodId = prodSelect ? prodSelect.value : null;
+    if (prodId && sourceWh) {
+        const avail = (window.warehouseStockMap && window.warehouseStockMap[sourceWh] && window.warehouseStockMap[sourceWh][prodId] !== undefined)
+            ? parseInt(window.warehouseStockMap[sourceWh][prodId], 10)
+            : 0;
+
+        if (avail <= 0) {
+            errors.push({
+                title: 'No Physical Stock in Origin Branch',
+                desc: 'The selected origin shop currently has 0 physical units available for this product on the ground. You cannot dispatch out-of-stock inventory.',
+                focus: 'spc_input_dispProduct'
+            });
+        } else if (qty > avail) {
+            errors.push({
+                title: 'Requested Quantity (' + qty + ') Exceeds Ground Stock (' + avail + ' available)',
+                desc: 'You cannot dispatch ' + qty + ' unit(s) because the origin branch only has ' + avail + ' physical unit(s) available on ground. Please reduce the quantity or stock in first.',
+                focus: 'dispQty'
+            });
+        }
     }
 
     if (!carrier || carrier.length < 3) {

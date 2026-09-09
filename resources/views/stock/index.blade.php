@@ -429,6 +429,7 @@
                         'placeholder' => '🔍 Type product name, brand, or SKU code...',
                         'required' => true
                     ])
+                    <div id="transferStockBadge" style="display: none; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.82rem; font-weight: 700;"></div>
                 </div>
 
                 <div class="form-group">
@@ -571,6 +572,55 @@ function confirmStockIn() {
     });
 }
 
+window.shopStockMap = @json($shopStockMap ?? []);
+
+function updateTransferStockBadge() {
+    const prodEl = document.getElementById('transferProduct');
+    const badge = document.getElementById('transferStockBadge');
+    const qtyInput = document.getElementById('transferQty');
+    if (!prodEl || !badge) return;
+
+    const prodId = prodEl.value;
+    if (!prodId) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    const avail = (window.shopStockMap && window.shopStockMap[prodId] !== undefined)
+        ? parseInt(window.shopStockMap[prodId], 10)
+        : 0;
+    const reqQty = parseInt(qtyInput ? qtyInput.value : 0, 10) || 0;
+
+    badge.style.display = 'block';
+    if (avail <= 0) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '❌ <strong>0 physical units available</strong> in {{ addslashes($activeWarehouse->name) }} (Transfer Blocked: No stock on ground)';
+    } else if (reqQty > avail) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '⚠️ Requested <strong>' + reqQty + ' unit(s)</strong> exceeds physical ground count of <strong>' + avail + ' unit(s)</strong> in {{ addslashes($activeWarehouse->name) }}';
+    } else {
+        badge.style.background = 'rgba(16, 185, 129, 0.12)';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        badge.style.color = '#6ee7b7';
+        badge.innerHTML = '✅ <strong>' + avail + ' physical unit(s)</strong> available on ground in {{ addslashes($activeWarehouse->name) }}';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const prodEl = document.getElementById('transferProduct');
+    if (prodEl) {
+        prodEl.addEventListener('change', updateTransferStockBadge);
+    }
+    const qtyEl = document.getElementById('transferQty');
+    if (qtyEl) {
+        qtyEl.addEventListener('input', updateTransferStockBadge);
+    }
+});
+
 function confirmTransferOut() {
     const prodSelect = document.getElementById('transferProduct');
     if (!prodSelect || !prodSelect.value) {
@@ -581,6 +631,38 @@ function confirmTransferOut() {
                 title: 'Please Select a Product',
                 desc: 'You must search and select which product to send before dispatching.',
                 focus: 'spc_input_transferProduct'
+            }]
+        });
+        return;
+    }
+
+    const prodId = prodSelect.value;
+    const qty = parseInt(document.getElementById('transferQty').value || 0, 10);
+    const avail = (window.shopStockMap && window.shopStockMap[prodId] !== undefined)
+        ? parseInt(window.shopStockMap[prodId], 10)
+        : 0;
+
+    if (avail <= 0) {
+        showActionBlockedModal({
+            title: 'No Physical Stock in Shop',
+            subtitle: 'Zero Physical Count On Ground',
+            errors: [{
+                title: 'Item Out of Stock at Origin Branch',
+                desc: 'This origin branch ({{ addslashes($activeWarehouse->name) }}) currently has 0 physical available units for the selected product. You cannot dispatch goods that are not physically present on the ground.',
+                focus: 'spc_input_transferProduct'
+            }]
+        });
+        return;
+    }
+
+    if (qty > avail) {
+        showActionBlockedModal({
+            title: 'Quantity Exceeds Physical Stock',
+            subtitle: 'Insufficient Stock Available to Transfer',
+            errors: [{
+                title: 'Requested Qty (' + qty + ') > Ground Stock (' + avail + ')',
+                desc: 'You requested to transfer ' + qty + ' unit(s), but only ' + avail + ' physical unit(s) are available in {{ addslashes($activeWarehouse->name) }}. Please reduce quantity or stock in first.',
+                focus: 'transferQty'
             }]
         });
         return;
@@ -610,7 +692,6 @@ function confirmTransferOut() {
     }
     const destName = destSelect.options[destSelect.selectedIndex].text;
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
-    const qty = document.getElementById('transferQty').value;
     const carrier = document.getElementById('transferCarrier').value;
 
     closeModal('modalTransferOut');

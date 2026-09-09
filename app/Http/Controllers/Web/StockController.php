@@ -137,6 +137,15 @@ class StockController extends Controller
         $categories = Product::distinct()->whereNotNull('category')->pluck('category');
         $suppliers = Supplier::all();
 
+        // Physical unallocated stock map for active shop
+        $shopStockMap = StockLevel::where('warehouse_id', $activeWarehouse->id)
+            ->get()
+            ->keyBy('product_id')
+            ->map(function ($s) {
+                return max(0, (int) ($s->physical_stock - $s->allocated_stock));
+            })
+            ->toArray();
+
         // Pending incoming transfers for this shop
         $incomingTransfers = Transfer::with(['source', 'items'])
             ->where('destination_warehouse_id', $activeWarehouse->id)
@@ -158,6 +167,7 @@ class StockController extends Controller
             'warehouses',
             'activeWarehouse',
             'stockLevels',
+            'shopStockMap',
             'allProducts',
             'categories',
             'suppliers',
@@ -307,6 +317,28 @@ class StockController extends Controller
             'destination_warehouse_id.different' => 'Destination shop must be different from the origin / source shop!',
         ]);
 
+        // Strict Physical Stock Verification: Verify origin shop has sufficient unallocated units
+        foreach ($request->items as $item) {
+            $pId = $item['productId'] ?? $item['product_id'] ?? null;
+            $qty = (int) ($item['quantity'] ?? 0);
+            if ($pId && $qty > 0) {
+                $stock = StockLevel::where('warehouse_id', $sourceWarehouseId)
+                    ->where('product_id', $pId)
+                    ->first();
+                $avail = $stock ? (int) ($stock->physical_stock - $stock->allocated_stock) : 0;
+                if ($avail < $qty) {
+                    $prod = Product::find($pId);
+                    $prodName = $prod ? $prod->name : "Product #{$pId}";
+                    $prodCode = $prod ? " ({$prod->code})" : "";
+                    $errorMsg = "❌ Cannot dispatch transfer: '{$prodName}'{$prodCode} only has {$avail} physical unit(s) available in this shop, but {$qty} unit(s) were requested.";
+                    if ($request->wantsJson() || $request->expectsJson()) {
+                        return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    }
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+            }
+        }
+
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Dispatch Officer';
         $tenantId = session('tenant_id') ?? Auth::user()->tenant_id ?? 'default-tenant';
@@ -345,6 +377,12 @@ class StockController extends Controller
             }
 
             return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
+        } catch (\App\Exceptions\InsufficientStockException $e) {
+            $msg = "❌ " . $e->getMessage();
+            if ($request->wantsJson() || $request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         } catch (\InvalidArgumentException $e) {
             if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
@@ -576,6 +614,17 @@ class StockController extends Controller
         $carriers = Transfer::distinct()->whereNotNull('carrier_name')->where('carrier_name', '!=', '')->pluck('carrier_name');
         $allProducts = Product::where('archived', false)->get();
 
+        // Map of physical available stock per warehouse per product
+        $warehouseStockMap = StockLevel::select('warehouse_id', 'product_id', 'physical_stock', 'allocated_stock')
+            ->get()
+            ->groupBy('warehouse_id')
+            ->map(function ($items) {
+                return $items->keyBy('product_id')->map(function ($s) {
+                    return max(0, (int) ($s->physical_stock - $s->allocated_stock));
+                });
+            })
+            ->toArray();
+
         return view('stock.transfers', compact(
             'allTransfers',
             'pendingCount',
@@ -583,6 +632,7 @@ class StockController extends Controller
             'discrepancyCount',
             'warehouses',
             'allWarehouses',
+            'warehouseStockMap',
             'isBranchStaff',
             'userWarehouse',
             'carriers',
