@@ -30,7 +30,7 @@ echo "[1/4] Testing Add New Worker Form (POST /users)...\n";
 $reqAdd = Request::create('/users', 'POST', [
     'name' => 'Worker Form Test',
     'email' => 'worker_form_test@vmarketpos.com',
-    'password' => 'password123',
+    'password' => 'SecurePass123!',
     'role' => 'manager',
 ]);
 
@@ -80,7 +80,7 @@ try {
 // 4. Reset Password Form
 echo "[4/4] Testing Reset Password Form (POST /users/reset-password/{id})...\n";
 $reqReset = Request::create("/users/reset-password/{$newUser->id}", 'POST', [
-    'new_password' => 'newpassword123',
+    'new_password' => 'NewSecurePass123!',
 ]);
 
 try {

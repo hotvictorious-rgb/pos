@@ -118,7 +118,7 @@ class User extends Authenticatable
      */
     public function isAdmin(): bool
     {
-        return $this->role === 'admin' || $this->role === 'super_admin';
+        return in_array($this->role, ['admin', 'super_admin', 'owner', 'store_owner'], true);
     }
 
     /**
@@ -127,9 +127,9 @@ class User extends Authenticatable
     public function isTenantAdmin(): bool
     {
         if (config('saas.enabled')) {
-            return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant' && $this->role === 'admin';
+            return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant' && in_array($this->role, ['admin', 'owner', 'store_owner'], true);
         }
-        return $this->role === 'admin';
+        return in_array($this->role, ['admin', 'owner', 'store_owner'], true);
     }
 
     /**
@@ -137,10 +137,7 @@ class User extends Authenticatable
      */
     public function isTenantEmployee(): bool
     {
-        if (config('saas.enabled')) {
-            return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant' && $this->role !== 'admin';
-        }
-        return $this->role !== 'admin';
+        return !$this->isTenantAdmin() && !$this->isPlatformAdmin();
     }
 
     /**
@@ -249,7 +246,7 @@ class User extends Authenticatable
      */
     public function isExecutive(): bool
     {
-        return $this->isTenantAdmin();
+        return $this->isAdmin() || in_array($this->role, ['executive_readonly', 'viewer'], true);
     }
 
     /**
@@ -257,7 +254,10 @@ class User extends Authenticatable
      */
     public function isBranchScoped(): bool
     {
-        return !empty($this->warehouse_id) && !$this->isExecutive();
+        if ($this->isAdmin()) {
+            return false;
+        }
+        return !empty($this->warehouse_id);
     }
 
     /**
@@ -280,8 +280,8 @@ class User extends Authenticatable
             }
         }
 
-        // 2. Executive HQ owners have business-wide branch access
-        if ($this->isExecutive() && empty($this->warehouse_id)) {
+        // 2. Administrators and business-wide executives have full multi-branch access
+        if ($this->isAdmin() || ($this->isExecutive() && empty($this->warehouse_id))) {
             return true;
         }
 

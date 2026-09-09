@@ -110,7 +110,7 @@ class UserController extends Controller
                 'reports' => false,
                 'users' => false,
             ],
-            'manager' => [
+            'manager', 'branch_manager' => [
                 'pos' => true,
                 'debts' => true,
                 'returns' => true,
@@ -232,6 +232,11 @@ class UserController extends Controller
         $user = User::findOrFail($id);
         $authUser = Auth::user();
 
+        // 🔒 Protection: Store Owner and Administrator accounts cannot be locked or disabled
+        if ($user->isAdmin() || $user->isSuperAdmin() || (!config('saas.enabled') && in_array($user->role, ['manager', 'branch_manager'])) || ($authUser && $user->id === $authUser->id)) {
+            return back()->with('error', 'Security Violation: Store Owner and Administrator accounts cannot be locked or disabled.');
+        }
+
         // 🔒 Invariant VM-023: Branch-Scoped Capability Boundary
         if ($authUser && $authUser->isBranchScoped()) {
             if ($user->warehouse_id !== $authUser->warehouse_id) {
@@ -313,6 +318,9 @@ class UserController extends Controller
         if ($user->isSuperAdmin() && $newRole !== 'super_admin') {
             return back()->withErrors(['role' => 'Forbidden: The platform root Super-Administrator account cannot be demoted.']);
         }
+        if ($user->isAdmin() && !in_array($newRole, ['admin', 'super_admin'])) {
+            return back()->withErrors(['role' => 'Forbidden: The Store Owner administrator account cannot be demoted through worker management.']);
+        }
 
         if ($authUser && $authUser->isBranchScoped()) {
             $newWarehouseId = $authUser->warehouse_id;
@@ -361,7 +369,7 @@ class UserController extends Controller
                 'reports' => false,
                 'users' => false,
             ],
-            'branch_manager' => [
+            'manager', 'branch_manager' => [
                 'pos' => true,
                 'debts' => true,
                 'returns' => true,

@@ -137,6 +137,15 @@ class StockController extends Controller
         $categories = Product::distinct()->whereNotNull('category')->pluck('category');
         $suppliers = Supplier::all();
 
+        // Physical unallocated stock map for active shop
+        $shopStockMap = StockLevel::where('warehouse_id', $activeWarehouse->id)
+            ->get()
+            ->keyBy('product_id')
+            ->map(function ($s) {
+                return max(0, (int) ($s->physical_stock - $s->allocated_stock));
+            })
+            ->toArray();
+
         // Pending incoming transfers for this shop
         $incomingTransfers = Transfer::with(['source', 'items'])
             ->where('destination_warehouse_id', $activeWarehouse->id)
@@ -158,6 +167,7 @@ class StockController extends Controller
             'warehouses',
             'activeWarehouse',
             'stockLevels',
+            'shopStockMap',
             'allProducts',
             'categories',
             'suppliers',
@@ -258,7 +268,11 @@ class StockController extends Controller
     {
         $user = Auth::user();
         if ($user && !$user->isExecutive() && empty($user->warehouse_id)) {
-            return back()->withErrors(['error' => '🔒 Unauthorized: You are not assigned to any branch location!']);
+            $msg = '🔒 Unauthorized: You are not assigned to any branch location!';
+            if ($request->wantsJson() || $request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 403);
+            }
+            return back()->withErrors(['error' => $msg]);
         }
 
         if ($user && $user->isBranchScoped()) {
@@ -266,24 +280,64 @@ class StockController extends Controller
         } else {
             $sourceWarehouseId = (int) $request->source_warehouse_id;
             if ($user && !$user->canDispatchTransfer($sourceWarehouseId)) {
-                return back()->withErrors(['error' => '🔒 Unauthorized: You cannot dispatch transfers out of an unassigned branch!']);
+                $msg = '🔒 Unauthorized: You cannot dispatch transfers out of an unassigned branch!';
+                if ($request->wantsJson() || $request->expectsJson()) {
+                    return response()->json(['success' => false, 'error' => $msg], 403);
+                }
+                return back()->withErrors(['error' => $msg]);
             }
         }
 
         $destWarehouseId = (int) $request->destination_warehouse_id;
 
-        if ($sourceWarehouseId === $destWarehouseId) {
-            return back()->withErrors(['error' => 'Destination shop must be different from the source shop!'])->withInput();
+        // Ensure source_warehouse_id is merged into request for validation rules
+        $request->merge(['source_warehouse_id' => $sourceWarehouseId]);
+
+        // Strict Backend Guard: Origin and Destination can never be identical or empty
+        if ($sourceWarehouseId === $destWarehouseId || empty($sourceWarehouseId) || empty($destWarehouseId)) {
+            $errorMsg = 'Destination shop cannot be the same as the origin / source shop!';
+            if ($request->wantsJson() || $request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $errorMsg], 422);
+            }
+            return back()->withErrors([
+                'destination_warehouse_id' => $errorMsg,
+                'error' => $errorMsg
+            ])->withInput();
         }
 
         $request->validate([
-            'destination_warehouse_id' => 'required',
+            'source_warehouse_id' => 'required|integer',
+            'destination_warehouse_id' => 'required|integer|different:source_warehouse_id',
             'items' => 'required|array|min:1',
             'items.*.productId' => 'nullable',
             'items.*.product_id' => 'nullable',
             'items.*.quantity' => 'required|integer|min:1',
             'carrier_name' => 'required|string|max:100',
+        ], [
+            'destination_warehouse_id.different' => 'Destination shop must be different from the origin / source shop!',
         ]);
+
+        // Strict Physical Stock Verification: Verify origin shop has sufficient unallocated units
+        foreach ($request->items as $item) {
+            $pId = $item['productId'] ?? $item['product_id'] ?? null;
+            $qty = (int) ($item['quantity'] ?? 0);
+            if ($pId && $qty > 0) {
+                $stock = StockLevel::where('warehouse_id', $sourceWarehouseId)
+                    ->where('product_id', $pId)
+                    ->first();
+                $avail = $stock ? (int) ($stock->physical_stock - $stock->allocated_stock) : 0;
+                if ($avail < $qty) {
+                    $prod = Product::find($pId);
+                    $prodName = $prod ? $prod->name : "Product #{$pId}";
+                    $prodCode = $prod ? " ({$prod->code})" : "";
+                    $errorMsg = "❌ Cannot dispatch transfer: '{$prodName}'{$prodCode} only has {$avail} physical unit(s) available in this shop, but {$qty} unit(s) were requested.";
+                    if ($request->wantsJson() || $request->expectsJson()) {
+                        return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    }
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+            }
+        }
 
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Dispatch Officer';
@@ -323,6 +377,12 @@ class StockController extends Controller
             }
 
             return redirect()->route('stock.transfers')->with('success', "✓ Transfer #{$transfer->transfer_no} dispatched! Goods in transit to destination.");
+        } catch (\App\Exceptions\InsufficientStockException $e) {
+            $msg = "❌ " . $e->getMessage();
+            if ($request->wantsJson() || $request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         } catch (\InvalidArgumentException $e) {
             if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
@@ -554,6 +614,17 @@ class StockController extends Controller
         $carriers = Transfer::distinct()->whereNotNull('carrier_name')->where('carrier_name', '!=', '')->pluck('carrier_name');
         $allProducts = Product::where('archived', false)->get();
 
+        // Map of physical available stock per warehouse per product
+        $warehouseStockMap = StockLevel::select('warehouse_id', 'product_id', 'physical_stock', 'allocated_stock')
+            ->get()
+            ->groupBy('warehouse_id')
+            ->map(function ($items) {
+                return $items->keyBy('product_id')->map(function ($s) {
+                    return max(0, (int) ($s->physical_stock - $s->allocated_stock));
+                });
+            })
+            ->toArray();
+
         return view('stock.transfers', compact(
             'allTransfers',
             'pendingCount',
@@ -561,6 +632,7 @@ class StockController extends Controller
             'discrepancyCount',
             'warehouses',
             'allWarehouses',
+            'warehouseStockMap',
             'isBranchStaff',
             'userWarehouse',
             'carriers',
@@ -745,8 +817,11 @@ class StockController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('product_id', 'like', "%{$search}%")
+                  ->orWhere('product_name', 'like', "%{$search}%")
+                  ->orWhere('product_code', 'like', "%{$search}%")
+                  ->orWhere('type', 'like', "%{$search}%")
                   ->orWhere('reason', 'like', "%{$search}%")
-                  ->orWhere('performed_by', 'like', "%{$search}%");
+                  ->orWhere('recorded_by', 'like', "%{$search}%");
             });
         }
 
@@ -756,10 +831,22 @@ class StockController extends Controller
 
         $products = Product::where('archived', false)->orderBy('name')->get();
 
+        // Physical available stock per warehouse per product for modal validation
+        $warehouseStockMap = StockLevel::select('warehouse_id', 'product_id', 'physical_stock', 'allocated_stock')
+            ->get()
+            ->groupBy('warehouse_id')
+            ->map(function ($items) {
+                return $items->keyBy('product_id')->map(function ($s) {
+                    return max(0, (int) ($s->physical_stock - $s->allocated_stock));
+                });
+            })
+            ->toArray();
+
         return view('stock.adjustments', compact(
             'adjustments',
             'warehouses',
             'products',
+            'warehouseStockMap',
             'totalAdjustmentsCount',
             'totalUnitsLost',
             'datePreset',
@@ -772,7 +859,7 @@ class StockController extends Controller
     }
 
     /**
-     * Record Stock Adjustment (Damages/Loss).
+     * Record Stock Out / Stock Adjustment (Damages, Expiry, Internal Use, Loss).
      */
     public function recordAdjustment(Request $request)
     {
@@ -792,13 +879,32 @@ class StockController extends Controller
 
         $request->validate([
             'product_id' => 'required',
-            'type' => 'required|string',
+            'type' => 'required|string|max:50',
             'quantity' => 'required|numeric|min:1',
-            'reason' => 'required|string',
+            'reason' => 'nullable|string|max:500',
         ]);
 
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Storekeeper';
+
+        // Accommodating Reason: If user leaves reason blank, default to friendly type title
+        $typeTitles = [
+            'DAMAGE' => 'Physical Damage / Broken Goods',
+            'EXPIRED' => 'Expired / Past Shelf Life',
+            'INTERNAL_USE' => 'Internal Store Use / Staff Consumption',
+            'SAMPLE' => 'Promotional Sample / Marketing Giveaway',
+            'SHRINKAGE' => 'Stock Shrinkage / Missing from Shelf',
+            'THEFT' => 'Theft / Pilferage / Unaccounted Loss',
+            'SUPPLIER_RETURN' => 'Return of Defective Batch to Supplier',
+            'CORRECTION' => 'Downward Count Correction / Audit Reconciliation',
+            'CUSTOMER_GOODWILL' => 'Customer Compensation / Goodwill Replacement',
+            'OTHER' => 'General Stock Out',
+        ];
+        $typeKey = strtoupper(trim($request->type));
+        $reason = trim((string)$request->reason);
+        if ($reason === '') {
+            $reason = $typeTitles[$typeKey] ?? ucwords(strtolower(str_replace('_', ' ', $typeKey)));
+        }
 
         try {
             $idempotencyKey = $this->resolveIdempotencyKey($request);
@@ -811,13 +917,13 @@ class StockController extends Controller
                 (string) $tenantId,
                 (string) $userId,
                 $request->all(),
-                function () use ($request, $warehouseId, $userId, $userName) {
+                function () use ($request, $warehouseId, $typeKey, $reason, $userId, $userName) {
                     return $this->stockService->recordStockAdjustment(
                         $request->product_id,
                         $warehouseId,
-                        $request->type,
+                        $typeKey,
                         (int) $request->quantity,
-                        $request->reason,
+                        $reason,
                         $userId,
                         $userName
                     );
@@ -825,10 +931,16 @@ class StockController extends Controller
             );
 
             if ($request->expectsJson()) {
-                return response()->json(['success' => true, 'message' => '✓ Stock Adjustment logged successfully! Audit trail updated.']);
+                return response()->json(['success' => true, 'message' => '✓ Stock Out / Adjustment logged successfully! Audit trail updated.']);
             }
 
-            return redirect()->route('stock.adjustments')->with('success', '✓ Stock Adjustment logged successfully! Audit trail updated.');
+            return redirect()->route('stock.adjustments')->with('success', '✓ Stock Out / Adjustment logged successfully! Audit trail updated.');
+        } catch (\App\Exceptions\InsufficientStockException $e) {
+            $msg = "❌ Cannot record stock out: " . $e->getMessage();
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         } catch (\Throwable $e) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);

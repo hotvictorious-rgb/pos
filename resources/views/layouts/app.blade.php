@@ -358,19 +358,18 @@
                 <span>🏠</span> <span>{{ $currentRole === 'cashier' ? 'My Shift Summary' : ($currentRole === 'storekeeper' ? 'Stock Hub' : 'Dashboard') }}</span>
             </a>
 
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'cashier']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'cashier', 'staff', 'sales_officer']))
                 <!-- Big POS Button -->
                 <a href="{{ route('pos.index') }}" class="nav-item pos-btn {{ request()->routeIs('pos.index') ? 'active' : '' }}">
                     <span>💰</span> <span>Sell Goods (POS)</span>
                 </a>
             @endif
 
-            <div class="menu-category">Inventory & Stock</div>
-            <a href="{{ route('products.index') }}" class="nav-item {{ request()->routeIs('products.*') ? 'active' : '' }}">
-                <span>🛍️</span> <span>Products Catalog</span>
-            </a>
-
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'storekeeper', 'viewer']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'storekeeper', 'viewer', 'executive_readonly']))
+                <div class="menu-category">Inventory & Stock</div>
+                <a href="{{ route('products.index') }}" class="nav-item {{ request()->routeIs('products.*') ? 'active' : '' }}">
+                    <span>🛍️</span> <span>Products Catalog</span>
+                </a>
                 <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
                     <span>📦</span> <span>Stock In / Out</span>
                 </a>
@@ -381,7 +380,7 @@
                     <span>⏳</span> <span>Pickup Orders</span>
                 </a>
                 <a href="{{ route('stock.adjustments') }}" class="nav-item {{ request()->routeIs('stock.adjustments') ? 'active' : '' }}">
-                    <span>📉</span> <span>Damaged Goods</span>
+                    <span>📉</span> <span>Stock Out / Adjustments</span>
                 </a>
             @endif
 
@@ -390,22 +389,21 @@
                 <span>📜</span> <span>{{ $currentRole === 'cashier' ? 'My Sales History' : 'History & Ledgers' }}</span>
             </a>
 
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'cashier']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'cashier', 'staff', 'sales_officer']))
                 <a href="{{ route('pos.returns') }}" class="nav-item {{ request()->routeIs('pos.returns') ? 'active' : '' }}">
                     <span>🔄</span> <span>Returns & Refunds</span>
                 </a>
             @endif
 
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'viewer']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'cashier', 'staff', 'sales_officer', 'viewer', 'executive_readonly']))
                 <a href="{{ route('debts.index') }}" class="nav-item {{ request()->routeIs('debts.*') ? 'active' : '' }}">
                     <span>💳</span> <span>Customer Debts</span>
                 </a>
             @endif
 
-
-            @if(in_array($currentRole, ['admin', 'manager', 'viewer']))
+            @if(in_array($currentRole, ['admin', 'super_admin', 'manager', 'branch_manager', 'owner', 'store_owner', 'viewer', 'executive_readonly']))
                 <div class="menu-category">Management & Reports</div>
-                @if(in_array($currentRole, ['admin', 'viewer']))
+                @if(in_array($currentRole, ['admin', 'super_admin', 'owner', 'store_owner', 'viewer', 'executive_readonly']))
                     <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
                         <span>🚨</span> <span>Auditor Control Hub</span>
                     </a>
@@ -413,12 +411,10 @@
                 <a href="{{ route('reports.index') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
                     <span>📊</span> <span>Reports & AI Exports</span>
                 </a>
-                @if(in_array($currentRole, ['admin', 'viewer']))
+                @if(in_array($currentRole, ['admin', 'super_admin', 'owner', 'store_owner']))
                     <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
                         <span>👥</span> <span>Workers & Roles</span>
                     </a>
-                @endif
-                @if($currentRole === 'admin')
                     <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
                         <span>⚙️</span> <span>System Settings</span>
                     </a>
@@ -866,6 +862,258 @@
                 }
             });
             pendingConfirmAction = null;
+        }
+    });
+
+    // =========================================================================
+    // GLOBAL SEARCHABLE PRODUCT PICKER ENGINE
+    // =========================================================================
+    window.spcInstances = {};
+
+    function escapeSpcHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    window.initSearchableProductPickers = function() {
+        document.querySelectorAll('.searchable-product-picker').forEach(wrapper => {
+            const select = wrapper.querySelector('.spc-raw-select');
+            if (!select) return;
+            const id = select.id;
+            const products = [];
+
+            Array.from(select.options).forEach(opt => {
+                if (!opt.value) return;
+                products.push({
+                    id: opt.value,
+                    name: opt.dataset.name || opt.text,
+                    code: opt.dataset.code || '',
+                    category: opt.dataset.category || '',
+                    price: parseFloat(opt.dataset.price || 0)
+                });
+            });
+
+            window.spcInstances[id] = {
+                id: id,
+                wrapper: wrapper,
+                select: select,
+                products: products,
+                filtered: products,
+                highlightedIndex: -1,
+                isOpen: false
+            };
+
+            // If select already has a value, sync selected card
+            if (select.value) {
+                const p = products.find(prod => String(prod.id) === String(select.value));
+                if (p) {
+                    window.spcShowSelected(id, p);
+                }
+            }
+        });
+    };
+
+    window.spcOpen = function(id) {
+        const inst = window.spcInstances[id];
+        if (!inst) {
+            window.initSearchableProductPickers();
+            if (!window.spcInstances[id]) return;
+        }
+        const instance = window.spcInstances[id];
+        const input = document.getElementById('spc_input_' + id);
+        const query = input ? input.value : '';
+        window.spcFilter(id, query);
+        const dropdown = document.getElementById('spc_dropdown_' + id);
+        if (dropdown) dropdown.style.display = 'block';
+        instance.isOpen = true;
+    };
+
+    window.spcClose = function(id) {
+        const dropdown = document.getElementById('spc_dropdown_' + id);
+        if (dropdown) dropdown.style.display = 'none';
+        const inst = window.spcInstances[id];
+        if (inst) {
+            inst.isOpen = false;
+            inst.highlightedIndex = -1;
+        }
+    };
+
+    window.spcFilter = function(id, query) {
+        const inst = window.spcInstances[id];
+        if (!inst) return;
+        const q = (query || '').toLowerCase().trim();
+        const clearBtn = document.getElementById('spc_clear_btn_' + id);
+        if (clearBtn) clearBtn.style.display = q.length > 0 ? 'block' : 'none';
+
+        if (!q) {
+            inst.filtered = inst.products;
+        } else {
+            inst.filtered = inst.products.filter(p => {
+                return (p.name && p.name.toLowerCase().includes(q)) ||
+                       (p.code && p.code.toLowerCase().includes(q)) ||
+                       (p.category && p.category.toLowerCase().includes(q));
+            });
+        }
+
+        inst.highlightedIndex = inst.filtered.length > 0 ? 0 : -1;
+        window.spcRenderList(id, q);
+    };
+
+    window.spcRenderList = function(id, query) {
+        const inst = window.spcInstances[id];
+        if (!inst) return;
+        const listEl = document.getElementById('spc_list_' + id);
+        const emptyEl = document.getElementById('spc_empty_' + id);
+        const termEl = document.getElementById('spc_term_' + id);
+        if (!listEl) return;
+
+        if (inst.filtered.length === 0) {
+            listEl.innerHTML = '';
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (termEl) termEl.textContent = query;
+            return;
+        }
+
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        const renderSlice = inst.filtered.slice(0, 40);
+        let html = '';
+
+        renderSlice.forEach((p, idx) => {
+            const isHigh = (idx === inst.highlightedIndex);
+            const highBg = isHigh ? 'background: #1e293b;' : '';
+            const priceHtml = p.price > 0 
+                ? `<span style="color: #34d399; font-weight: 700; font-size: 0.78rem;">₦${Number(p.price).toLocaleString()}</span>` 
+                : '';
+
+            html += `
+            <div class="spc-item" data-idx="${idx}" onclick="window.spcSelect('${id}', '${p.id}')"
+                 onmouseenter="window.spcHighlight('${id}', ${idx})"
+                 style="padding: 0.65rem 0.95rem; cursor: pointer; border-bottom: 1px solid rgba(55,65,81,0.4); ${highBg} transition: background 0.12s;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.65rem;">
+                    <span style="font-weight: 700; color: #f9fafb; font-size: 0.88rem;">${escapeSpcHtml(p.name)}</span>
+                    <span style="background: rgba(37,99,235,0.2); color: #60a5fa; border: 1px solid rgba(37,99,235,0.4); padding: 0.12rem 0.45rem; border-radius: 4px; font-size: 0.72rem; font-family: monospace; font-weight: 700; flex-shrink: 0;">${escapeSpcHtml(p.code)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.25rem; font-size: 0.75rem; color: #9ca3af;">
+                    <span>${escapeSpcHtml(p.category || 'General')}</span>
+                    ${priceHtml}
+                </div>
+            </div>`;
+        });
+
+        if (inst.filtered.length > 40) {
+            html += `<div style="padding: 0.5rem; text-align: center; color: #64748b; font-size: 0.75rem;">+ ${inst.filtered.length - 40} more products. Refine search to narrow down.</div>`;
+        }
+
+        listEl.innerHTML = html;
+    };
+
+    window.spcHighlight = function(id, idx) {
+        const inst = window.spcInstances[id];
+        if (!inst) return;
+        inst.highlightedIndex = idx;
+        const listEl = document.getElementById('spc_list_' + id);
+        if (listEl) {
+            listEl.querySelectorAll('.spc-item').forEach((item, i) => {
+                item.style.background = (i === idx) ? '#1e293b' : 'transparent';
+            });
+        }
+    };
+
+    window.spcSelect = function(id, productId) {
+        const inst = window.spcInstances[id];
+        if (!inst) return;
+        const p = inst.products.find(item => String(item.id) === String(productId));
+        if (!p) return;
+
+        inst.select.value = p.id;
+        inst.select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        window.spcShowSelected(id, p);
+        window.spcClose(id);
+    };
+
+    window.spcShowSelected = function(id, p) {
+        const selectedView = document.getElementById('spc_selected_' + id);
+        const searchBox = document.getElementById('spc_search_' + id);
+        if (selectedView) {
+            const nameEl = selectedView.querySelector('.spc-selected-name');
+            const codeEl = selectedView.querySelector('.spc-selected-code');
+            const catEl = selectedView.querySelector('.spc-selected-category');
+            if (nameEl) nameEl.textContent = p.name;
+            if (codeEl) codeEl.textContent = p.code;
+            if (catEl) catEl.textContent = p.category ? '• ' + p.category : '';
+            selectedView.style.display = 'flex';
+        }
+        if (searchBox) searchBox.style.display = 'none';
+    };
+
+    window.spcReset = function(id) {
+        const inst = window.spcInstances[id];
+        if (inst) {
+            inst.select.value = "";
+            inst.select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        const selectedView = document.getElementById('spc_selected_' + id);
+        const searchBox = document.getElementById('spc_search_' + id);
+        const input = document.getElementById('spc_input_' + id);
+
+        if (selectedView) selectedView.style.display = 'none';
+        if (searchBox) searchBox.style.display = 'block';
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+        window.spcOpen(id);
+    };
+
+    window.spcClearInput = function(id) {
+        const input = document.getElementById('spc_input_' + id);
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+        window.spcFilter(id, '');
+    };
+
+    window.spcKeydown = function(id, event) {
+        const inst = window.spcInstances[id];
+        if (!inst) return;
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (inst.highlightedIndex < inst.filtered.length - 1) {
+                window.spcHighlight(id, inst.highlightedIndex + 1);
+            }
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (inst.highlightedIndex > 0) {
+                window.spcHighlight(id, inst.highlightedIndex - 1);
+            }
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            if (inst.highlightedIndex >= 0 && inst.highlightedIndex < inst.filtered.length) {
+                const chosen = inst.filtered[inst.highlightedIndex];
+                window.spcSelect(id, chosen.id);
+            }
+        } else if (event.key === 'Escape') {
+            window.spcClose(id);
+        }
+    };
+
+    // Auto-init on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        window.initSearchableProductPickers();
+    });
+
+    // Close any open product picker dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.searchable-product-picker')) {
+            if (window.spcInstances) {
+                Object.keys(window.spcInstances).forEach(id => {
+                    window.spcClose(id);
+                });
+            }
         }
     });
     </script>

@@ -138,6 +138,9 @@
             <a href="{{ route('stock.transfers') }}" class="btn btn-secondary">
                 🚚 Shop Transfers
             </a>
+            <a href="{{ route('stock.adjustments') }}" class="btn btn-secondary">
+                📉 Stock Out / Adjustments
+            </a>
             <a href="{{ route('transactions.index') }}" class="btn btn-secondary">
                 📜 Ledgers Hub
             </a>
@@ -195,6 +198,17 @@
             <div>
                 <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Not Supplied (Pickups)</h3>
                 <p style="font-size: 0.85rem; color: var(--text-muted);">Items sold, paid for, but awaiting customer pickup.</p>
+            </div>
+        </a>
+
+        <!-- 4. Stock Out / Inventory Adjustments -->
+        <a href="{{ route('stock.adjustments') }}" class="stock-card" style="border-color: rgba(239,68,68,0.4); text-decoration: none; color: inherit;">
+            <div class="card-icon-wrap" style="background: rgba(239,68,68,0.15); color: #f87171;">
+                📉
+            </div>
+            <div>
+                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Stock Out / Adjustments</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Record damages, expiry, store use, samples, or losses.</p>
             </div>
         </a>
     </div>
@@ -359,12 +373,14 @@
                 <input type="hidden" name="warehouse_id" value="{{ $activeWarehouse->id }}">
 
                 <div class="form-group">
-                    <label>Select Product SKU</label>
-                    <select name="product_id" id="stockInProduct" required>
-                        @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->code }}</option>
-                        @endforeach
-                    </select>
+                    <label>Select Product (Search by Name or SKU)</label>
+                    @include('components.searchable-product-picker', [
+                        'id' => 'stockInProduct',
+                        'name' => 'product_id',
+                        'products' => $allProducts,
+                        'placeholder' => '🔍 Type product name, brand, or SKU code...',
+                        'required' => true
+                    ])
                 </div>
 
                 <div class="form-group">
@@ -403,23 +419,31 @@
                 <input type="hidden" name="source_warehouse_id" value="{{ $activeWarehouse->id }}">
 
                 <div class="form-group">
-                    <label>Destination Shop</label>
+                    <label>Destination Shop (Must be different from {{ $activeWarehouse->name }})</label>
                     <select name="destination_warehouse_id" id="transferDestWh" required>
+                        @php $destCount = 0; @endphp
                         @foreach($warehouses as $wh)
                             @if($wh->id != $activeWarehouse->id)
+                                @php $destCount++; @endphp
                                 <option value="{{ $wh->id }}">🏢 {{ $wh->name }} ({{ $wh->code }})</option>
                             @endif
                         @endforeach
+                        @if($destCount === 0)
+                            <option value="">⚠️ No other branch shops available</option>
+                        @endif
                     </select>
                 </div>
 
                 <div class="form-group">
-                    <label>Select Product SKU</label>
-                    <select name="items[0][productId]" id="transferProduct" required>
-                        @foreach($allProducts as $p)
-                            <option value="{{ $p->id }}">{{ $p->code }}</option>
-                        @endforeach
-                    </select>
+                    <label>Select Product to Send (Search by Name or SKU)</label>
+                    @include('components.searchable-product-picker', [
+                        'id' => 'transferProduct',
+                        'name' => 'items[0][productId]',
+                        'products' => $allProducts,
+                        'placeholder' => '🔍 Type product name, brand, or SKU code...',
+                        'required' => true
+                    ])
+                    <div id="transferStockBadge" style="display: none; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.82rem; font-weight: 700;"></div>
                 </div>
 
                 <div class="form-group">
@@ -506,19 +530,35 @@ function filterTableRows(tableId, query) {
 
 function openModal(id) {
     document.getElementById(id).style.display = 'flex';
+    if (window.initSearchableProductPickers) {
+        window.initSearchableProductPickers();
+    }
 }
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
 }
 
 function confirmStockIn() {
+    const prodSelect = document.getElementById('stockInProduct');
+    if (!prodSelect || !prodSelect.value) {
+        showActionBlockedModal({
+            title: 'Product Selection Required',
+            subtitle: 'Missing Product for Stock In',
+            errors: [{
+                title: 'Please Select a Product',
+                desc: 'You must search and select which product arrived before saving.',
+                focus: 'spc_input_stockInProduct'
+            }]
+        });
+        return;
+    }
+
     const form = document.getElementById('stockInForm');
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
 
-    const prodSelect = document.getElementById('stockInProduct');
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
     const qty = document.getElementById('stockInQty').value;
     const supplier = document.getElementById('stockInSupplier').value || 'Unspecified Supplier';
@@ -546,18 +586,126 @@ function confirmStockIn() {
     });
 }
 
+window.shopStockMap = @json($shopStockMap ?? []);
+
+function updateTransferStockBadge() {
+    const prodEl = document.getElementById('transferProduct');
+    const badge = document.getElementById('transferStockBadge');
+    const qtyInput = document.getElementById('transferQty');
+    if (!prodEl || !badge) return;
+
+    const prodId = prodEl.value;
+    if (!prodId) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    const avail = (window.shopStockMap && window.shopStockMap[prodId] !== undefined)
+        ? parseInt(window.shopStockMap[prodId], 10)
+        : 0;
+    const reqQty = parseInt(qtyInput ? qtyInput.value : 0, 10) || 0;
+
+    badge.style.display = 'block';
+    if (avail <= 0) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '❌ <strong>0 physical units available</strong> in {{ addslashes($activeWarehouse->name) }} (Transfer Blocked: No stock on ground)';
+    } else if (reqQty > avail) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '⚠️ Requested <strong>' + reqQty + ' unit(s)</strong> exceeds physical ground count of <strong>' + avail + ' unit(s)</strong> in {{ addslashes($activeWarehouse->name) }}';
+    } else {
+        badge.style.background = 'rgba(16, 185, 129, 0.12)';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        badge.style.color = '#6ee7b7';
+        badge.innerHTML = '✅ <strong>' + avail + ' physical unit(s)</strong> available on ground in {{ addslashes($activeWarehouse->name) }}';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const prodEl = document.getElementById('transferProduct');
+    if (prodEl) {
+        prodEl.addEventListener('change', updateTransferStockBadge);
+    }
+    const qtyEl = document.getElementById('transferQty');
+    if (qtyEl) {
+        qtyEl.addEventListener('input', updateTransferStockBadge);
+    }
+});
+
 function confirmTransferOut() {
+    const prodSelect = document.getElementById('transferProduct');
+    if (!prodSelect || !prodSelect.value) {
+        showActionBlockedModal({
+            title: 'Product Selection Required',
+            subtitle: 'Missing Product for Dispatch',
+            errors: [{
+                title: 'Please Select a Product',
+                desc: 'You must search and select which product to send before dispatching.',
+                focus: 'spc_input_transferProduct'
+            }]
+        });
+        return;
+    }
+
+    const prodId = prodSelect.value;
+    const qty = parseInt(document.getElementById('transferQty').value || 0, 10);
+    const avail = (window.shopStockMap && window.shopStockMap[prodId] !== undefined)
+        ? parseInt(window.shopStockMap[prodId], 10)
+        : 0;
+
+    if (avail <= 0) {
+        showActionBlockedModal({
+            title: 'No Physical Stock in Shop',
+            subtitle: 'Zero Physical Count On Ground',
+            errors: [{
+                title: 'Item Out of Stock at Origin Branch',
+                desc: 'This origin branch ({{ addslashes($activeWarehouse->name) }}) currently has 0 physical available units for the selected product. You cannot dispatch goods that are not physically present on the ground.',
+                focus: 'spc_input_transferProduct'
+            }]
+        });
+        return;
+    }
+
+    if (qty > avail) {
+        showActionBlockedModal({
+            title: 'Quantity Exceeds Physical Stock',
+            subtitle: 'Insufficient Stock Available to Transfer',
+            errors: [{
+                title: 'Requested Qty (' + qty + ') > Ground Stock (' + avail + ')',
+                desc: 'You requested to transfer ' + qty + ' unit(s), but only ' + avail + ' physical unit(s) are available in {{ addslashes($activeWarehouse->name) }}. Please reduce quantity or stock in first.',
+                focus: 'transferQty'
+            }]
+        });
+        return;
+    }
+
+    const destSelect = document.getElementById('transferDestWh');
+    const sourceWh = '{{ $activeWarehouse->id }}';
+    const destWh = destSelect ? destSelect.value : '';
+
+    if (!destWh || String(destWh) === String(sourceWh)) {
+        showActionBlockedModal({
+            title: 'Invalid Destination Branch',
+            subtitle: 'Different Destination Shop Required',
+            errors: [{
+                title: 'Destination Cannot Match Origin',
+                desc: 'Destination shop cannot be the same as the origin branch ({{ addslashes($activeWarehouse->name) }}). You must dispatch to a different active shop location.',
+                focus: 'transferDestWh'
+            }]
+        });
+        return;
+    }
+
     const form = document.getElementById('transferOutForm');
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
-
-    const destSelect = document.getElementById('transferDestWh');
     const destName = destSelect.options[destSelect.selectedIndex].text;
-    const prodSelect = document.getElementById('transferProduct');
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
-    const qty = document.getElementById('transferQty').value;
     const carrier = document.getElementById('transferCarrier').value;
 
     closeModal('modalTransferOut');

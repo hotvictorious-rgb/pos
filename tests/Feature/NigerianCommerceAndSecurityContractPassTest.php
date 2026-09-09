@@ -409,10 +409,15 @@ class NigerianCommerceAndSecurityContractPassTest extends TestCase
         $calc11 = $this->accountingService->calculateCheckout($largeCart, ['cashAmount' => 4250000, 'posAmount' => 0]);
         $this->assertEquals(4250000, $calc11['grossTotal']);
 
-        // 012: Server-authoritative pricing overrides client-tampered price
-        $tamperedCart = [['productId' => $this->productRice50kg->id, 'quantity' => 1, 'unitPrice' => 100]]; // Fake ₦100
-        $calc12 = $this->accountingService->calculateCheckout($tamperedCart, ['cashAmount' => 85000, 'posAmount' => 0]);
-        $this->assertEquals(85000, $calc12['grossTotal'], 'Server catalog price of 85,000 must override client price');
+        // 012: Price negotiation at checkout allows seller to set negotiated price (Option 3 Unrestricted)
+        $negotiatedCart = [['productId' => $this->productRice50kg->id, 'quantity' => 1, 'unitPrice' => 80000]]; // Negotiated ₦80,000
+        $calc12 = $this->accountingService->calculateCheckout($negotiatedCart, ['cashAmount' => 80000, 'posAmount' => 0]);
+        $this->assertEquals(80000, $calc12['grossTotal'], 'Negotiated price of 80,000 should be respected');
+
+        // Fallback: Default catalog price applies when no custom unitPrice is specified
+        $defaultCart = [['productId' => $this->productRice50kg->id, 'quantity' => 1]];
+        $calcDefault = $this->accountingService->calculateCheckout($defaultCart, ['cashAmount' => 85000, 'posAmount' => 0]);
+        $this->assertEquals(85000, $calcDefault['grossTotal'], 'Catalog price of 85,000 applies when no custom price is sent');
 
         // 013-014: Drawer balances reconcile against immutable payment events
         $reportSummary = $this->accountingService->getPeriodSummary(['warehouse_id' => $this->warehouseAlabaMain->id, 'date_preset' => 'ALL']);

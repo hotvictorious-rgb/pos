@@ -454,28 +454,27 @@ class ProductionHardeningPass11Test extends TestCase
             'active_warehouse_id' => $this->warehouseA1->id,
         ]);
 
-        // Attacker attempts to checkout ₦25,000 item for ₦100 by tampering unitPrice and authorized_unit_price
+        // Under Option 3: Unrestricted Selling Price Negotiation, seller can negotiate selling price at checkout
         $res = $this->post(route('pos.checkout'), [
             'warehouse_id' => $this->warehouseA1->id,
             'items' => [[
                 'productId' => $this->productA->id,
                 'quantity' => 1,
-                'unitPrice' => 100, // Tampered client price
-                'authorized_unit_price' => 100, // Malicious injected key
+                'unitPrice' => 20000, // Negotiated price ₦20,000
             ]],
-            'cashAmount' => 25000,
+            'cashAmount' => 20000,
             'posAmount' => 0,
-            'paidAmount' => 25000,
+            'paidAmount' => 20000,
             'is_supplied' => 'yes',
         ]);
         $res->assertRedirect();
 
         $sale = Sale::latest()->first();
-        // Server catalog price of ₦25,000 MUST be enforced, ignoring both unitPrice and authorized_unit_price
-        $this->assertEquals(25000.00, (float) $sale->totalAmount);
+        // Negotiated price of ₦20,000 is honored under Option 3
+        $this->assertEquals(20000.00, (float) $sale->totalAmount);
         $saleItem = SaleItem::where('saleId', $sale->id)->first();
-        $this->assertEquals(25000.00, (float) $saleItem->unitPrice);
-        $this->assertEquals(25000.00, (float) $saleItem->totalPrice);
+        $this->assertEquals(20000.00, (float) $saleItem->unitPrice);
+        $this->assertEquals(20000.00, (float) $saleItem->totalPrice);
     }
 
     /**
