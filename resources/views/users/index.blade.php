@@ -76,9 +76,55 @@
         </div>
     </div>
 
+    @php
+        $storeOwners = $users->filter(fn($u) => $u->role === 'admin' || $u->role === 'super_admin');
+        $staffWorkers = $users->filter(fn($u) => $u->role !== 'admin' && $u->role !== 'super_admin');
+    @endphp
+
+    @if($storeOwners->isNotEmpty() && !auth()->user()?->isBranchScoped())
+        <!-- Dedicated Business Owner & Root Administrator Card -->
+        <div style="margin-bottom: 2rem;">
+            <div style="font-size: 0.82rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.45rem;">
+                <span>👑</span> Business Owner & Primary Administrator
+            </div>
+            @foreach($storeOwners as $owner)
+                <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 16px; padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; box-shadow: 0 8px 25px rgba(0,0,0,0.25);">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                            👑
+                        </div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc; margin: 0;">{{ $owner->name }}</h3>
+                                <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7; font-size: 0.72rem; padding: 0.2rem 0.55rem;">
+                                    👑 STORE OWNER (HQ ROOT)
+                                </span>
+                            </div>
+                            <div style="font-size: 0.82rem; color: #94a3b8; margin-top: 0.25rem;">
+                                {{ $owner->email }} · <span style="color: #60a5fa;">All Branches / Central HQ</span> · <span style="color: #4ade80;">✓ Root Active (Non-Lockable)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <a href="{{ route('account.password') }}" class="btn btn-secondary" style="padding: 0.45rem 0.95rem; font-size: 0.82rem; border-color: rgba(168, 85, 247, 0.4); color: #c084fc; display: inline-flex; align-items: center; gap: 0.35rem;" title="Change your account password">
+                            <span>🔑</span> <span>Change My Password</span>
+                        </a>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    @endif
+
+    <!-- Staff & Workers Section Header -->
+    <div style="font-size: 0.82rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.85rem; display: flex; align-items: center; justify-content: space-between;">
+        <span style="display: flex; align-items: center; gap: 0.45rem;">
+            <span>👥</span> Hired Staff & Branch Workers ({{ $staffWorkers->count() }})
+        </span>
+    </div>
+
     <!-- Workers Grid -->
     <div class="user-grid">
-        @forelse($users as $u)
+        @forelse($staffWorkers as $u)
         <div class="user-card {{ $u->disabled ? 'disabled-card' : '' }}">
             <div>
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
@@ -138,7 +184,10 @@
         </div>
         @empty
         <div style="grid-column: 1/-1; text-align: center; padding: 3rem; background: var(--card-bg); border-radius: 18px;">
-            <h3>No Workers Registered</h3>
+            <h3>No Staff Workers Registered</h3>
+            <p style="color: var(--text-muted); font-size: 0.88rem; margin-top: 0.35rem;">
+                Click <strong>"+ Add New Worker"</strong> above to create accounts for branch managers, cashiers, or storekeepers.
+            </p>
         </div>
         @endforelse
     </div>
