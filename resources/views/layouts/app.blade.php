@@ -358,19 +358,18 @@
                 <span>🏠</span> <span>{{ $currentRole === 'cashier' ? 'My Shift Summary' : ($currentRole === 'storekeeper' ? 'Stock Hub' : 'Dashboard') }}</span>
             </a>
 
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'cashier']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'cashier', 'staff', 'sales_officer']))
                 <!-- Big POS Button -->
                 <a href="{{ route('pos.index') }}" class="nav-item pos-btn {{ request()->routeIs('pos.index') ? 'active' : '' }}">
                     <span>💰</span> <span>Sell Goods (POS)</span>
                 </a>
             @endif
 
-            <div class="menu-category">Inventory & Stock</div>
-            <a href="{{ route('products.index') }}" class="nav-item {{ request()->routeIs('products.*') ? 'active' : '' }}">
-                <span>🛍️</span> <span>Products Catalog</span>
-            </a>
-
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'storekeeper', 'viewer']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'storekeeper', 'viewer', 'executive_readonly']))
+                <div class="menu-category">Inventory & Stock</div>
+                <a href="{{ route('products.index') }}" class="nav-item {{ request()->routeIs('products.*') ? 'active' : '' }}">
+                    <span>🛍️</span> <span>Products Catalog</span>
+                </a>
                 <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
                     <span>📦</span> <span>Stock In / Out</span>
                 </a>
@@ -390,22 +389,21 @@
                 <span>📜</span> <span>{{ $currentRole === 'cashier' ? 'My Sales History' : 'History & Ledgers' }}</span>
             </a>
 
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'cashier']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'cashier', 'staff', 'sales_officer']))
                 <a href="{{ route('pos.returns') }}" class="nav-item {{ request()->routeIs('pos.returns') ? 'active' : '' }}">
                     <span>🔄</span> <span>Returns & Refunds</span>
                 </a>
             @endif
 
-            @if(in_array($currentRole, ['admin', 'manager', 'sales_stock', 'viewer']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'cashier', 'staff', 'sales_officer', 'viewer', 'executive_readonly']))
                 <a href="{{ route('debts.index') }}" class="nav-item {{ request()->routeIs('debts.*') ? 'active' : '' }}">
                     <span>💳</span> <span>Customer Debts</span>
                 </a>
             @endif
 
-
-            @if(in_array($currentRole, ['admin', 'manager', 'viewer']))
+            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'viewer', 'executive_readonly']))
                 <div class="menu-category">Management & Reports</div>
-                @if(in_array($currentRole, ['admin', 'viewer']))
+                @if(in_array($currentRole, ['admin', 'viewer', 'executive_readonly']))
                     <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
                         <span>🚨</span> <span>Auditor Control Hub</span>
                     </a>
@@ -413,12 +411,10 @@
                 <a href="{{ route('reports.index') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
                     <span>📊</span> <span>Reports & AI Exports</span>
                 </a>
-                @if(in_array($currentRole, ['admin', 'viewer']))
+                @if($currentRole === 'admin')
                     <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
                         <span>👥</span> <span>Workers & Roles</span>
                     </a>
-                @endif
-                @if($currentRole === 'admin')
                     <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
                         <span>⚙️</span> <span>System Settings</span>
                     </a>

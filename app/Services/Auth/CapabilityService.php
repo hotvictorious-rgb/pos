@@ -135,12 +135,29 @@ class CapabilityService
             'reports.view', 'reports.export',
             'transactions.view', 'transactions.export',
         ],
+        'manager' => [
+            'pos.view', 'pos.checkout',
+            'customer.read', 'customer.write',
+            'debt.view', 'debt.pay',
+            'returns.view', 'returns.process',
+            'products.view', 'products.write',
+            'stock.view', 'stock.in', 'stock.transfer', 'stock.receive', 'stock.recall', 'stock.adjust',
+            'reports.view', 'reports.export',
+            'transactions.view', 'transactions.export',
+        ],
         'storekeeper' => [
             'products.view', 'products.write',
             'stock.view', 'stock.in', 'stock.transfer', 'stock.receive', 'stock.recall', 'stock.adjust',
             'transactions.view', 'transactions.export',
         ],
         'cashier' => [
+            'pos.view', 'pos.checkout',
+            'customer.read', 'customer.write',
+            'debt.view', 'debt.pay',
+            'returns.view', 'returns.process',
+            'transactions.view',
+        ],
+        'staff' => [
             'pos.view', 'pos.checkout',
             'customer.read', 'customer.write',
             'debt.view', 'debt.pay',
@@ -202,8 +219,9 @@ class CapabilityService
 
         $capabilities = self::$roleCapabilities[$role] ?? [];
 
-        // Apply explicit permission overrides from user record if present
-        if (is_array($user->permissions)) {
+        // Apply explicit permission overrides from user record if present (safely decoding JSON if string)
+        $userPerms = is_string($user->permissions) ? json_decode($user->permissions, true) : $user->permissions;
+        if (is_array($userPerms)) {
             // Map legacy key names to capability sets if needed
             $legacyMap = [
                 'pos' => ['pos.view', 'pos.checkout'],
@@ -217,7 +235,7 @@ class CapabilityService
                 'users' => ['users.manage'],
             ];
 
-            foreach ($user->permissions as $key => $allowed) {
+            foreach ($userPerms as $key => $allowed) {
                 // Support indexed string list: ['platform.health', 'platform.tenants']
                 if (is_int($key) && is_string($allowed) && in_array($allowed, self::CAPABILITIES, true)) {
                     $capabilities[] = $allowed;

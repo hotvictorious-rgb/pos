@@ -110,7 +110,7 @@ class UserController extends Controller
                 'reports' => false,
                 'users' => false,
             ],
-            'manager' => [
+            'manager', 'branch_manager' => [
                 'pos' => true,
                 'debts' => true,
                 'returns' => true,
@@ -361,7 +361,7 @@ class UserController extends Controller
                 'reports' => false,
                 'users' => false,
             ],
-            'branch_manager' => [
+            'manager', 'branch_manager' => [
                 'pos' => true,
                 'debts' => true,
                 'returns' => true,

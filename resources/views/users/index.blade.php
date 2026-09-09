@@ -53,17 +53,25 @@
 
     <!-- Role Explanation Banner -->
     <div style="background: rgba(37,99,235,0.1); border: 1px solid rgba(37,99,235,0.3); border-radius: 16px; padding: 1.25rem; margin-bottom: 2rem;">
-        <h4 style="font-size: 0.85rem; font-weight: 800; color: #93c5fd; text-text-transform: uppercase; margin-bottom: 0.5rem;">
-            🛡️ 2-Role Branch Authority Model:
+        <h4 style="font-size: 0.85rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; margin-bottom: 0.75rem;">
+            🛡️ Store Roles & Access Boundaries:
         </h4>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; font-size: 0.88rem; color: #cbd5e1;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.85rem; font-size: 0.88rem; color: #cbd5e1;">
             <div style="background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); padding: 0.85rem; border-radius: 12px;">
-                <strong style="color: #60a5fa;">🏢 1. Branch Manager (Full Operational Access):</strong><br>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Sells goods (POS), manages products, stock-in/out, transfers, pickup orders, debt ledgers, returns, worker accounts, and views all reports.</span>
+                <strong style="color: #60a5fa;">🏢 1. Branch Manager:</strong><br>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Full shop operations: POS checkout, stock in/out, shop transfers, customer debts, returns, and branch reports.</span>
+            </div>
+            <div style="background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); padding: 0.85rem; border-radius: 12px;">
+                <strong style="color: #34d399;">💰 2. Cashier:</strong><br>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Frontline checkout: POS sales, till cash collection, debt recovery payments, and returns. No stock/catalog edits.</span>
+            </div>
+            <div style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 0.85rem; border-radius: 12px;">
+                <strong style="color: #fbbf24;">📦 3. Storekeeper:</strong><br>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Inventory logistics: Stock in/out, inter-shop transfers, damaged goods write-off, and product catalog. No POS or cash handling.</span>
             </div>
             <div style="background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.3); padding: 0.85rem; border-radius: 12px;">
-                <strong style="color: #facc15;">👑 2. Executive Readonly (View-Only Observer):</strong><br>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Monitors dashboard, views stock levels, reviews sales reports, inspects debt ledgers, views auditor logs, and exports analytics (Read-Only).</span>
+                <strong style="color: #facc15;">👑 4. Executive Observer:</strong><br>
+                <span style="font-size: 0.8rem; color: #94a3b8;">View-only inspection across all branch dashboards, sales ledgers, stock counts, and financial analytics.</span>
             </div>
         </div>
     </div>
@@ -79,13 +87,15 @@
                         <div style="font-size: 0.8rem; color: var(--text-muted);">{{ $u->email }}</div>
                     </div>
                     @php
-                        $isExecutive = in_array($u->role, ['viewer', 'executive_readonly']);
-                        $roleClass = $isExecutive ? 'role-badge-admin' : 'role-badge-manager';
-                        $roleIcon = $isExecutive ? '👑' : '🏢';
-                        $roleTitle = $isExecutive ? 'EXECUTIVE READONLY' : 'BRANCH MANAGER';
-                        $roleStyle = $isExecutive 
-                            ? 'background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308;'
-                            : 'background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6;';
+                        $role = $u->role;
+                        [$roleClass, $roleIcon, $roleTitle, $roleStyle] = match($role) {
+                            'admin' => ['role-badge-admin', '👑', 'STORE OWNER', 'background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7;'],
+                            'manager', 'branch_manager' => ['role-badge-manager', '🏢', 'BRANCH MANAGER', 'background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6;'],
+                            'cashier' => ['role-badge-cashier', '💰', 'CASHIER', 'background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981;'],
+                            'storekeeper' => ['role-badge-storekeeper', '📦', 'STOREKEEPER', 'background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b;'],
+                            'viewer', 'executive_readonly' => ['role-badge-viewer', '👁️', 'EXECUTIVE OBSERVER', 'background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308;'],
+                            default => ['role-badge-staff', '👤', strtoupper(str_replace('_', ' ', $role)), 'background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid #64748b;'],
+                        };
                     @endphp
                     <span class="badge {{ $roleClass }}" style="{{ $roleStyle }}">
                         {{ $roleIcon }} {{ $roleTitle }}
@@ -157,7 +167,9 @@
                     <div class="form-group">
                         <label>Assign Role Authority</label>
                         <select name="role" id="editUserRole" required>
-                            <option value="manager">🏢 Branch Manager (Full Operational Access)</option>
+                            <option value="manager">🏢 Branch Manager (Full Shop Operations)</option>
+                            <option value="cashier">💰 Cashier (POS Checkout & Daily Sales)</option>
+                            <option value="storekeeper">📦 Storekeeper (Inventory & Stock Logistics)</option>
                             <option value="viewer">👑 Executive Readonly (View-Only Observer)</option>
                         </select>
                     </div>
@@ -193,7 +205,7 @@
         <div class="modal">
             <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">➕ Add New Worker Account</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-                Set up a login for branch managers or executive observers.
+                Set up an account for branch managers, cashiers, storekeepers, or executive observers.
             </p>
 
             <form id="addUserForm" method="POST" action="{{ route('users.store') }}">
@@ -217,7 +229,9 @@
                     <div class="form-group">
                         <label>Assign Role Authority</label>
                         <select name="role" id="newUserRole" required>
-                            <option value="manager" selected>🏢 Branch Manager (Full Operational Access)</option>
+                            <option value="manager" selected>🏢 Branch Manager (Full Shop Operations)</option>
+                            <option value="cashier">💰 Cashier (POS Checkout & Daily Sales)</option>
+                            <option value="storekeeper">📦 Storekeeper (Inventory & Stock Logistics)</option>
                             <option value="viewer">👑 Executive Readonly (View-Only Observer)</option>
                         </select>
                     </div>

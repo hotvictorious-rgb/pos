@@ -339,9 +339,15 @@
             <span class="exec-badge badge-date">
                 📅 {{ $rangeLabel }}
             </span>
-            <a href="{{ route('pos.index', $warehouseId ? ['warehouse_id' => $warehouseId] : []) }}" class="btn btn-success btn-sm" style="font-weight: 800; padding: 0.45rem 1rem; border-radius: 10px; box-shadow: 0 4px 15px rgba(22,163,74,0.35);">
-                💰 Launch POS
-            </a>
+            @if(in_array($userRole, ['admin', 'manager', 'branch_manager', 'cashier']))
+                <a href="{{ route('pos.index', $warehouseId ? ['warehouse_id' => $warehouseId] : []) }}" class="btn btn-success btn-sm" style="font-weight: 800; padding: 0.45rem 1rem; border-radius: 10px; box-shadow: 0 4px 15px rgba(22,163,74,0.35);">
+                    💰 Launch POS
+                </a>
+            @elseif($userRole === 'storekeeper')
+                <a href="{{ route('stock.index') }}" class="btn btn-primary btn-sm" style="font-weight: 800; padding: 0.45rem 1rem; border-radius: 10px;">
+                    📦 Stock In / Out
+                </a>
+            @endif
         </div>
     </div>
 
@@ -484,7 +490,58 @@
         </div>
     @endif
 
-    @if($userRole !== 'cashier')
+    @if($userRole === 'storekeeper')
+    <!-- STOREKEEPER INVENTORY HUB HERO -->
+    <div class="hero-grid">
+        <!-- 1. Physical Units on Shelves -->
+        <div class="hero-card hero-stock">
+            <div>
+                <div class="hero-label">Total Stock on Shelves</div>
+                <div class="hero-val" style="color: #818cf8;">{{ number_format($totalPhysicalUnits) }} Units</div>
+                <span class="hero-sub">{{ $totalProducts }} distinct items cataloged</span>
+            </div>
+            <div class="hero-icon" style="background: rgba(129, 140, 248, 0.15); color: #818cf8;">
+                📦
+            </div>
+        </div>
+
+        <!-- 2. Low Stock Alerts -->
+        <div class="hero-card" style="background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.3);">
+            <div>
+                <div class="hero-label">Low / Out of Stock Alerts</div>
+                <div class="hero-val" style="color: #fbbf24;">{{ $lowStockCount + $outOfStockCount }} Items</div>
+                <span class="hero-sub">{{ $outOfStockCount }} completely empty · {{ $lowStockCount }} running low</span>
+            </div>
+            <div class="hero-icon" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">
+                ⚠️
+            </div>
+        </div>
+
+        <!-- 3. Stock Inbound Movement -->
+        <div class="hero-card hero-sales">
+            <div>
+                <div class="hero-label">Stock Received (Period)</div>
+                <div class="hero-val" style="color: #34d399;">+{{ number_format($totalStockInUnits) }} Units</div>
+                <span class="hero-sub">Stock-in, receipts & transfers in</span>
+            </div>
+            <div class="hero-icon" style="background: rgba(52, 211, 153, 0.15); color: #34d399;">
+                📥
+            </div>
+        </div>
+
+        <!-- 4. Damaged Goods Written Off -->
+        <div class="hero-card" style="background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3);">
+            <div>
+                <div class="hero-label">Damaged / Broken Goods</div>
+                <div class="hero-val" style="color: #f87171;">{{ number_format($damagedUnits) }} Units</div>
+                <span class="hero-sub">Adjustments & write-offs</span>
+            </div>
+            <div class="hero-icon" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">
+                💔
+            </div>
+        </div>
+    </div>
+    @elseif($userRole !== 'cashier')
     <!-- 4 HERO KEY METRIC CARDS -->
     <div class="hero-grid">
         <!-- 1. Gross Sales -->
@@ -538,6 +595,71 @@
 
     <!-- 3-COLUMN OPERATIONAL PANELS -->
     <div class="panels-grid">
+        @if($userRole === 'storekeeper')
+        <!-- Panel 1: Product Catalog Overview (Storekeeper) -->
+        <div class="panel-card">
+            <div class="panel-header">
+                <span class="panel-title"><span>🛍️</span> Product Catalog</span>
+                <a href="{{ route('products.index') }}" class="btn btn-outline-secondary btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                    Catalog →
+                </a>
+            </div>
+
+            <div class="panel-list">
+                <div class="panel-item">
+                    <div class="panel-item-left">
+                        <span class="panel-item-icon">🏷️</span>
+                        <div>
+                            <div class="panel-item-name">Total Active SKUs</div>
+                            <div class="panel-item-sub">Registered products</div>
+                        </div>
+                    </div>
+                    <div class="panel-item-val" style="color: #38bdf8;">
+                        {{ number_format($totalProducts) }}
+                    </div>
+                </div>
+
+                <div class="panel-item">
+                    <div class="panel-item-left">
+                        <span class="panel-item-icon">✅</span>
+                        <div>
+                            <div class="panel-item-name">Well-Stocked Items</div>
+                            <div class="panel-item-sub">Sufficient inventory (&gt;5 units)</div>
+                        </div>
+                    </div>
+                    <div class="panel-item-val" style="color: #34d399;">
+                        {{ number_format(max(0, $totalProducts - $lowStockCount - $outOfStockCount)) }}
+                    </div>
+                </div>
+
+                <div class="panel-item">
+                    <div class="panel-item-left">
+                        <span class="panel-item-icon">⚠️</span>
+                        <div>
+                            <div class="panel-item-name">Low Stock Threshold</div>
+                            <div class="panel-item-sub">5 units or less on shelves</div>
+                        </div>
+                    </div>
+                    <div class="panel-item-val" style="color: {{ $lowStockCount > 0 ? '#facc15' : '#94a3b8' }};">
+                        {{ $lowStockCount }}
+                    </div>
+                </div>
+
+                <div class="panel-item">
+                    <div class="panel-item-left">
+                        <span class="panel-item-icon">❌</span>
+                        <div>
+                            <div class="panel-item-name">Out of Stock</div>
+                            <div class="panel-item-sub">Needs urgent reorder</div>
+                        </div>
+                    </div>
+                    <div class="panel-item-val" style="color: {{ $outOfStockCount > 0 ? '#f87171' : '#4ade80' }};">
+                        {{ $outOfStockCount }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        @else
         <!-- Panel 1: Payment Flow & Credit -->
         <div class="panel-card">
             <div class="panel-header">
@@ -601,6 +723,7 @@
                 </div>
             </div>
         </div>
+        @endif
 
         <!-- Panel 2: Stock Flow & Logistics -->
         <div class="panel-card">
