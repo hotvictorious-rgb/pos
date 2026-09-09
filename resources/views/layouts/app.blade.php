@@ -380,7 +380,7 @@
                     <span>⏳</span> <span>Pickup Orders</span>
                 </a>
                 <a href="{{ route('stock.adjustments') }}" class="nav-item {{ request()->routeIs('stock.adjustments') ? 'active' : '' }}">
-                    <span>📉</span> <span>Damaged Goods</span>
+                    <span>📉</span> <span>Stock Out / Adjustments</span>
                 </a>
             @endif
 

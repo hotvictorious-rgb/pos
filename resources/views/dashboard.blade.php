@@ -529,15 +529,15 @@
             </div>
         </div>
 
-        <!-- 4. Damaged Goods Written Off -->
+        <!-- 4. Stock Out / Adjustments -->
         <div class="hero-card" style="background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3);">
             <div>
-                <div class="hero-label">Damaged / Broken Goods</div>
+                <div class="hero-label">Stock Out / Adjustments</div>
                 <div class="hero-val" style="color: #f87171;">{{ number_format($damagedUnits) }} Units</div>
-                <span class="hero-sub">Adjustments & write-offs</span>
+                <span class="hero-sub">Damages, expiry & usage</span>
             </div>
             <div class="hero-icon" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">
-                💔
+                📉
             </div>
         </div>
     </div>
@@ -814,10 +814,10 @@
 
                 <div class="panel-item">
                     <div class="panel-item-left">
-                        <span class="panel-item-icon">💔</span>
+                        <span class="panel-item-icon">📉</span>
                         <div>
-                            <div class="panel-item-name">Damaged Goods Written-off</div>
-                            <div class="panel-item-sub">Broken, expired or lost items</div>
+                            <div class="panel-item-name">Stock Out & Adjustments</div>
+                            <div class="panel-item-sub">Damaged, expired, internal use or lost items</div>
                         </div>
                     </div>
                     <div class="panel-item-val" style="color: {{ $damagedUnits > 0 ? '#fbbf24' : '#94a3b8' }};">

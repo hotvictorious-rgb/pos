@@ -817,8 +817,11 @@ class StockController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('product_id', 'like', "%{$search}%")
+                  ->orWhere('product_name', 'like', "%{$search}%")
+                  ->orWhere('product_code', 'like', "%{$search}%")
+                  ->orWhere('type', 'like', "%{$search}%")
                   ->orWhere('reason', 'like', "%{$search}%")
-                  ->orWhere('performed_by', 'like', "%{$search}%");
+                  ->orWhere('recorded_by', 'like', "%{$search}%");
             });
         }
 
@@ -828,10 +831,22 @@ class StockController extends Controller
 
         $products = Product::where('archived', false)->orderBy('name')->get();
 
+        // Physical available stock per warehouse per product for modal validation
+        $warehouseStockMap = StockLevel::select('warehouse_id', 'product_id', 'physical_stock', 'allocated_stock')
+            ->get()
+            ->groupBy('warehouse_id')
+            ->map(function ($items) {
+                return $items->keyBy('product_id')->map(function ($s) {
+                    return max(0, (int) ($s->physical_stock - $s->allocated_stock));
+                });
+            })
+            ->toArray();
+
         return view('stock.adjustments', compact(
             'adjustments',
             'warehouses',
             'products',
+            'warehouseStockMap',
             'totalAdjustmentsCount',
             'totalUnitsLost',
             'datePreset',
@@ -844,7 +859,7 @@ class StockController extends Controller
     }
 
     /**
-     * Record Stock Adjustment (Damages/Loss).
+     * Record Stock Out / Stock Adjustment (Damages, Expiry, Internal Use, Loss).
      */
     public function recordAdjustment(Request $request)
     {
@@ -864,13 +879,32 @@ class StockController extends Controller
 
         $request->validate([
             'product_id' => 'required',
-            'type' => 'required|string',
+            'type' => 'required|string|max:50',
             'quantity' => 'required|numeric|min:1',
-            'reason' => 'required|string',
+            'reason' => 'nullable|string|max:500',
         ]);
 
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Storekeeper';
+
+        // Accommodating Reason: If user leaves reason blank, default to friendly type title
+        $typeTitles = [
+            'DAMAGE' => 'Physical Damage / Broken Goods',
+            'EXPIRED' => 'Expired / Past Shelf Life',
+            'INTERNAL_USE' => 'Internal Store Use / Staff Consumption',
+            'SAMPLE' => 'Promotional Sample / Marketing Giveaway',
+            'SHRINKAGE' => 'Stock Shrinkage / Missing from Shelf',
+            'THEFT' => 'Theft / Pilferage / Unaccounted Loss',
+            'SUPPLIER_RETURN' => 'Return of Defective Batch to Supplier',
+            'CORRECTION' => 'Downward Count Correction / Audit Reconciliation',
+            'CUSTOMER_GOODWILL' => 'Customer Compensation / Goodwill Replacement',
+            'OTHER' => 'General Stock Out',
+        ];
+        $typeKey = strtoupper(trim($request->type));
+        $reason = trim((string)$request->reason);
+        if ($reason === '') {
+            $reason = $typeTitles[$typeKey] ?? ucwords(strtolower(str_replace('_', ' ', $typeKey)));
+        }
 
         try {
             $idempotencyKey = $this->resolveIdempotencyKey($request);
@@ -883,13 +917,13 @@ class StockController extends Controller
                 (string) $tenantId,
                 (string) $userId,
                 $request->all(),
-                function () use ($request, $warehouseId, $userId, $userName) {
+                function () use ($request, $warehouseId, $typeKey, $reason, $userId, $userName) {
                     return $this->stockService->recordStockAdjustment(
                         $request->product_id,
                         $warehouseId,
-                        $request->type,
+                        $typeKey,
                         (int) $request->quantity,
-                        $request->reason,
+                        $reason,
                         $userId,
                         $userName
                     );
@@ -897,10 +931,16 @@ class StockController extends Controller
             );
 
             if ($request->expectsJson()) {
-                return response()->json(['success' => true, 'message' => '✓ Stock Adjustment logged successfully! Audit trail updated.']);
+                return response()->json(['success' => true, 'message' => '✓ Stock Out / Adjustment logged successfully! Audit trail updated.']);
             }
 
-            return redirect()->route('stock.adjustments')->with('success', '✓ Stock Adjustment logged successfully! Audit trail updated.');
+            return redirect()->route('stock.adjustments')->with('success', '✓ Stock Out / Adjustment logged successfully! Audit trail updated.');
+        } catch (\App\Exceptions\InsufficientStockException $e) {
+            $msg = "❌ Cannot record stock out: " . $e->getMessage();
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 422);
+            }
+            return back()->withErrors(['error' => $msg])->withInput();
         } catch (\Throwable $e) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);

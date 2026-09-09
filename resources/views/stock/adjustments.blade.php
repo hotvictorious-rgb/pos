@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Stock Adjustments & Damages')
+@section('title', 'Stock Out & Adjustments')
 
 @push('styles')
 <style>
@@ -74,17 +74,17 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-                <span style="font-size: 1.75rem;">📉</span>
-                <h2 style="font-size: 1.5rem; font-weight: 800;">Damaged & Expired Stock Write-offs</h2>
+                <span style="font-size: 1.75rem;">📦</span>
+                <h2 style="font-size: 1.5rem; font-weight: 800;">Stock Out & Inventory Adjustments</h2>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Officially record broken, expired, or lost goods on ground to maintain 100% physical count accuracy.
+                Officially record stock write-offs, damages, expiry, internal store usage, or count corrections to maintain 100% physical count accuracy.
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
             @if(auth()->user()?->role !== 'viewer')
                 <button class="btn btn-danger" onclick="openModal('modalStockAdjustment')">
-                    📉 Record Damaged Goods
+                    📉 Record Stock Out / Adjustment
                 </button>
             @else
                 <span style="font-size: 0.82rem; font-weight: 800; color: #facc15; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); padding: 0.5rem 1rem; border-radius: 10px;">
@@ -100,11 +100,11 @@
     <!-- Summary KPI Cards -->
     <div class="summary-grid">
         <div class="summary-card">
-            <h4>Adjustment Write-off Events</h4>
+            <h4>Stock Out & Adjustment Events</h4>
             <div class="val" style="color: #fbbf24;">{{ number_format($totalAdjustmentsCount) }}</div>
         </div>
         <div class="summary-card">
-            <h4>Total Physical Units Written Off</h4>
+            <h4>Total Physical Units Adjusted Out</h4>
             <div class="val" style="color: #f87171;">-{{ number_format($totalUnitsLost) }} units</div>
         </div>
     </div>
@@ -134,12 +134,19 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Reason Type</label>
+                    <label style="font-size: 0.75rem;">Stock Out / Reason Type</label>
                     <select name="type">
-                        <option value="">-- All Types --</option>
-                        <option value="DAMAGE" {{ request('type') === 'DAMAGE' ? 'selected' : '' }}>📉 Physical Damage / Breakage</option>
-                        <option value="EXPIRED" {{ request('type') === 'EXPIRED' ? 'selected' : '' }}>⏰ Expired Goods</option>
-                        <option value="LOST" {{ request('type') === 'LOST' ? 'selected' : '' }}>🔍 Lost / Shrinkage</option>
+                        <option value="">-- All Stock Out Types --</option>
+                        <option value="DAMAGE" {{ request('type') === 'DAMAGE' ? 'selected' : '' }}>💥 Physical Damage / Breakage</option>
+                        <option value="EXPIRED" {{ request('type') === 'EXPIRED' ? 'selected' : '' }}>⏳ Expired / Past Shelf Life</option>
+                        <option value="INTERNAL_USE" {{ request('type') === 'INTERNAL_USE' ? 'selected' : '' }}>🏢 Internal Store Use</option>
+                        <option value="SAMPLE" {{ request('type') === 'SAMPLE' ? 'selected' : '' }}>🎁 Sample / Giveaway</option>
+                        <option value="SHRINKAGE" {{ request('type') === 'SHRINKAGE' ? 'selected' : '' }}>🔍 Stock Shrinkage / Missing</option>
+                        <option value="THEFT" {{ request('type') === 'THEFT' ? 'selected' : '' }}>🚨 Theft / Pilferage</option>
+                        <option value="SUPPLIER_RETURN" {{ request('type') === 'SUPPLIER_RETURN' ? 'selected' : '' }}>🔄 Return to Supplier</option>
+                        <option value="CORRECTION" {{ request('type') === 'CORRECTION' ? 'selected' : '' }}>⚖️ Downward Count Correction</option>
+                        <option value="CUSTOMER_GOODWILL" {{ request('type') === 'CUSTOMER_GOODWILL' ? 'selected' : '' }}>🤝 Customer Replacement</option>
+                        <option value="OTHER" {{ request('type') === 'OTHER' ? 'selected' : '' }}>📝 Other / General</option>
                     </select>
                 </div>
 
@@ -174,7 +181,7 @@
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
             <h3 style="font-size: 1.25rem; font-weight: 800;">
-                Adjustments Audit Log
+                Stock Out & Adjustments Audit Log
             </h3>
             <div style="width: 280px;">
                 <input type="text" placeholder="⚡ Live search table..." onkeyup="filterTableRows('adjustmentsTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
@@ -186,11 +193,11 @@
                 <thead>
                     <tr>
                         <th>Date & Time</th>
-                        <th>Shop Branch</th>
+                        <th>Branch Shop</th>
                         <th>Product SKU</th>
-                        <th>Type</th>
+                        <th>Stock Out Type</th>
                         <th style="color: #f87171;">Qty Deducted</th>
-                        <th>Reason / Incident Note</th>
+                        <th>Reason / Notes</th>
                         <th>Staff Name</th>
                     </tr>
                 </thead>
@@ -206,13 +213,23 @@
                         </td>
                         <td>
                             @php
-                                $badge = match($adj->type) {
-                                    'DAMAGE' => 'badge-danger',
-                                    'EXPIRED' => 'badge-warning',
-                                    default => 'badge-info',
+                                $typeKey = strtoupper($adj->type);
+                                $badgeConfig = match($typeKey) {
+                                    'DAMAGE' => ['class' => 'badge-danger', 'icon' => '💥', 'label' => 'Damage'],
+                                    'EXPIRED' => ['class' => 'badge-warning', 'icon' => '⏳', 'label' => 'Expired'],
+                                    'INTERNAL_USE' => ['class' => 'badge-info', 'icon' => '🏢', 'label' => 'Internal Use'],
+                                    'SAMPLE' => ['class' => 'badge-primary', 'icon' => '🎁', 'label' => 'Sample'],
+                                    'SHRINKAGE' => ['class' => 'badge-warning', 'icon' => '🔍', 'label' => 'Shrinkage'],
+                                    'THEFT' => ['class' => 'badge-danger', 'icon' => '🚨', 'label' => 'Theft / Loss'],
+                                    'SUPPLIER_RETURN' => ['class' => 'badge-secondary', 'icon' => '🔄', 'label' => 'Supplier Return'],
+                                    'CORRECTION' => ['class' => 'badge-info', 'icon' => '⚖️', 'label' => 'Correction'],
+                                    'CUSTOMER_GOODWILL' => ['class' => 'badge-success', 'icon' => '🤝', 'label' => 'Replacement'],
+                                    default => ['class' => 'badge-secondary', 'icon' => '📉', 'label' => $adj->type],
                                 };
                             @endphp
-                            <span class="badge {{ $badge }}">{{ $adj->type }}</span>
+                            <span class="badge {{ $badgeConfig['class'] }}">
+                                {{ $badgeConfig['icon'] }} {{ $badgeConfig['label'] }}
+                            </span>
                         </td>
                         <td style="font-weight: 800; color: #f87171; font-size: 1.1rem;">
                             -{{ $adj->quantity }} units
@@ -223,7 +240,7 @@
                     @empty
                     <tr>
                         <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                            No damaged or lost stock adjustments matching your filters.
+                            No stock out or adjustment records matching your filters.
                         </td>
                     </tr>
                     @endforelse
@@ -235,12 +252,12 @@
         </div>
     </div>
 
-    <!-- Modal: Record Stock Adjustment -->
+    <!-- Modal: Record Stock Out / Adjustment -->
     <div id="modalStockAdjustment" class="modal-backdrop" style="display: none;">
         <div class="modal">
-            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">📉 Record Stock Damage / Loss</h3>
+            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">📉 Record Stock Out / Stock Adjustment</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-                Deducts unsellable items from the physical closing stock count.
+                Deduct items from physical inventory count due to damage, expiry, internal store usage, sample, loss, or count correction.
             </p>
 
             <form id="adjustmentForm" method="POST" action="{{ route('stock.adjustments.record') }}">
@@ -248,7 +265,7 @@
 
                 <div class="form-group">
                     <label>Branch Shop Location</label>
-                    <select name="warehouse_id" id="adjWarehouse" required>
+                    <select name="warehouse_id" id="adjWarehouse" required onchange="updateAdjStockBadge()">
                         @foreach($warehouses as $wh)
                             <option value="{{ $wh->id }}">{{ $wh->name }} ({{ $wh->code }})</option>
                         @endforeach
@@ -261,33 +278,41 @@
                         'id' => 'adjProduct',
                         'name' => 'product_id',
                         'products' => $products,
-                        'placeholder' => '🔍 Search damaged item by name, brand, or SKU...',
+                        'placeholder' => '🔍 Search item by name, brand, or SKU code...',
                         'required' => true
                     ])
+                    <div id="adjStockBadge" style="display: none; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.82rem; font-weight: 700;"></div>
                 </div>
 
                 <div class="form-group">
-                    <label>Adjustment Type</label>
+                    <label>Reason / Stock Out Type</label>
                     <select name="type" id="adjType" required>
-                        <option value="DAMAGE">Physical Damage / Broken Goods</option>
-                        <option value="EXPIRED">Expired Stock</option>
-                        <option value="LOST">Lost / Unaccounted Physical Shrinkage</option>
+                        <option value="DAMAGE">💥 Physical Damage / Broken / Defective Goods</option>
+                        <option value="EXPIRED">⏳ Expired / Past Shelf Life</option>
+                        <option value="INTERNAL_USE">🏢 Internal Store Use / Staff Consumption</option>
+                        <option value="SAMPLE">🎁 Promotional Sample / Marketing Giveaway</option>
+                        <option value="SHRINKAGE">🔍 Stock Shrinkage / Missing from Shelf</option>
+                        <option value="THEFT">🚨 Theft / Pilferage / Unaccounted Loss</option>
+                        <option value="SUPPLIER_RETURN">🔄 Return of Defective Batch to Supplier</option>
+                        <option value="CORRECTION">⚖️ Downward Count Correction / Audit Reconciliation</option>
+                        <option value="CUSTOMER_GOODWILL">🤝 Customer Compensation / Goodwill Replacement</option>
+                        <option value="OTHER">📝 Other / General Stock Out (Custom Note)</option>
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label>Quantity to Deduct (Units)</label>
-                    <input type="number" name="quantity" id="adjQty" min="1" placeholder="e.g. 5" required>
+                    <input type="number" name="quantity" id="adjQty" min="1" placeholder="e.g. 5" required oninput="updateAdjStockBadge()">
                 </div>
 
                 <div class="form-group">
-                    <label>Reason / Incident Description</label>
-                    <input type="text" name="reason" id="adjReason" placeholder="e.g. Broken bag during offloading" required>
+                    <label>Reason Note / Additional Details <span style="font-size: 0.78rem; font-weight: 500; color: var(--text-muted);">(Optional — leave blank to use reason above)</span></label>
+                    <input type="text" name="reason" id="adjReason" placeholder="Optional: explain incident or leave blank">
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalStockAdjustment')">Cancel</button>
-                    <button type="button" class="btn btn-danger" style="flex: 1;" onclick="confirmAdjustment()">📉 Confirm Write-off</button>
+                    <button type="button" class="btn btn-danger" style="flex: 1;" onclick="confirmAdjustment()">📉 Confirm Stock Out / Deduction</button>
                 </div>
             </form>
         </div>
@@ -297,6 +322,8 @@
 
 @push('scripts')
 <script>
+window.warehouseStockMap = @json($warehouseStockMap ?? []);
+
 function filterTableRows(tableId, query) {
     const q = query.toLowerCase().trim();
     const table = document.getElementById(tableId);
@@ -313,72 +340,152 @@ function openModal(id) {
     if (window.initSearchableProductPickers) {
         window.initSearchableProductPickers();
     }
+    updateAdjStockBadge();
 }
+
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
 }
 
+function updateAdjStockBadge() {
+    const prodEl = document.getElementById('adjProduct');
+    const badge = document.getElementById('adjStockBadge');
+    const whEl = document.getElementById('adjWarehouse');
+    const qtyInput = document.getElementById('adjQty');
+    if (!prodEl || !badge || !whEl) return;
+
+    const prodId = prodEl.value;
+    const whId = whEl.value;
+    if (!prodId || !whId) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    const avail = (window.warehouseStockMap && window.warehouseStockMap[whId] && window.warehouseStockMap[whId][prodId] !== undefined)
+        ? parseInt(window.warehouseStockMap[whId][prodId], 10)
+        : 0;
+    const reqQty = parseInt(qtyInput ? qtyInput.value : 0, 10) || 0;
+
+    badge.style.display = 'block';
+    if (avail <= 0) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '❌ <strong>0 physical units available</strong> in this branch shop (Cannot Deduct Out-of-Stock Item)';
+    } else if (reqQty > avail) {
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.style.color = '#fca5a5';
+        badge.innerHTML = '⚠️ Requested deduction of <strong>' + reqQty + ' unit(s)</strong> exceeds available ground stock of <strong>' + avail + ' unit(s)</strong>';
+    } else {
+        badge.style.background = 'rgba(16, 185, 129, 0.12)';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        badge.style.color = '#6ee7b7';
+        badge.innerHTML = '✅ <strong>' + avail + ' physical unit(s)</strong> available on ground in this branch';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const prodEl = document.getElementById('adjProduct');
+    if (prodEl) {
+        prodEl.addEventListener('change', updateAdjStockBadge);
+    }
+    const whEl = document.getElementById('adjWarehouse');
+    if (whEl) {
+        whEl.addEventListener('change', updateAdjStockBadge);
+    }
+    const qtyEl = document.getElementById('adjQty');
+    if (qtyEl) {
+        qtyEl.addEventListener('input', updateAdjStockBadge);
+    }
+});
+
 function confirmAdjustment() {
     const form = document.getElementById('adjustmentForm');
     const prodSelect = document.getElementById('adjProduct');
+    const whSelect = document.getElementById('adjWarehouse');
     const qty = parseInt(document.getElementById('adjQty').value) || 0;
-    const reason = document.getElementById('adjReason').value.trim();
-    const type = document.getElementById('adjType').value;
+    const reasonInput = document.getElementById('adjReason');
+    const typeSelect = document.getElementById('adjType');
     const errors = [];
 
     if (!prodSelect || !prodSelect.value) {
         errors.push({
             title: 'Product Selection Required',
-            desc: 'Please select which product suffered damage or physical shrinkage.',
+            desc: 'Please search and select which product to adjust or stock out.',
             focus: 'spc_input_adjProduct'
         });
     }
 
     if (qty <= 0) {
         errors.push({
-            title: 'Invalid Write-off Quantity',
-            desc: 'Please enter at least 1 unit to deduct.',
+            title: 'Invalid Stock Out Quantity',
+            desc: 'Please enter at least 1 unit to deduct from physical stock.',
             focus: 'adjQty'
         });
     }
 
-    if (!reason || reason.length < 4) {
-        errors.push({
-            title: 'Incident Description Mandatory',
-            desc: 'Please enter a detailed explanation of how and why the stock was damaged or lost for audit records.',
-            focus: 'adjReason'
-        });
+    const prodId = prodSelect ? prodSelect.value : null;
+    const whId = whSelect ? whSelect.value : null;
+    if (prodId && whId) {
+        const avail = (window.warehouseStockMap && window.warehouseStockMap[whId] && window.warehouseStockMap[whId][prodId] !== undefined)
+            ? parseInt(window.warehouseStockMap[whId][prodId], 10)
+            : 0;
+
+        if (avail <= 0) {
+            errors.push({
+                title: 'No Physical Stock in Shop',
+                desc: 'The selected branch shop currently has 0 physical units available for this product. You cannot adjust or write off zero-balance stock.',
+                focus: 'spc_input_adjProduct'
+            });
+        } else if (qty > avail) {
+            errors.push({
+                title: 'Quantity Exceeds Physical Stock (' + avail + ' available)',
+                desc: 'You requested to deduct ' + qty + ' unit(s), but only ' + avail + ' physical unit(s) are present in this shop. Please reduce the quantity.',
+                focus: 'adjQty'
+            });
+        }
     }
 
     if (errors.length > 0) {
         showActionBlockedModal({
-            title: 'Write-off Cannot Be Authorized',
-            subtitle: 'Please resolve the following audit requirements:',
+            title: 'Stock Out Cannot Be Authorized',
+            subtitle: 'Please resolve the following inventory requirements:',
             errors: errors
         });
         return;
     }
 
+    const selectedTypeText = typeSelect.options[typeSelect.selectedIndex].text;
+    const cleanTypeLabel = selectedTypeText.replace(/^[\p{Emoji}\s]+/u, '').trim();
+    let reason = reasonInput.value.trim();
+    if (!reason) {
+        reason = cleanTypeLabel;
+        reasonInput.value = cleanTypeLabel; // populate default for form submission
+    }
+
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
+    const whName = whSelect ? whSelect.options[whSelect.selectedIndex].text : 'Branch Shop';
 
     closeModal('modalStockAdjustment');
 
     showConfirmPopup({
         icon: '📉',
-        title: 'Confirm Stock Write-off',
-        subtitle: 'Authorize deduction of unsellable goods from physical inventory:',
+        title: 'Confirm Stock Out / Adjustment',
+        subtitle: 'Authorize deduction of inventory from physical count:',
         borderColor: '#ef4444',
         items: [
+            { label: 'Branch Shop', value: whName, color: '#60a5fa' },
             { label: 'Product', value: prodName, color: '#f8fafc' },
-            { label: 'Units to Write-off', value: '- ' + qty + ' units', color: '#f87171', size: '1.1rem' },
-            { label: 'Adjustment Type', value: type, color: '#fbbf24' },
-            { label: 'Reason', value: reason, color: '#cbd5e1' }
+            { label: 'Units to Deduct', value: '- ' + qty + ' units', color: '#f87171', size: '1.1rem' },
+            { label: 'Reason / Type', value: cleanTypeLabel, color: '#fbbf24' },
+            { label: 'Incident Notes', value: reason, color: '#cbd5e1' }
         ],
         impact: {
-            text: '🛡️ AUDIT WRITE-OFF: Reduces physical closing stock by ' + qty + ' units and writes a permanent entry in the Auditor activity ledger.',
+            text: '🛡️ INVENTORY REDUCTION: Deducts ' + qty + ' physical units from ' + whName + ' and writes an audit ledger entry.',
             type: 'danger'
         },
-        confirmText: '📉 Yes, Authorize Write-off',
+        confirmText: '📉 Yes, Authorize Stock Out',
         confirmClass: 'btn-danger',
         form: form
     });

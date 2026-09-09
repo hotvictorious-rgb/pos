@@ -138,6 +138,9 @@
             <a href="{{ route('stock.transfers') }}" class="btn btn-secondary">
                 🚚 Shop Transfers
             </a>
+            <a href="{{ route('stock.adjustments') }}" class="btn btn-secondary">
+                📉 Stock Out / Adjustments
+            </a>
             <a href="{{ route('transactions.index') }}" class="btn btn-secondary">
                 📜 Ledgers Hub
             </a>
@@ -195,6 +198,17 @@
             <div>
                 <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Not Supplied (Pickups)</h3>
                 <p style="font-size: 0.85rem; color: var(--text-muted);">Items sold, paid for, but awaiting customer pickup.</p>
+            </div>
+        </a>
+
+        <!-- 4. Stock Out / Inventory Adjustments -->
+        <a href="{{ route('stock.adjustments') }}" class="stock-card" style="border-color: rgba(239,68,68,0.4); text-decoration: none; color: inherit;">
+            <div class="card-icon-wrap" style="background: rgba(239,68,68,0.15); color: #f87171;">
+                📉
+            </div>
+            <div>
+                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Stock Out / Adjustments</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Record damages, expiry, store use, samples, or losses.</p>
             </div>
         </a>
     </div>
