@@ -401,17 +401,15 @@
                 </a>
             @endif
 
-            @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'viewer', 'executive_readonly']))
+            @if(in_array($currentRole, ['admin', 'super_admin', 'manager', 'branch_manager', 'owner', 'store_owner', 'viewer', 'executive_readonly']))
                 <div class="menu-category">Management & Reports</div>
-                @if(in_array($currentRole, ['admin', 'viewer', 'executive_readonly']))
-                    <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
-                        <span>🚨</span> <span>Auditor Control Hub</span>
-                    </a>
-                @endif
+                <a href="{{ route('auditor.index') }}" class="nav-item auditor-btn {{ request()->routeIs('auditor.*') ? 'active' : '' }}">
+                    <span>🚨</span> <span>Auditor Control Hub</span>
+                </a>
                 <a href="{{ route('reports.index') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
                     <span>📊</span> <span>Reports & AI Exports</span>
                 </a>
-                @if($currentRole === 'admin')
+                @if(in_array($currentRole, ['admin', 'super_admin', 'manager', 'branch_manager', 'owner', 'store_owner']))
                     <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
                         <span>👥</span> <span>Workers & Roles</span>
                     </a>

@@ -233,7 +233,7 @@ class UserController extends Controller
         $authUser = Auth::user();
 
         // 🔒 Protection: Store Owner and Administrator accounts cannot be locked or disabled
-        if ($user->isAdmin() || $user->isSuperAdmin() || ($authUser && $user->id === $authUser->id)) {
+        if ($user->isAdmin() || $user->isSuperAdmin() || (!config('saas.enabled') && in_array($user->role, ['manager', 'branch_manager'])) || ($authUser && $user->id === $authUser->id)) {
             return back()->with('error', 'Security Violation: Store Owner and Administrator accounts cannot be locked or disabled.');
         }
 
