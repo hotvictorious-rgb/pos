@@ -160,9 +160,6 @@ class CapabilityService
             'stock.view', 'stock.in', 'stock.transfer', 'stock.receive', 'stock.recall', 'stock.adjust',
             'reports.view', 'reports.export',
             'transactions.view', 'transactions.export',
-            'users.manage',
-            'settings.manage',
-            'tenant.backup',
         ],
         'manager' => [
             'pos.view', 'pos.checkout',
@@ -173,9 +170,6 @@ class CapabilityService
             'stock.view', 'stock.in', 'stock.transfer', 'stock.receive', 'stock.recall', 'stock.adjust',
             'reports.view', 'reports.export',
             'transactions.view', 'transactions.export',
-            'users.manage',
-            'settings.manage',
-            'tenant.backup',
         ],
         'storekeeper' => [
             'products.view', 'products.write',

@@ -129,7 +129,7 @@ class User extends Authenticatable
         if (config('saas.enabled')) {
             return !empty($this->tenant_id) && $this->tenant_id !== 'default-tenant' && in_array($this->role, ['admin', 'owner', 'store_owner'], true);
         }
-        return in_array($this->role, ['admin', 'manager', 'owner', 'store_owner'], true);
+        return in_array($this->role, ['admin', 'owner', 'store_owner'], true);
     }
 
     /**
@@ -246,13 +246,7 @@ class User extends Authenticatable
      */
     public function isExecutive(): bool
     {
-        if (in_array($this->role, ['admin', 'super_admin', 'owner', 'store_owner', 'executive_readonly', 'viewer'], true)) {
-            return true;
-        }
-        if (!config('saas.enabled') && in_array($this->role, ['manager', 'branch_manager'], true)) {
-            return true;
-        }
-        return $this->isTenantAdmin();
+        return $this->isAdmin() || in_array($this->role, ['executive_readonly', 'viewer'], true);
     }
 
     /**
@@ -260,7 +254,10 @@ class User extends Authenticatable
      */
     public function isBranchScoped(): bool
     {
-        return !empty($this->warehouse_id) && !$this->isExecutive();
+        if ($this->isAdmin()) {
+            return false;
+        }
+        return !empty($this->warehouse_id);
     }
 
     /**
