@@ -453,7 +453,7 @@
                     @else
                         <div class="form-group">
                             <label>Source Branch (Origin)</label>
-                            <select name="source_warehouse_id" id="dispSourceWh" required>
+                            <select name="source_warehouse_id" id="dispSourceWh" required onchange="updateTransferDestinationOptions()">
                                 @foreach($warehouses as $wh)
                                     <option value="{{ $wh->id }}">{{ $wh->name }}</option>
                                 @endforeach
@@ -463,13 +463,16 @@
 
                     <div class="form-group">
                         <label>Destination Branch (Receiving)</label>
-                        <select name="destination_warehouse_id" id="dispDestWh" required>
+                        <select name="destination_warehouse_id" id="dispDestWh" required onchange="checkTransferDestinationDistinct()">
                             @foreach($allWarehouses ?? $warehouses as $wh)
                                 @if(empty($isBranchStaff) || empty($userWarehouse) || $wh->id != $userWarehouse->id)
                                     <option value="{{ $wh->id }}">🏢 {{ $wh->name }} ({{ $wh->code }})</option>
                                 @endif
                             @endforeach
                         </select>
+                        <div id="dispDestErrorMsg" style="display: none; color: #f87171; font-size: 0.78rem; font-weight: 700; margin-top: 0.35rem;">
+                            ⚠️ Destination cannot be the same as the origin branch!
+                        </div>
                     </div>
                 </div>
 
@@ -552,10 +555,60 @@ function openModal(id) {
     if (window.initSearchableProductPickers) {
         window.initSearchableProductPickers();
     }
+    if (id === 'modalDispatchTransfer') {
+        updateTransferDestinationOptions();
+    }
 }
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
 }
+
+function updateTransferDestinationOptions() {
+    const sourceEl = document.getElementById('dispSourceWh');
+    const destEl = document.getElementById('dispDestWh');
+    if (!sourceEl || !destEl) return;
+
+    const sourceVal = String(sourceEl.value);
+
+    Array.from(destEl.options).forEach(opt => {
+        if (String(opt.value) === sourceVal) {
+            opt.disabled = true;
+            opt.hidden = true;
+        } else {
+            opt.disabled = false;
+            opt.hidden = false;
+        }
+    });
+
+    if (String(destEl.value) === sourceVal) {
+        const firstValid = Array.from(destEl.options).find(opt => !opt.disabled && opt.value !== '');
+        if (firstValid) {
+            destEl.value = firstValid.value;
+        }
+    }
+    checkTransferDestinationDistinct();
+}
+
+function checkTransferDestinationDistinct() {
+    const sourceEl = document.getElementById('dispSourceWh');
+    const destEl = document.getElementById('dispDestWh');
+    const errEl = document.getElementById('dispDestErrorMsg');
+    if (!sourceEl || !destEl) return;
+
+    const isMatch = (String(sourceEl.value) === String(destEl.value));
+    if (errEl) {
+        errEl.style.display = isMatch ? 'block' : 'none';
+    }
+    if (isMatch) {
+        destEl.style.borderColor = '#ef4444';
+    } else {
+        destEl.style.borderColor = '';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateTransferDestinationOptions();
+});
 
 function openAcceptModal(trf) {
     document.getElementById('acceptTitle').textContent = '✅ Accept Transfer #' + trf.transfer_no;
@@ -598,10 +651,10 @@ function validateTransferDispatch(e) {
         });
     }
 
-    if (sourceWh === destWh) {
+    if (!sourceWh || !destWh || sourceWh === destWh) {
         errors.push({
             title: 'Identical Branches Selected',
-            desc: 'Source branch (Origin) and Destination branch (Receiving) cannot be the same shop.',
+            desc: 'Destination branch (Receiving) cannot be the same as the Source branch (Origin). Please select a different destination branch.',
             focus: 'dispDestWh'
         });
     }

@@ -258,7 +258,11 @@ class StockController extends Controller
     {
         $user = Auth::user();
         if ($user && !$user->isExecutive() && empty($user->warehouse_id)) {
-            return back()->withErrors(['error' => '🔒 Unauthorized: You are not assigned to any branch location!']);
+            $msg = '🔒 Unauthorized: You are not assigned to any branch location!';
+            if ($request->wantsJson() || $request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $msg], 403);
+            }
+            return back()->withErrors(['error' => $msg]);
         }
 
         if ($user && $user->isBranchScoped()) {
@@ -266,23 +270,41 @@ class StockController extends Controller
         } else {
             $sourceWarehouseId = (int) $request->source_warehouse_id;
             if ($user && !$user->canDispatchTransfer($sourceWarehouseId)) {
-                return back()->withErrors(['error' => '🔒 Unauthorized: You cannot dispatch transfers out of an unassigned branch!']);
+                $msg = '🔒 Unauthorized: You cannot dispatch transfers out of an unassigned branch!';
+                if ($request->wantsJson() || $request->expectsJson()) {
+                    return response()->json(['success' => false, 'error' => $msg], 403);
+                }
+                return back()->withErrors(['error' => $msg]);
             }
         }
 
         $destWarehouseId = (int) $request->destination_warehouse_id;
 
-        if ($sourceWarehouseId === $destWarehouseId) {
-            return back()->withErrors(['error' => 'Destination shop must be different from the source shop!'])->withInput();
+        // Ensure source_warehouse_id is merged into request for validation rules
+        $request->merge(['source_warehouse_id' => $sourceWarehouseId]);
+
+        // Strict Backend Guard: Origin and Destination can never be identical or empty
+        if ($sourceWarehouseId === $destWarehouseId || empty($sourceWarehouseId) || empty($destWarehouseId)) {
+            $errorMsg = 'Destination shop cannot be the same as the origin / source shop!';
+            if ($request->wantsJson() || $request->expectsJson()) {
+                return response()->json(['success' => false, 'error' => $errorMsg], 422);
+            }
+            return back()->withErrors([
+                'destination_warehouse_id' => $errorMsg,
+                'error' => $errorMsg
+            ])->withInput();
         }
 
         $request->validate([
-            'destination_warehouse_id' => 'required',
+            'source_warehouse_id' => 'required|integer',
+            'destination_warehouse_id' => 'required|integer|different:source_warehouse_id',
             'items' => 'required|array|min:1',
             'items.*.productId' => 'nullable',
             'items.*.product_id' => 'nullable',
             'items.*.quantity' => 'required|integer|min:1',
             'carrier_name' => 'required|string|max:100',
+        ], [
+            'destination_warehouse_id.different' => 'Destination shop must be different from the origin / source shop!',
         ]);
 
         $userId = Auth::id() ?? 'USER-1';

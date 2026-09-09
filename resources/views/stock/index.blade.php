@@ -405,13 +405,18 @@
                 <input type="hidden" name="source_warehouse_id" value="{{ $activeWarehouse->id }}">
 
                 <div class="form-group">
-                    <label>Destination Shop</label>
+                    <label>Destination Shop (Must be different from {{ $activeWarehouse->name }})</label>
                     <select name="destination_warehouse_id" id="transferDestWh" required>
+                        @php $destCount = 0; @endphp
                         @foreach($warehouses as $wh)
                             @if($wh->id != $activeWarehouse->id)
+                                @php $destCount++; @endphp
                                 <option value="{{ $wh->id }}">🏢 {{ $wh->name }} ({{ $wh->code }})</option>
                             @endif
                         @endforeach
+                        @if($destCount === 0)
+                            <option value="">⚠️ No other branch shops available</option>
+                        @endif
                     </select>
                 </div>
 
@@ -581,13 +586,28 @@ function confirmTransferOut() {
         return;
     }
 
+    const destSelect = document.getElementById('transferDestWh');
+    const sourceWh = '{{ $activeWarehouse->id }}';
+    const destWh = destSelect ? destSelect.value : '';
+
+    if (!destWh || String(destWh) === String(sourceWh)) {
+        showActionBlockedModal({
+            title: 'Invalid Destination Branch',
+            subtitle: 'Different Destination Shop Required',
+            errors: [{
+                title: 'Destination Cannot Match Origin',
+                desc: 'Destination shop cannot be the same as the origin branch ({{ addslashes($activeWarehouse->name) }}). You must dispatch to a different active shop location.',
+                focus: 'transferDestWh'
+            }]
+        });
+        return;
+    }
+
     const form = document.getElementById('transferOutForm');
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
     }
-
-    const destSelect = document.getElementById('transferDestWh');
     const destName = destSelect.options[destSelect.selectedIndex].text;
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
     const qty = document.getElementById('transferQty').value;
