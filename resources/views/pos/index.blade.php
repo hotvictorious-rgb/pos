@@ -231,20 +231,149 @@
         border-color: var(--primary);
     }
 
-    @media (max-width: 960px) {
-        .pos-layout { grid-template-columns: 1fr; }
-        .product-grid { grid-template-columns: repeat(2, 1fr); max-height: 50vh; }
-        .cart-drawer { position: static; max-height: none; }
+    /* Mobile Responsive POS */
+    .pos-mobile-nav {
+        display: none;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        background: rgba(17, 24, 39, 0.95);
+        padding: 0.4rem;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        position: sticky;
+        top: 70px;
+        z-index: 30;
+    }
+
+    .pos-mobile-nav .pos-tab-btn {
+        flex: 1;
+        padding: 0.75rem 0.5rem;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: center;
+    }
+
+    .pos-mobile-nav .pos-tab-btn.active {
+        background: var(--primary);
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+    }
+
+    .pulse-badge {
+        animation: pulseTab 0.4s ease;
+    }
+    @keyframes pulseTab {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); background: #16a34a; }
+        100% { transform: scale(1); }
+    }
+
+    @media (max-width: 1024px) {
+        .pos-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+        .pos-mobile-nav {
+            display: flex;
+        }
+        .pos-col-catalog, .pos-col-cart {
+            width: 100%;
+        }
+        .pos-col-cart {
+            display: none;
+            position: static;
+            max-height: none;
+        }
+        .pos-col-cart.mobile-active {
+            display: block;
+        }
+        .pos-col-catalog.mobile-hidden {
+            display: none;
+        }
+        .product-grid {
+            max-height: 65vh;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .product-grid {
+            grid-template-columns: 1fr;
+        }
+        .catalog-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.75rem;
+        }
+        .catalog-header > div:last-child {
+            max-width: 100% !important;
+        }
+    }
+
+    /* Mobile Bottom Sticky Floating Cart Bar */
+    .pos-mobile-bottom-bar {
+        display: none;
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        background: rgba(15, 23, 42, 0.96);
+        border: 2px solid #3b82f6;
+        border-radius: 16px;
+        padding: 0.75rem 1.15rem;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        z-index: 95;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        transition: transform 0.2s, opacity 0.2s;
+        animation: pulseTab 0.3s ease;
+    }
+    @media (max-width: 1024px) {
+        .pos-mobile-bottom-bar.show-bar {
+            display: flex;
+        }
     }
 </style>
 @endpush
 
 @section('content')
 
+<!-- Mobile Segmented View Tabs (Screens <= 1024px) -->
+<div class="pos-mobile-nav" id="posMobileNav">
+    <button type="button" class="pos-tab-btn active" id="tabCatalogBtn" onclick="switchPosTab('catalog')">
+        🛍️ Products Catalog
+    </button>
+    <button type="button" class="pos-tab-btn" id="tabCartBtn" onclick="switchPosTab('cart')">
+        🛒 Cart (<span id="mobileCartCount">0</span>) · ₦<span id="mobileCartTotal">0</span>
+    </button>
+</div>
+
+<!-- Mobile Bottom Sticky Floating Cart Bar (Screens <= 1024px) -->
+<div class="pos-mobile-bottom-bar" id="posMobileBottomBar" onclick="switchPosTab('cart')">
+    <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <span style="font-size: 1.35rem;">🛒</span>
+        <div>
+            <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">Active Cart (<span id="stickyCartUnits">0</span> items)</div>
+            <div style="font-size: 1.1rem; font-weight: 800; color: #4ade80;">₦<span id="stickyCartTotal">0</span></div>
+        </div>
+    </div>
+    <button type="button" class="btn btn-primary" style="padding: 0.55rem 1.1rem; font-size: 0.88rem; font-weight: 800; border-radius: 10px; pointer-events: none;">
+        Review & Pay →
+    </button>
+</div>
+
 <div class="pos-layout">
 
-    <!-- Left Column: Product Catalog in 2 Clean Columns -->
-    <div>
+    <!-- Left Column: Product Catalog -->
+    <div class="pos-col-catalog" id="posColCatalog">
         <div class="catalog-header">
             <div>
                 <h2 style="font-size: 1.35rem; font-weight: 800;">Point of Sale 💰</h2>
@@ -321,7 +450,7 @@
     </div>
 
     <!-- Right Column: Interactive Cart Drawer -->
-    <div class="cart-drawer">
+    <div class="cart-drawer pos-col-cart" id="posColCart">
         <div class="cart-title">
             <span>🛒 Current Sale</span>
             <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;" onclick="clearCart()">
@@ -426,8 +555,8 @@
                     💳 Payment Status & Method
                 </div>
                 <div class="pay-tabs">
-                    <div class="pay-tab active" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Paid (Cash)</div>
-                    <div class="pay-tab" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS Terminal)</div>
+                    <div class="pay-tab" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Paid (Cash)</div>
+                    <div class="pay-tab active" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS Terminal)</div>
                     <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part-Paid / Not Paid</div>
                 </div>
 
@@ -545,7 +674,7 @@
 @push('scripts')
 <script>
 let cart = [];
-let paymentMode = 'CASH';
+let paymentMode = 'POS';
 
 function ensureCheckoutIdempotencyKey() {
     const input = document.getElementById('idempotencyKeyInput');
@@ -573,6 +702,37 @@ function addToCart(id, name, price, stock) {
         cart.push({ id, name, price, stock: numericStock, qty: 1 });
     }
     renderCart();
+
+    if (window.innerWidth <= 1024) {
+        const cartBtn = document.getElementById('tabCartBtn');
+        if (cartBtn) {
+            cartBtn.classList.add('pulse-badge');
+            setTimeout(() => cartBtn.classList.remove('pulse-badge'), 400);
+        }
+    }
+}
+
+function switchPosTab(tab) {
+    const colCatalog = document.getElementById('posColCatalog');
+    const colCart = document.getElementById('posColCart');
+    const tabCatBtn = document.getElementById('tabCatalogBtn');
+    const tabCartBtn = document.getElementById('tabCartBtn');
+    const bottomBar = document.getElementById('posMobileBottomBar');
+
+    if (tab === 'cart') {
+        if (colCatalog) colCatalog.classList.add('mobile-hidden');
+        if (colCart) colCart.classList.add('mobile-active');
+        if (tabCatBtn) tabCatBtn.classList.remove('active');
+        if (tabCartBtn) tabCartBtn.classList.add('active');
+        if (bottomBar) bottomBar.classList.remove('show-bar');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+        if (colCatalog) colCatalog.classList.remove('mobile-hidden');
+        if (colCart) colCart.classList.remove('mobile-active');
+        if (tabCatBtn) tabCatBtn.classList.add('active');
+        if (tabCartBtn) tabCartBtn.classList.remove('active');
+        if (bottomBar && cart.length > 0) bottomBar.classList.add('show-bar');
+    }
 }
 
 function updateQty(id, delta) {
@@ -591,6 +751,7 @@ function updateQty(id, delta) {
 function clearCart() {
     cart = [];
     resetCheckoutIdempotencyKey();
+    selectPaymentMode('POS');
     renderCart();
 }
 
@@ -598,11 +759,17 @@ function renderCart() {
     const list = document.getElementById('cartItemsList');
     const emptyMsg = document.getElementById('emptyCartMessage');
     const btn = document.getElementById('completeSaleBtn');
+    const bottomBar = document.getElementById('posMobileBottomBar');
 
     if (cart.length === 0) {
         list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:2rem 0;" id="emptyCartMessage">Tap any item on the left to add to sale 👈</div>';
         document.getElementById('displayTotal').textContent = '₦0';
         document.getElementById('hiddenTotal').value = 0;
+        const mobileCountEl = document.getElementById('mobileCartCount');
+        const mobileTotalEl = document.getElementById('mobileCartTotal');
+        if (mobileCountEl) mobileCountEl.textContent = '0';
+        if (mobileTotalEl) mobileTotalEl.textContent = '0';
+        if (bottomBar) bottomBar.classList.remove('show-bar');
         btn.disabled = true;
         btn.style.opacity = 0.5;
         btn.style.cursor = 'not-allowed';
@@ -649,6 +816,26 @@ function renderCart() {
     list.innerHTML = html;
     document.getElementById('displayTotal').textContent = '₦' + Math.round(total).toLocaleString('en-US');
     document.getElementById('hiddenTotal').value = total;
+
+    const mobileCountEl = document.getElementById('mobileCartCount');
+    const mobileTotalEl = document.getElementById('mobileCartTotal');
+    if (mobileCountEl) mobileCountEl.textContent = totalUnitsCount;
+    if (mobileTotalEl) mobileTotalEl.textContent = Math.round(total).toLocaleString('en-US');
+
+    const stickyUnitsEl = document.getElementById('stickyCartUnits');
+    const stickyTotalEl = document.getElementById('stickyCartTotal');
+    if (stickyUnitsEl) stickyUnitsEl.textContent = totalUnitsCount;
+    if (stickyTotalEl) stickyTotalEl.textContent = Math.round(total).toLocaleString('en-US');
+
+    const colCatalog = document.getElementById('posColCatalog');
+    if (bottomBar) {
+        if (cart.length > 0 && (!colCatalog || !colCatalog.classList.contains('mobile-hidden'))) {
+            bottomBar.classList.add('show-bar');
+        } else {
+            bottomBar.classList.remove('show-bar');
+        }
+    }
+
     updateDebtCalculation();
 
     btn.disabled = false;
@@ -1181,8 +1368,11 @@ function applyProductFilters() {
     });
 }
 
-// Support Barcode Scanner / Instant Enter Key Selection
+// Support Barcode Scanner / Instant Enter Key Selection & POS Default Init
 document.addEventListener('DOMContentLoaded', function() {
+    // Ensure POS Terminal is the active default payment method
+    selectPaymentMode('POS');
+
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
         searchInput.addEventListener('keydown', function(e) {
@@ -1206,6 +1396,61 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Customer Field Enter-Key Progression
+    const custName = document.getElementById('customerNameInput');
+    const custPhone = document.getElementById('customerPhoneInput');
+    const partPay = document.getElementById('partPayInput');
+    const completeBtn = document.getElementById('completeSaleBtn');
+
+    if (custName && custPhone) {
+        custName.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                custPhone.focus();
+                if (typeof custPhone.select === 'function') custPhone.select();
+            }
+        });
+    }
+
+    if (custPhone) {
+        custPhone.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (paymentMode === 'DEBT' && partPay && partPay.offsetParent !== null) {
+                    partPay.focus();
+                    if (typeof partPay.select === 'function') partPay.select();
+                } else if (completeBtn && !completeBtn.disabled) {
+                    completeBtn.click();
+                }
+            }
+        });
+    }
+
+    if (partPay) {
+        partPay.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (completeBtn && !completeBtn.disabled) {
+                    completeBtn.click();
+                }
+            }
+        });
+    }
+
+    // Confirmation Modal Enter Key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            const confirmModal = document.getElementById('modalSaleConfirm');
+            if (confirmModal && confirmModal.style.display !== 'none') {
+                const btn = document.getElementById('btnFinalProceedSale');
+                if (btn && !btn.disabled) {
+                    e.preventDefault();
+                    finalProceedSale();
+                }
+            }
+        }
+    });
 });
 </script>
 @endpush

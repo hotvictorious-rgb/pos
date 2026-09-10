@@ -141,6 +141,42 @@
             background: rgba(11, 15, 25, 0.95);
         }
 
+        .password-field-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .password-field-wrapper input {
+            padding-right: 2.75rem;
+        }
+
+        .password-toggle-btn {
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.15rem;
+            padding: 0.25rem 0.4rem;
+            line-height: 1;
+            border-radius: 6px;
+            transition: color 0.15s, background 0.15s;
+            user-select: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .password-toggle-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
         .btn-submit {
             width: 100%;
             padding: 0.95rem;
@@ -237,14 +273,55 @@
             </div>
 
             <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                    <label for="password" style="margin-bottom: 0;">Password</label>
+                    <a href="{{ route('password.request') }}" style="color: #93c5fd; font-size: 0.8rem; text-decoration: none; font-weight: 600; transition: color 0.15s;" title="Recover account password">
+                        Forgot Password?
+                    </a>
+                </div>
+                <div class="password-field-wrapper">
+                    <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+                    <button type="button" class="password-toggle-btn" id="togglePasswordBtn" aria-label="Toggle password visibility" tabindex="-1" title="Show password">👁️</button>
+                </div>
             </div>
 
-            <button type="submit" class="btn-submit">
+            <button type="submit" class="btn-submit" id="loginSubmitBtn">
                 🔐 Sign In to Dashboard
             </button>
         </form>
+
+        <script>
+            // Show / Hide Password Toggle
+            const passInput = document.getElementById('password');
+            const toggleBtn = document.getElementById('togglePasswordBtn');
+            if (passInput && toggleBtn) {
+                toggleBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (passInput.type === 'password') {
+                        passInput.type = 'text';
+                        toggleBtn.innerHTML = '🙈';
+                        toggleBtn.title = 'Hide password';
+                    } else {
+                        passInput.type = 'password';
+                        toggleBtn.innerHTML = '👁️';
+                        toggleBtn.title = 'Show password';
+                    }
+                    passInput.focus();
+                });
+            }
+
+            // Universal Enter Key Progression: email -> Enter -> password -> Enter -> submit
+            const emailInput = document.getElementById('email');
+            if (emailInput && passInput) {
+                emailInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        passInput.focus();
+                        if (typeof passInput.select === 'function') passInput.select();
+                    }
+                });
+            }
+        </script>
     </div>
 
 </body>

@@ -28,6 +28,12 @@
     .role-badge-manager { background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.4); }
     .role-badge-storekeeper { background: rgba(217,119,6,0.2); color: #fbbf24; border: 1px solid rgba(217,119,6,0.4); }
     .role-badge-cashier { background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.4); }
+
+    @media (max-width: 640px) {
+        .user-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 @endpush
 

@@ -36,6 +36,16 @@ Route::post('/login', [AuthController::class, 'webLogin'])->name('login.post');
 Route::match(['get', 'post'], '/logout', [AuthController::class, 'webLogout'])->name('logout');
 
 // ─────────────────────────────────────────────────────────
+// TENANT & USER PASSWORD RESET
+// ─────────────────────────────────────────────────────────
+Route::get('/forgot-password',           [AuthController::class, 'showForgotPassword'])->name('password.request');
+Route::post('/forgot-password',          [AuthController::class, 'sendResetLinkEmail'])->name('password.email');
+Route::get('/tenant/forgot-password',    [AuthController::class, 'showForgotPassword'])->name('portal.tenant.forgot_password');
+Route::post('/tenant/forgot-password',   [AuthController::class, 'sendResetLinkEmail'])->name('portal.tenant.forgot_password.post');
+Route::get('/reset-password/{token}',    [AuthController::class, 'showResetPassword'])->name('password.reset');
+Route::post('/reset-password',           [AuthController::class, 'resetPassword'])->name('password.update');
+
+// ─────────────────────────────────────────────────────────
 // FOUR PORTAL AUTHENTICATION
 // ─────────────────────────────────────────────────────────
 // 1. Tenant Portal (Business Owners & Administrators)

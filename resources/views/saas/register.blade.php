@@ -19,6 +19,16 @@
         .btn-submit:hover { opacity: 0.9; }
         .alert-error { background: #450a0a; border: 1px solid #991b1b; color: #fca5a5; padding: 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .password-field-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
+        .password-field-wrapper input { padding-right: 44px; }
+        .password-toggle-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 18px; padding: 4px 6px; line-height: 1; border-radius: 6px; transition: color 0.15s; user-select: none; }
+        .password-toggle-btn:hover { color: #f8fafc; }
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            .card { padding: 20px 16px; border-radius: 12px; }
+            .grid-2 { grid-template-columns: 1fr; gap: 8px; }
+            input, select { font-size: 16px; } /* Prevent iOS zoom */
+        }
     </style>
 </head>
 <body>
@@ -67,20 +77,63 @@
 
             <div class="form-group">
                 <label>Password (Min 8 characters, at least 1 uppercase & 1 digit)</label>
-                <input type="password" name="password" required placeholder="••••••••" minlength="8">
+                <div class="password-field-wrapper">
+                    <input type="password" name="password" id="regPassword" required placeholder="••••••••" minlength="8">
+                    <button type="button" class="password-toggle-btn" id="regToggleBtn" aria-label="Toggle password visibility" tabindex="-1" title="Show password">👁️</button>
+                </div>
             </div>
 
             <div class="form-group">
                 <label>Choose Subscription Plan</label>
-                <select name="plan" required>
+                <select name="plan" required id="regPlan">
                     <option value="basic" {{ request('plan') === 'basic' ? 'selected' : '' }}>Starter Plan ({{ $settings['currency_symbol'] ?? '₦' }}{{ number_format((float)($settings['price_basic'] ?? 15000)) }}/mo — 1 Branch, 3 Users)</option>
                     <option value="pro" {{ (request('plan') === 'pro' || !request('plan')) ? 'selected' : '' }}>Professional Growth ({{ $settings['currency_symbol'] ?? '₦' }}{{ number_format((float)($settings['price_pro'] ?? 35000)) }}/mo — 5 Branches, 15 Users)</option>
                     <option value="enterprise" {{ request('plan') === 'enterprise' ? 'selected' : '' }}>Enterprise Multi-Branch ({{ $settings['currency_symbol'] ?? '₦' }}{{ number_format((float)($settings['price_enterprise'] ?? 75000)) }}/mo — Unlimited)</option>
                 </select>
             </div>
 
-            <button type="submit" class="btn-submit">Start Free Trial 🚀</button>
+            <button type="submit" class="btn-submit" id="regSubmitBtn">Start Free Trial 🚀</button>
         </form>
+
+        <script>
+            // Show / Hide Password Toggle
+            const pInput = document.getElementById('regPassword');
+            const tBtn = document.getElementById('regToggleBtn');
+            if (pInput && tBtn) {
+                tBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (pInput.type === 'password') {
+                        pInput.type = 'text';
+                        tBtn.innerHTML = '🙈';
+                        tBtn.title = 'Hide password';
+                    } else {
+                        pInput.type = 'password';
+                        tBtn.innerHTML = '👁️';
+                        tBtn.title = 'Show password';
+                    }
+                    pInput.focus();
+                });
+            }
+
+            // Universal Enter Key Progression across registration fields
+            const form = document.querySelector('form');
+            if (form) {
+                const inputs = Array.from(form.querySelectorAll('input:not([type="hidden"]), select'));
+                inputs.forEach((input, index) => {
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (index + 1 < inputs.length) {
+                                inputs[index + 1].focus();
+                                if (typeof inputs[index + 1].select === 'function') inputs[index + 1].select();
+                            } else {
+                                form.submit();
+                            }
+                        }
+                    });
+                });
+            }
+        </script>
     </div>
 </body>
 </html>

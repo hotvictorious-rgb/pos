@@ -320,17 +320,222 @@
         .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; }
         .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem; }
 
+        /* Mobile Navigation Drawer & Backdrop */
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 998;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .sidebar-backdrop.active {
+            display: block;
+            opacity: 1;
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: rgba(31, 41, 55, 0.85);
+            border: 1px solid var(--border);
+            color: #f9fafb;
+            border-radius: 12px;
+            width: 42px;
+            height: 42px;
+            font-size: 1.4rem;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .mobile-menu-btn:hover, .mobile-menu-btn:active {
+            background: rgba(55, 65, 81, 0.95);
+            border-color: #60a5fa;
+            transform: scale(0.96);
+        }
+
+        .mobile-close-sidebar {
+            display: none;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            margin-left: auto;
+            width: 32px;
+            height: 32px;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: all 0.2s;
+        }
+        .mobile-close-sidebar:hover {
+            color: #fff;
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+        }
+
+        /* Filter Form Active State */
+        form.filtering-active {
+            opacity: 0.65;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        /* Responsive Breakpoints */
         @media (max-width: 1024px) {
-            .sidebar { width: 75px; }
-            .sidebar-header .brand-text, .menu-category, .nav-item span, .sidebar-footer { display: none; }
-            .sidebar-header { justify-content: center; padding: 1rem; }
-            .nav-item { justify-content: center; padding: 0.75rem; }
-            .main-wrapper { margin-left: 75px; }
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+                z-index: 999;
+                box-shadow: 10px 0 50px rgba(0, 0, 0, 0.8);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .mobile-menu-btn {
+                display: inline-flex;
+            }
+            .mobile-close-sidebar {
+                display: inline-flex;
+            }
+            .main-wrapper {
+                margin-left: 0 !important;
+                width: 100% !important;
+                max-width: 100vw;
+                overflow-x: hidden;
+            }
+            .topbar {
+                padding: 0.75rem 1rem;
+                gap: 0.75rem;
+            }
+            .container {
+                padding: 1.25rem 1rem;
+                max-width: 100vw;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .topbar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.65rem;
+                padding: 0.75rem;
+            }
+            .topbar-left-wrap {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                width: 100%;
+                justify-content: space-between;
+            }
+            .topbar-right-wrap {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.5rem;
+                width: 100%;
+                flex-wrap: wrap;
+            }
+            #liveClockWidget {
+                font-size: 0.78rem;
+                padding: 0.3rem 0.6rem;
+            }
+            .container {
+                padding: 1rem 0.6rem;
+            }
+            .card {
+                padding: 1rem;
+                border-radius: 14px;
+            }
+            .table-wrap, .table-responsive {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                width: 100%;
+                display: block;
+            }
+            /* Eliminate iOS auto-zoom on input focus */
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+            .btn {
+                min-height: 44px;
+            }
+            .grid-2, .grid-3, .grid-4 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Password Visibility Toggle */
+        .password-field-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+        .password-field-wrapper input {
+            width: 100%;
+            padding-right: 2.75rem !important;
+        }
+        .password-toggle-btn {
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: var(--text-muted, #94a3b8);
+            cursor: pointer;
+            font-size: 1.15rem;
+            padding: 0.25rem 0.4rem;
+            line-height: 1;
+            border-radius: 6px;
+            transition: color 0.15s, background 0.15s;
+            user-select: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+        }
+        .password-toggle-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* Modal Mobile Bottom-Sheet Responsiveness */
+        @media (max-width: 768px) {
+            .modal-backdrop, .modal-overlay {
+                padding: 0.5rem;
+                align-items: flex-end !important;
+            }
+            .modal, .modal-content, .modal-card {
+                max-height: 88vh !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch;
+                width: 100% !important;
+                max-width: 100% !important;
+                border-bottom-left-radius: 0 !important;
+                border-bottom-right-radius: 0 !important;
+                margin: 0 !important;
+            }
         }
     </style>
     @stack('styles')
 </head>
 <body>
+
+    <!-- Mobile Sidebar Backdrop Overlay -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleMobileSidebar(false)"></div>
 
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
@@ -347,6 +552,7 @@
                 <h1>{{ $displayBrandName }}</h1>
                 <p>{{ $activeTenantId === 'default-tenant' ? 'Platform Master Suite' : 'Multi-Branch POS' }}</p>
             </div>
+            <button type="button" class="mobile-close-sidebar" onclick="toggleMobileSidebar(false)" aria-label="Close navigation menu">✕</button>
         </div>
 
         @php
@@ -444,8 +650,12 @@
     <!-- Main Content Wrapper -->
     <div class="main-wrapper">
         <header class="topbar">
-            <!-- Left: Live Clock & Date -->
-            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <!-- Left: Mobile Menu Toggle & Live Clock -->
+            <div class="topbar-left-wrap">
+                <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" aria-label="Toggle navigation menu">
+                    <span>☰</span>
+                </button>
+
                 <div id="liveClockWidget" style="background: rgba(31,41,55,0.7); border: 1px solid var(--border); border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.85rem; font-weight: 700; color: #93c5fd; display: flex; align-items: center; gap: 0.5rem;">
                     <span>📅</span> <span id="headerDate">--</span>
                     <span style="color: #4b5563;">|</span>
@@ -454,18 +664,18 @@
 
                 @if($currentRole === 'viewer')
                     <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 800; color: #facc15; display: inline-flex; align-items: center; gap: 0.4rem;">
-                        <span>👑</span> <span>Executive Observer (View-Only Mode)</span>
+                        <span>👑</span> <span>Executive Observer</span>
                     </div>
                 @endif
             </div>
 
             <!-- Right: Quick Calculator, Operator & Logout -->
-            <div style="display: flex; align-items: center; gap: 0.85rem;">
+            <div class="topbar-right-wrap">
                 <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.85rem; background: rgba(31,41,55,0.9); border-color: #4b5563; color: #f3f4f6;" onclick="toggleCalculator()">
                     🧮 Calculator
                 </button>
 
-                <div style="font-size: 0.85rem; color: var(--text-muted);">
+                <div style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">
                     Operator: <strong style="color: #f3f4f6;">{{ auth()->user()->name ?? session('user_name', 'Auditor / Lead') }}</strong>
                 </div>
 
@@ -1031,6 +1241,22 @@
 
         window.spcShowSelected(id, p);
         window.spcClose(id);
+
+        // Auto-advance focus to the next field in the active form/modal
+        setTimeout(() => {
+            const wrapper = document.getElementById('spc_wrapper_' + id);
+            const container = (wrapper && wrapper.closest('form, .modal, .modal-card, .card')) || document;
+            if (wrapper && container) {
+                const focusable = Array.from(container.querySelectorAll(
+                    'input:not([type="hidden"]):not([type="button"]):not([type="reset"]):not([disabled]):not([readonly]):not(.spc-input), select:not([disabled]):not(.spc-raw-select), textarea:not([disabled])'
+                )).filter(el => el.offsetParent !== null);
+                const nextElem = focusable.find(el => (wrapper.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !wrapper.contains(el));
+                if (nextElem) {
+                    nextElem.focus();
+                    if (typeof nextElem.select === 'function') nextElem.select();
+                }
+            }
+        }, 50);
     };
 
     window.spcShowSelected = function(id, p) {
@@ -1115,6 +1341,238 @@
                 });
             }
         }
+    });
+
+    // Mobile Sidebar Drawer Toggle
+    window.toggleMobileSidebar = function(force) {
+        const sidebar = document.querySelector('.sidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (!sidebar) return;
+        const isOpen = typeof force === 'boolean' ? force : !sidebar.classList.contains('open');
+        if (isOpen) {
+            sidebar.classList.add('open');
+            if (backdrop) backdrop.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        } else {
+            sidebar.classList.remove('open');
+            if (backdrop) backdrop.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+    };
+
+    // Auto-close mobile drawer when a nav link is clicked on small screens
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.sidebar .nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                if (window.innerWidth <= 1024) {
+                    window.toggleMobileSidebar(false);
+                }
+            });
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────
+    // UNIVERSAL PASSWORD VISIBILITY TOGGLE (👁️ / 🙈)
+    // ─────────────────────────────────────────────────────────
+    window.initPasswordToggles = function(context) {
+        const root = context || document;
+        const passInputs = root.querySelectorAll('input[type="password"], input[data-password-toggle="true"]');
+        passInputs.forEach(input => {
+            if (input.dataset.hasPasswordToggle === 'true') return;
+            input.dataset.hasPasswordToggle = 'true';
+
+            // Wrap input in relative container if not already wrapped
+            let wrapper = input.parentElement;
+            if (!wrapper || !wrapper.classList.contains('password-field-wrapper')) {
+                wrapper = document.createElement('div');
+                wrapper.className = 'password-field-wrapper';
+                input.parentNode.insertBefore(wrapper, input);
+                wrapper.appendChild(input);
+            }
+
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'password-toggle-btn';
+            toggleBtn.setAttribute('aria-label', 'Toggle password visibility');
+            toggleBtn.setAttribute('tabindex', '-1'); // Do not disrupt Tab/Enter keyboard navigation
+            toggleBtn.innerHTML = '👁️';
+            toggleBtn.title = 'Show password';
+
+            toggleBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    input.dataset.passwordToggle = 'true';
+                    toggleBtn.innerHTML = '🙈';
+                    toggleBtn.title = 'Hide password';
+                } else {
+                    input.type = 'password';
+                    toggleBtn.innerHTML = '👁️';
+                    toggleBtn.title = 'Show password';
+                }
+                input.focus();
+            });
+
+            wrapper.appendChild(toggleBtn);
+        });
+    };
+
+    // Auto-initialize toggles on load and watch for dynamic modals
+    document.addEventListener('DOMContentLoaded', function() {
+        window.initPasswordToggles();
+
+        if (window.MutationObserver) {
+            const observer = new MutationObserver(function(mutations) {
+                let shouldCheck = false;
+                for (let m of mutations) {
+                    if (m.addedNodes && m.addedNodes.length > 0) {
+                        shouldCheck = true;
+                        break;
+                    }
+                }
+                if (shouldCheck) {
+                    window.initPasswordToggles();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────
+    // UNIVERSAL ENTER-KEY ADVANCEMENT ACROSS FORM INPUTS & MODALS
+    // ─────────────────────────────────────────────────────────
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+        if (e.shiftKey || e.altKey) return;
+
+        const target = e.target;
+        if (!target || !target.matches('input:not([type="submit"]):not([type="button"]):not([type="reset"]), select')) {
+            return;
+        }
+
+        // Preserve native textarea newlines & explicit opt-outs
+        if (target.tagName === 'TEXTAREA' || target.getAttribute('data-enter-ignore') === 'true') {
+            return;
+        }
+
+        // Preserve POS quick barcode/item picker enter behavior
+        if (target.id === 'searchInput' && window.location.pathname.includes('/pos')) {
+            return;
+        }
+
+        const modalContainer = target.closest('.modal, .modal-card, #modalQuickCustomer, #modalSaleConfirm');
+        const container = modalContainer || target.closest('form, .cart-drawer, .card') || document;
+        const form = target.closest('form');
+
+        // Ctrl + Enter or Cmd + Enter immediately submits form or clicks primary submit button
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            const submitBtn = container.querySelector('button[type="submit"], input[type="submit"], #completeSaleBtn, #btnSaveQuickCust, #btnFinalProceedSale, button.btn-primary');
+            if (submitBtn) {
+                submitBtn.click();
+            } else if (form) {
+                form.requestSubmit ? form.requestSubmit() : form.submit();
+            }
+            return;
+        }
+
+        // Query all focusable and visible elements in the current active scope
+        const focusable = Array.from(container.querySelectorAll(
+            'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled])'
+        )).filter(el => el.offsetParent !== null && !el.hasAttribute('disabled') && !el.hasAttribute('readonly'));
+
+        const currentIndex = focusable.indexOf(target);
+        if (currentIndex === -1) return;
+
+        e.preventDefault();
+
+        if (currentIndex + 1 < focusable.length) {
+            const nextElement = focusable[currentIndex + 1];
+            nextElement.focus();
+            if (typeof nextElement.select === 'function' && nextElement.type !== 'date' && nextElement.type !== 'time') {
+                nextElement.select();
+            }
+        } else {
+            // Last input in container: click primary submit action button or submit form
+            const submitBtn = container.querySelector('button[type="submit"], input[type="submit"], #completeSaleBtn, #btnSaveQuickCust, #btnFinalProceedSale, button.btn-primary, button.btn-success');
+            if (submitBtn && !submitBtn.disabled) {
+                submitBtn.click();
+            } else if (form) {
+                form.requestSubmit ? form.requestSubmit() : form.submit();
+            }
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────
+    // RESPONSIVE LIVE FILTERS (Debounced typing & dropdown auto-submit)
+    // ─────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function() {
+        // 1. Debounced auto-submit for filter forms when typing in filter inputs
+        const filterForms = document.querySelectorAll('form[method="GET"], form.filter-form, .filter-hub form');
+        filterForms.forEach(form => {
+            let debounceTimer = null;
+            const inputs = form.querySelectorAll('input[type="text"], input[type="search"], input[type="number"]');
+            inputs.forEach(input => {
+                input.addEventListener('input', function() {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        form.classList.add('filtering-active');
+                        form.submit();
+                    }, 450);
+                });
+            });
+
+            // 2. Immediate auto-submit on <select> dropdown changes in filter forms
+            const selects = form.querySelectorAll('select');
+            selects.forEach(sel => {
+                sel.addEventListener('change', function() {
+                    form.classList.add('filtering-active');
+                    form.submit();
+                });
+            });
+        });
+
+        // Global row filtering utility for tables
+        window.filterTableRows = function(tableId, query) {
+            const q = (query || '').toLowerCase().trim();
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(r => {
+                if (r.classList.contains('no-filter') || r.querySelector('th')) return;
+                const text = r.textContent.toLowerCase();
+                r.style.display = text.includes(q) ? '' : 'none';
+            });
+        };
+
+        // 3. Instant client-side row filtering on pre-rendered tables (0ms latency!)
+        const searchInputs = document.querySelectorAll('input[name="search"], input[placeholder*="Search"]');
+        searchInputs.forEach(searchInput => {
+            const container = searchInput.closest('.container, main, body');
+            if (!container) return;
+            const table = container.querySelector('table');
+            if (!table) return;
+
+            searchInput.addEventListener('input', function(e) {
+                const query = (e.target.value || '').trim().toLowerCase();
+                const tbody = table.querySelector('tbody');
+                if (!tbody) return;
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                if (rows.length === 0) return;
+
+                rows.forEach(row => {
+                    // Ignore special non-item rows
+                    if (row.classList.contains('no-filter') || row.querySelector('th')) return;
+                    const text = (row.textContent || '').toLowerCase();
+                    if (!query || text.includes(query)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
+        });
     });
     </script>
 
