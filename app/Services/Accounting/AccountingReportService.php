@@ -696,8 +696,14 @@ class AccountingReportService
             $query->where(function ($sq) use ($s) {
                 $sq->where('id', 'like', "%{$s}%")
                    ->orWhere('customerName', 'like', "%{$s}%")
-                   ->orWhere('customerPhone', 'like', "%{$s}%")
-                   ->orWhere('userName', 'like', "%{$s}%");
+                   ->orWhere('userName', 'like', "%{$s}%")
+                   ->orWhereHas('customer', function ($cq) use ($s) {
+                       $cq->where('phone', 'like', "%{$s}%");
+                   });
+
+                if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'customerPhone')) {
+                    $sq->orWhere('customerPhone', 'like', "%{$s}%");
+                }
             });
         }
 

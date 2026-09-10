@@ -29,4 +29,14 @@ class Setting extends Model
         'lowStockThreshold' => 'integer',
         'transactionEditLimitDays' => 'integer',
     ];
+
+    protected static function booted()
+    {
+        static::creating(function ($setting) {
+            if (empty($setting->id)) {
+                $maxId = (int) static::withoutGlobalScopes()->max('id');
+                $setting->id = max(1, $maxId + 1);
+            }
+        });
+    }
 }

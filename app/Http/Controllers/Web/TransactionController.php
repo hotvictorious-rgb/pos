@@ -158,7 +158,13 @@ class TransactionController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('id', 'like', "%{$search}%")
                   ->orWhere('customerName', 'like', "%{$search}%")
-                  ->orWhere('customerPhone', 'like', "%{$search}%");
+                  ->orWhereHas('customer', function ($cq) use ($search) {
+                      $cq->where('phone', 'like', "%{$search}%");
+                  });
+
+                if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'customerPhone')) {
+                    $q->orWhere('customerPhone', 'like', "%{$search}%");
+                }
             });
         }
 
@@ -641,7 +647,7 @@ class TransactionController extends Controller
                         $s->id,
                         $s->createdAt,
                         $s->customerName,
-                        $s->customerPhone ?? 'N/A',
+                        $s->customerPhone ?? $s->customer?->phone ?? 'N/A',
                         $s->items->count(),
                         $s->totalAmount,
                         $s->paidAmount,

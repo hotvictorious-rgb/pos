@@ -18,6 +18,7 @@ class Sale extends Model
         'tenant_id',
         'warehouse_id',
         'customerName',
+        'customerPhone',
         'totalAmount',
         'paidAmount',
         'tenderedAmount',
@@ -90,5 +91,16 @@ class Sale extends Model
     public function getInvoiceBalanceAttribute(): float
     {
         return app(\App\Services\Accounting\AccountingReportService::class)->calculateInvoiceBalance($this);
+    }
+
+    /**
+     * Resolve customer phone from table column if populated, otherwise fallback to linked customer relation.
+     */
+    public function getCustomerPhoneAttribute(): ?string
+    {
+        if (array_key_exists('customerPhone', $this->attributes) && !empty($this->attributes['customerPhone'])) {
+            return $this->attributes['customerPhone'];
+        }
+        return $this->customer?->phone;
     }
 }

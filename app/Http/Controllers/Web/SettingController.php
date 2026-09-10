@@ -21,24 +21,7 @@ class SettingController extends Controller
     public function index()
     {
         $tenantId = session('tenant_id') ?? 'default-tenant';
-        $tenantObj = \App\Models\Tenant::find($tenantId);
-        $defaultName = $tenantObj ? $tenantObj->name : 'VMARKET POS Store';
-
-        $settings = Setting::firstOrCreate(
-            ['tenant_id' => $tenantId],
-            [
-                'businessName' => $defaultName,
-                'businessAddress' => 'Headquarters Address',
-                'businessPhone' => '+234 800 000 0000',
-                'businessEmail' => 'admin@vmarketpos.com',
-                'currency' => '₦',
-                'categories' => ['Groceries', 'Beverages', 'Electronics', 'Hardware', 'Household'],
-                'reportFooter' => 'Thank you for your patronage! Goods sold in good condition cannot be returned after 3 days.',
-                'lowStockThreshold' => 5,
-                'transactionEditLimitDays' => 0,
-                'fontFamily' => 'Plus Jakarta Sans',
-            ]
-        );
+        $settings = $this->getOrCreateSettings($tenantId);
 
         $warehouses = Warehouse::orderBy('id')->get();
         $user = Auth::user();
@@ -73,24 +56,7 @@ class SettingController extends Controller
         ]);
 
         $tenantId = session('tenant_id') ?? 'default-tenant';
-        $tenantObj = \App\Models\Tenant::find($tenantId);
-        $defaultName = $tenantObj ? $tenantObj->name : 'VMARKET POS Store';
-
-        $settings = Setting::firstOrCreate(
-            ['tenant_id' => $tenantId],
-            [
-                'businessName' => $defaultName,
-                'businessAddress' => 'Headquarters Address',
-                'businessPhone' => '+234 800 000 0000',
-                'businessEmail' => 'admin@vmarketpos.com',
-                'currency' => '₦',
-                'categories' => ['Groceries', 'Beverages', 'Electronics', 'Hardware', 'Household'],
-                'reportFooter' => 'Thank you for your patronage! Goods sold in good condition cannot be returned after 3 days.',
-                'lowStockThreshold' => 5,
-                'transactionEditLimitDays' => 0,
-                'fontFamily' => 'Plus Jakarta Sans',
-            ]
-        );
+        $settings = $this->getOrCreateSettings($tenantId);
 
         $categories = $request->categories ? array_filter(array_map('trim', explode(',', $request->categories))) : $settings->categories;
 
@@ -117,6 +83,36 @@ class SettingController extends Controller
         ]);
 
         return redirect()->route('settings.index')->with('success', '✓ Business and receipt settings saved successfully!');
+    }
+
+    /**
+     * Resiliently fetch or initialize tenant business settings with guaranteed unique ID.
+     */
+    private function getOrCreateSettings(string $tenantId): Setting
+    {
+        $settings = Setting::where('tenant_id', $tenantId)->first();
+        if ($settings) {
+            return $settings;
+        }
+
+        $tenantObj = \App\Models\Tenant::find($tenantId);
+        $defaultName = $tenantObj ? $tenantObj->name : 'VMARKET POS Store';
+        $nextId = max(1, (int) Setting::withoutGlobalScopes()->max('id') + 1);
+
+        return Setting::create([
+            'id' => $nextId,
+            'tenant_id' => $tenantId,
+            'businessName' => $defaultName,
+            'businessAddress' => 'Headquarters Address',
+            'businessPhone' => '+234 800 000 0000',
+            'businessEmail' => 'admin@vmarketpos.com',
+            'currency' => '₦',
+            'categories' => ['Groceries', 'Beverages', 'Electronics', 'Hardware', 'Household'],
+            'reportFooter' => 'Thank you for your patronage! Goods sold in good condition cannot be returned after 3 days.',
+            'lowStockThreshold' => 5,
+            'transactionEditLimitDays' => 0,
+            'fontFamily' => 'Plus Jakarta Sans',
+        ]);
     }
 
     /**
