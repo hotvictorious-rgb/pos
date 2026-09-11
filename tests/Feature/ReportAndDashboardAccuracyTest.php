@@ -483,4 +483,293 @@ class ReportAndDashboardAccuracyTest extends TestCase
         $this->assertArrayHasKey('data', $json);
         $this->assertEquals(1, $json['data']['total_orders']);
     }
+
+    public function test_dashboard_yesterday_filter_deep_verification()
+    {
+        $this->actingAs($this->adminUser);
+
+        $now = now();
+        $yesterday = now()->subDay()->setTime(14, 0, 0);
+        $threeDaysAgo = now()->subDays(3)->setTime(10, 0, 0);
+
+        // 1. Sales: Today vs Yesterday vs 3 Days Ago
+        // Sale Today: 100k
+        $saleToday = Sale::create([
+            'id' => (string) Str::uuid(),
+            'customerId' => $this->customer1->id,
+            'customerName' => $this->customer1->name,
+            'totalAmount' => 100000,
+            'paidAmount' => 100000,
+            'cashAmount' => 50000,
+            'posAmount' => 50000,
+            'status' => 'COMPLETED',
+            'deliveryStatus' => 'SUPPLIED',
+            'userId' => $this->adminUser->id,
+            'userName' => $this->adminUser->name,
+            'warehouse_id' => $this->branch1->id,
+            'createdAt' => $now->toIso8601String(),
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $saleToday->id,
+            'amount' => 50000,
+            'method' => 'CASH',
+            'timestamp' => $now->toIso8601String(),
+            'recordedBy' => $this->adminUser->name,
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $saleToday->id,
+            'amount' => 50000,
+            'method' => 'POS',
+            'timestamp' => $now->toIso8601String(),
+            'recordedBy' => $this->adminUser->name,
+        ]);
+
+        // Sale Yesterday: 75k (25k Cash, 25k POS, 25k Debt)
+        $saleYesterday = Sale::create([
+            'id' => (string) Str::uuid(),
+            'customerId' => $this->customer2->id,
+            'customerName' => $this->customer2->name,
+            'totalAmount' => 75000,
+            'paidAmount' => 50000,
+            'cashAmount' => 25000,
+            'posAmount' => 25000,
+            'status' => 'PARTIAL',
+            'deliveryStatus' => 'SUPPLIED',
+            'userId' => $this->adminUser->id,
+            'userName' => $this->adminUser->name,
+            'warehouse_id' => $this->branch1->id,
+            'createdAt' => $yesterday->toIso8601String(),
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $saleYesterday->id,
+            'amount' => 25000,
+            'method' => 'CASH',
+            'timestamp' => $yesterday->toIso8601String(),
+            'recordedBy' => $this->adminUser->name,
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $saleYesterday->id,
+            'amount' => 25000,
+            'method' => 'POS',
+            'timestamp' => $yesterday->toIso8601String(),
+            'recordedBy' => $this->adminUser->name,
+        ]);
+
+        // Sale 3 Days Ago: 40k Unpaid
+        $salePast = Sale::create([
+            'id' => (string) Str::uuid(),
+            'customerId' => $this->customer1->id,
+            'customerName' => $this->customer1->name,
+            'totalAmount' => 40000,
+            'paidAmount' => 0,
+            'cashAmount' => 0,
+            'posAmount' => 0,
+            'status' => 'PENDING',
+            'deliveryStatus' => 'SUPPLIED',
+            'userId' => $this->adminUser->id,
+            'userName' => $this->adminUser->name,
+            'warehouse_id' => $this->branch1->id,
+            'createdAt' => $threeDaysAgo->toIso8601String(),
+        ]);
+
+        // 2. Debt Collections: Today vs Yesterday
+        $cl1 = CustomerLedger::create([
+            'customer_id' => $this->customer1->id,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'PAYMENT',
+            'amount' => 10000,
+            'balance_after' => 0,
+            'payment_method' => 'CASH',
+            'notes' => 'Today debt recovery',
+            'recorded_by' => $this->adminUser->name,
+        ]);
+        $cl2 = CustomerLedger::create([
+            'customer_id' => $this->customer1->id,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'PAYMENT',
+            'amount' => 15000,
+            'balance_after' => 0,
+            'payment_method' => 'POS',
+            'notes' => 'Yesterday debt recovery',
+            'recorded_by' => $this->adminUser->name,
+        ]);
+        CustomerLedger::where('id', $cl2->id)->update(['created_at' => $yesterday]);
+
+        // 3. Refunds: Today vs Yesterday
+        SalesReturn::create([
+            'id' => (string) Str::uuid(),
+            'code' => 'RET-TODAY-001',
+            'saleId' => $saleToday->id,
+            'productId' => $this->product1->id,
+            'productName' => $this->product1->name,
+            'productCode' => $this->product1->code,
+            'quantity' => 1,
+            'refundAmount' => 5000,
+            'userId' => $this->adminUser->id,
+            'userName' => $this->adminUser->name,
+            'createdAt' => $now->toIso8601String(),
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $saleToday->id,
+            'amount' => -5000,
+            'method' => 'REFUND_CASH',
+            'timestamp' => $now->toIso8601String(),
+            'recordedBy' => $this->adminUser->name,
+        ]);
+
+        SalesReturn::create([
+            'id' => (string) Str::uuid(),
+            'code' => 'RET-YEST-001',
+            'saleId' => $saleYesterday->id,
+            'productId' => $this->product1->id,
+            'productName' => $this->product1->name,
+            'productCode' => $this->product1->code,
+            'quantity' => 1,
+            'refundAmount' => 3000,
+            'userId' => $this->adminUser->id,
+            'userName' => $this->adminUser->name,
+            'createdAt' => $yesterday->toIso8601String(),
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $saleYesterday->id,
+            'amount' => -3000,
+            'method' => 'REFUND_CASH',
+            'timestamp' => $yesterday->toIso8601String(),
+            'recordedBy' => $this->adminUser->name,
+        ]);
+
+        // 4. Stock Movements: In & Out
+        \App\Models\InventoryLog::create([
+            'id' => (string) Str::uuid(),
+            'productId' => $this->product1->id,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'STOCK_IN',
+            'quantity' => 100,
+            'timestamp' => $now->toIso8601String(),
+            'userId' => $this->adminUser->id,
+        ]);
+        \App\Models\InventoryLog::create([
+            'id' => (string) Str::uuid(),
+            'productId' => $this->product1->id,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'STOCK_IN',
+            'quantity' => 60,
+            'timestamp' => $yesterday->toIso8601String(),
+            'userId' => $this->adminUser->id,
+        ]);
+        \App\Models\InventoryLog::create([
+            'id' => (string) Str::uuid(),
+            'productId' => $this->product1->id,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'SALE',
+            'quantity' => -30,
+            'timestamp' => $yesterday->toIso8601String(),
+            'userId' => $this->adminUser->id,
+        ]);
+
+        $adjToday = StockAdjustment::create([
+            'product_id' => $this->product1->id,
+            'product_name' => $this->product1->name,
+            'product_code' => $this->product1->code,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'DAMAGE',
+            'quantity' => 10,
+            'reason' => 'Today damage',
+            'recorded_by' => $this->adminUser->name,
+        ]);
+        $adjYest = StockAdjustment::create([
+            'product_id' => $this->product1->id,
+            'product_name' => $this->product1->name,
+            'product_code' => $this->product1->code,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'DAMAGE',
+            'quantity' => 5,
+            'reason' => 'Yesterday damage',
+            'recorded_by' => $this->adminUser->name,
+        ]);
+        StockAdjustment::where('id', $adjYest->id)->update(['created_at' => $yesterday]);
+
+        // 6. Transfers with discrepancy: Today vs Yesterday
+        $trToday = Transfer::create([
+            'transfer_no' => 'TRF-TODAY',
+            'source_warehouse_id' => $this->branch1->id,
+            'destination_warehouse_id' => $this->branch2->id,
+            'status' => 'DISCREPANCY',
+            'dispatched_by' => $this->adminUser->name,
+        ]);
+        TransferItem::create([
+            'transfer_id' => $trToday->id,
+            'product_id' => $this->product1->id,
+            'product_name' => $this->product1->name,
+            'product_code' => $this->product1->code,
+            'dispatched_qty' => 10,
+            'received_qty' => 6,
+            'discrepancy_qty' => 4,
+        ]);
+
+        $trYesterday = Transfer::create([
+            'transfer_no' => 'TRF-YEST',
+            'source_warehouse_id' => $this->branch1->id,
+            'destination_warehouse_id' => $this->branch2->id,
+            'status' => 'DISCREPANCY',
+            'dispatched_by' => $this->adminUser->name,
+        ]);
+        Transfer::where('id', $trYesterday->id)->update(['created_at' => $yesterday]);
+        TransferItem::create([
+            'transfer_id' => $trYesterday->id,
+            'product_id' => $this->product1->id,
+            'product_name' => $this->product1->name,
+            'product_code' => $this->product1->code,
+            'dispatched_qty' => 10,
+            'received_qty' => 8,
+            'discrepancy_qty' => 2,
+        ]);
+
+        // Execute GET /dashboard?date_preset=YESTERDAY&warehouse_id=branch1
+        $response = $this->get(route('dashboard', [
+            'date_preset' => 'YESTERDAY',
+            'warehouse_id' => $this->branch1->id,
+        ]));
+
+        $response->assertStatus(200);
+
+        // Assert Label
+        $this->assertStringContainsString('Yesterday', $response->viewData('rangeLabel'));
+
+        // Assert Hero Card 1: Gross Sales
+        $this->assertEquals(1, $response->viewData('salesCount'), 'Only yesterday sale counted');
+        $this->assertEquals(75000.0, $response->viewData('totalSalesAmount'), 'Only yesterday 75k gross sales');
+
+        // Assert Inflows: Cash vs POS
+        $this->assertEquals(25000.0, $response->viewData('totalCashAmount'), 'Yesterday cash from sales');
+        $this->assertEquals(25000.0, $response->viewData('totalPosAmount'), 'Yesterday pos from sales');
+        $this->assertEquals(0.0, $response->viewData('cashDebtRecovered'), 'No cash debt collected yesterday');
+        $this->assertEquals(15000.0, $response->viewData('posDebtRecovered'), '15k POS debt collected yesterday');
+        $this->assertEquals(25000.0, $response->viewData('totalCashInflow'), '25k cash sales + 0 cash debt');
+        $this->assertEquals(40000.0, $response->viewData('totalPosInflow'), '25k pos sales + 15k pos debt');
+        $this->assertEquals(3000.0, $response->viewData('totalRefundAmount'), 'Yesterday 3k refund');
+
+        // Total Net Realized Inflow = (25k cash - 3k refund) + (40k pos) = 22k + 40k = 62,000
+        $this->assertEquals(62000.0, $response->viewData('totalCollections'));
+
+        // Assert Panel 1: New Debt & Recoveries
+        $this->assertEquals(25000.0, $response->viewData('newDebtIncurred'), 'Yesterday 25k unpaid balance');
+        $this->assertEquals(15000.0, $response->viewData('debtRecoveredInPeriod'), 'Yesterday 15k debt recovery');
+        $this->assertEquals(1, $response->viewData('debtRecoveryCount'), 'Yesterday 1 debt recovery payment');
+
+        // Assert Panel 2: Stock Movements
+        $this->assertEquals(60, $response->viewData('totalStockInUnits'), 'Yesterday 60 stock in units');
+        $this->assertEquals(30, $response->viewData('totalStockOutUnits'), 'Yesterday 30 sale outflow units');
+
+        // Assert Panel 3: Loss Radar
+        $this->assertEquals(5, $response->viewData('damagedUnits'), 'Yesterday 5 damaged units');
+        $this->assertEquals(2, $response->viewData('discrepancyCount'), 'Yesterday 2 discrepancy units');
+        $this->assertEquals(1, $response->viewData('returnsCount'), 'Yesterday 1 return');
+    }
 }

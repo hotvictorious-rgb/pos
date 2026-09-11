@@ -859,7 +859,11 @@ class AccountingReportService
         $query = Transfer::with(['source', 'destination', 'items']);
 
         $transferDateCol = \Illuminate\Support\Facades\Schema::hasColumn('transfers', 'created_at') ? 'created_at' : 'createdAt';
-        $query->whereBetween($transferDateCol, [$dates['startIso'], $dates['endIso']]);
+        if ($transferDateCol === 'createdAt') {
+            $query->whereBetween($transferDateCol, [$dates['startIso'], $dates['endIso']]);
+        } else {
+            $query->whereBetween($transferDateCol, [$dates['start']->toDateTimeString(), $dates['end']->toDateTimeString()]);
+        }
 
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
