@@ -209,13 +209,15 @@
 
         <div class="kpi-card" style="border-top: 4px solid #3b82f6;">
             <h4>Cash / POS Realized</h4>
-            <div class="val" style="color: #60a5fa;">₦{{ number_format($totalCollected, 0) }}</div>
-            <div class="sub">{{ $totalRevenue > 0 ? round(($totalCollected / $totalRevenue) * 100, 1) : 0 }}% Collection Rate</div>
+            <div class="val" style="color: #60a5fa;">₦{{ number_format($periodSummary['totalNetMoneyRealized'] ?? $totalCollected, 0) }}</div>
+            <div class="sub">
+                💵 ₦{{ number_format($periodSummary['netCashInflow'] ?? $totalCollected, 0) }} Cash · 💳 ₦{{ number_format($periodSummary['netPosInflow'] ?? 0, 0) }} POS
+            </div>
         </div>
 
         <div class="kpi-card" style="border-top: 4px solid #ef4444;">
             <h4>New Credit / Debts Created</h4>
-            <div class="val" style="color: #f87171;">₦{{ number_format($totalDebtCreated, 0) }}</div>
+            <div class="val" style="color: #f87171;">₦{{ number_format($periodSummary['newCreditIssued'] ?? $totalDebtCreated, 0) }}</div>
             <div class="sub">All-Time Market Debt: ₦{{ number_format($totalDebtOwedAllTime, 0) }}</div>
         </div>
 
@@ -283,6 +285,7 @@
     <!-- 4. TABBED REPORTS NAVIGATION -->
     <div class="report-tabs">
         <button class="rep-tab-btn active" onclick="showReport('repSales', this)">📊 Sales & Invoices ({{ $sales->count() }})</button>
+        <button class="rep-tab-btn" onclick="showReport('repPending', this)">⏳ Pending Orders ({{ $pendingOrders['total_orders'] ?? 0 }})</button>
         <button class="rep-tab-btn" onclick="showReport('repStock', this)">📦 Multi-Branch Stock ({{ $products->count() }})</button>
         <button class="rep-tab-btn" onclick="showReport('repTransfers', this)">🚚 Transfers & Waybills ({{ $transfers->count() }})</button>
         <button class="rep-tab-btn" onclick="showReport('repDebts', this)">💳 Debtors Aging ({{ $debtors->count() }})</button>
@@ -357,6 +360,113 @@
                         <tr>
                             <td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales match your active filters.</td>
                         </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    <!-- ========================================================================= -->
+    <!-- TAB: PENDING ORDERS & BACKLOG AGING -->
+    <!-- ========================================================================= -->
+    <div id="repPending" class="report-section">
+        <!-- 4 Aging Buckets -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #93c5fd; text-transform: uppercase;">Fresh (&lt; 24 Hours)</div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: #60a5fa; margin-top: 0.25rem;">{{ $pendingOrders['under_24h'] ?? 0 }} Orders</div>
+                <div style="font-size: 0.75rem; color: #94a3b8;">Normal dispatch queue</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(234,179,8,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #fde047; text-transform: uppercase;">Normal (24h - 48h)</div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: #facc15; margin-top: 0.25rem;">{{ $pendingOrders['from_24h_to_48h'] ?? 0 }} Orders</div>
+                <div style="font-size: 0.75rem; color: #94a3b8;">Due for customer release</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(249,115,22,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #fdba74; text-transform: uppercase;">Delayed (3d - 7d)</div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: #fb923c; margin-top: 0.25rem;">{{ $pendingOrders['from_3d_to_7d'] ?? 0 }} Orders</div>
+                <div style="font-size: 0.75rem; color: #94a3b8;">Follow-up required</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 1rem; {{ ($pendingOrders['over_7d'] ?? 0) > 0 ? 'box-shadow: 0 0 15px rgba(239,68,68,0.25);' : '' }}">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #fca5a5; text-transform: uppercase;">Critical (&gt; 7 Days)</div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: #f87171; margin-top: 0.25rem;">
+                    {{ $pendingOrders['over_7d'] ?? 0 }} Orders
+                    @if(($pendingOrders['over_7d'] ?? 0) > 0)
+                        <span style="font-size: 0.7rem; background: #ef4444; color: #fff; padding: 0.15rem 0.4rem; border-radius: 6px; vertical-align: middle;">⚠️ URGENT</span>
+                    @endif
+                </div>
+                <div style="font-size: 0.75rem; color: #94a3b8;">Severely delayed collection</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="export-bar">
+                <div>
+                    <h3 style="font-size: 1.15rem; font-weight: 800; color: #fbbf24;">⏳ Pending & Unsupplied Customer Backlog</h3>
+                    <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 0.2rem;">
+                        {{ $pendingOrders['total_orders'] ?? 0 }} orders awaiting pickup · {{ number_format($pendingOrders['total_units'] ?? 0) }} total units · ₦{{ number_format($pendingOrders['total_value'] ?? 0, 0) }} committed value
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Invoice / Sale</th>
+                            <th>Age</th>
+                            <th>Customer</th>
+                            <th>Phone</th>
+                            <th>Branch</th>
+                            <th>Units</th>
+                            <th>Total Value</th>
+                            <th>Paid Amount</th>
+                            <th>Debt Balance</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($pendingOrders['backlog'] ?? [] as $po)
+                            <tr>
+                                <td>
+                                    <strong style="color: #60a5fa;">#{{ substr($po['sale_id'], 0, 8) }}</strong>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted);">{{ \Carbon\Carbon::parse($po['created_at'])->format('d M Y, h:i A') }}</div>
+                                </td>
+                                <td>
+                                    @if($po['age_days'] >= 7)
+                                        <span class="badge badge-danger" style="font-size: 0.72rem;">{{ $po['age_days'] }}d old (Critical)</span>
+                                    @elseif($po['age_days'] >= 3)
+                                        <span class="badge badge-warning" style="font-size: 0.72rem;">{{ $po['age_days'] }}d old</span>
+                                    @else
+                                        <span class="badge badge-info" style="font-size: 0.72rem;">{{ $po['age_days'] }}d old</span>
+                                    @endif
+                                </td>
+                                <td><strong>{{ $po['customer_name'] }}</strong></td>
+                                <td><code style="font-size: 0.8rem; color: #cbd5e1;">{{ $po['customer_phone'] ?: 'N/A' }}</code></td>
+                                <td><span class="badge badge-secondary" style="font-size: 0.72rem;">{{ $po['warehouse_name'] }}</span></td>
+                                <td><strong style="color: #fbbf24;">{{ number_format($po['total_units']) }}</strong></td>
+                                <td><strong>₦{{ number_format($po['total_value'], 0) }}</strong></td>
+                                <td><span style="color: #4ade80;">₦{{ number_format($po['paid_amount'], 0) }}</span></td>
+                                <td>
+                                    @if($po['debt_balance'] > 0)
+                                        <span style="color: #f87171; font-weight: 700;">₦{{ number_format($po['debt_balance'], 0) }}</span>
+                                    @else
+                                        <span style="color: #4ade80;">Paid in Full</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <span class="badge badge-warning" style="font-size: 0.72rem;">⏳ {{ strtoupper($po['delivery_status']) }}</span>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                    🎉 No pending orders! All customer orders have been supplied and collected.
+                                </td>
+                            </tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -705,6 +815,15 @@
                     <div style="display: flex; gap: 0.5rem;">
                         <a href="{{ route('reports.export.csv', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
                         <a href="{{ route('reports.export.json', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    </div>
+                </div>
+
+                <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
+                    <h4 style="font-size: 1rem; font-weight: 800; color: #fde047; margin-bottom: 0.35rem;">⏳ Pending Orders & Aging Backlog</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Unsupplied customer orders, pickup status, committed stock value, and aging buckets.</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
             </div>

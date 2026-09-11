@@ -28,7 +28,12 @@ class DebtController extends Controller
         $sortBy = $request->get('sort_by', 'highest_debt');
         $authUser = Auth::user();
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
-        $assignedWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
+        
+        $requestedWh = $request->get('warehouse_id', session('active_warehouse_id'));
+        if ($requestedWh === 'ALL' || $requestedWh === '' || is_null($requestedWh)) {
+            $requestedWh = null;
+        }
+        $assignedWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : ($requestedWh ? (int) $requestedWh : null);
 
         $query = Customer::where('total_debt', '>', 0);
 
@@ -88,41 +93,51 @@ class DebtController extends Controller
             });
         }
 
-        if ($sortBy === 'lowest_debt') {
-            $query->orderBy('total_debt', 'asc');
-        } elseif ($sortBy === 'name_asc') {
-            $query->orderBy('name', 'asc');
-        } elseif ($sortBy === 'name_desc') {
-            $query->orderBy('name', 'desc');
-        } else {
-            $query->orderBy('total_debt', 'desc');
-        }
-
-        $debtors = (clone $query)->paginate(25)->withQueryString();
-
         if ($assignedWarehouseId) {
-            $matchingDebtorIds = (clone $query)->pluck('id')->toArray();
-            $totalOutstandingDebt = 0.0;
-            $highRiskDebtorsCount = 0;
-            foreach ($matchingDebtorIds as $mId) {
-                $bDebt = $customerBranchDebts[$mId] ?? 0.0;
-                $totalOutstandingDebt += $bDebt;
-                if ($bDebt >= 100000) {
-                    $highRiskDebtorsCount++;
-                }
-            }
-            $totalOutstandingDebt = round($totalOutstandingDebt, 2);
-
-            $debtors->getCollection()->transform(function ($debtor) use ($customerBranchDebts) {
-                $debtor->branch_debt = round($customerBranchDebts[$debtor->id] ?? 0.0, 2);
+            $matchingCustomers = $query->get()->map(function ($debtor) use ($customerBranchDebts) {
+                $bDebt = round($customerBranchDebts[$debtor->id] ?? 0.0, 2);
+                $debtor->branch_debt = $bDebt;
+                $debtor->total_debt = $bDebt;
                 return $debtor;
             });
+
+            if ($sortBy === 'lowest_debt') {
+                $sorted = $matchingCustomers->sortBy('branch_debt');
+            } elseif ($sortBy === 'name_asc') {
+                $sorted = $matchingCustomers->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE);
+            } elseif ($sortBy === 'name_desc') {
+                $sorted = $matchingCustomers->sortByDesc('name', SORT_NATURAL | SORT_FLAG_CASE);
+            } else {
+                $sorted = $matchingCustomers->sortByDesc('branch_debt');
+            }
+
+            $page = (int) $request->get('page', 1);
+            $perPage = 25;
+            $sliced = $sorted->slice(($page - 1) * $perPage, $perPage)->values();
+            $debtors = new \Illuminate\Pagination\LengthAwarePaginator($sliced, $sorted->count(), $perPage, $page, [
+                'path'  => $request->url(),
+                'query' => $request->query(),
+            ]);
+
+            $totalOutstandingDebt = round($sorted->sum('branch_debt'), 2);
+            $highRiskDebtorsCount = $sorted->filter(fn($c) => $c->branch_debt >= 100000)->count();
+            $totalDebtorsCount = $sorted->count();
         } else {
+            if ($sortBy === 'lowest_debt') {
+                $query->orderBy('total_debt', 'asc');
+            } elseif ($sortBy === 'name_asc') {
+                $query->orderBy('name', 'asc');
+            } elseif ($sortBy === 'name_desc') {
+                $query->orderBy('name', 'desc');
+            } else {
+                $query->orderBy('total_debt', 'desc');
+            }
+
+            $debtors = (clone $query)->paginate(25)->withQueryString();
             $totalOutstandingDebt = (clone $query)->sum('total_debt');
             $highRiskDebtorsCount = (clone $query)->where('total_debt', '>=', 100000)->count();
+            $totalDebtorsCount = (clone $query)->count();
         }
-
-        $totalDebtorsCount = (clone $query)->count();
 
         $recentPaymentsQuery = CustomerLedger::with(['customer', 'sale'])->where('type', 'PAYMENT');
         if ($assignedWarehouseId) {

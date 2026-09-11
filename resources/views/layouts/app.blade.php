@@ -170,6 +170,298 @@
             z-index: 40;
         }
 
+        /* 🏬 Topbar Branch Context Switcher Styles */
+        .topbar-branch-wrap {
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .branch-selector-dropdown-wrapper {
+            position: relative;
+        }
+
+        .branch-selector-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.65rem;
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95));
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            border-radius: 9999px;
+            padding: 0.4rem 0.95rem 0.4rem 0.65rem;
+            color: #f8fafc;
+            font-size: 0.84rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            white-space: nowrap;
+        }
+
+        .branch-selector-btn:hover {
+            border-color: #3b82f6;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.25), rgba(15, 23, 42, 0.98));
+            box-shadow: 0 6px 18px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .branch-selector-dropdown-wrapper.open .branch-selector-btn {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+            background: rgba(30, 41, 59, 0.95);
+        }
+
+        .branch-selector-btn .b-pill-indicator {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, 0.18);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.88rem;
+            flex-shrink: 0;
+        }
+
+        .branch-selector-btn .b-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+            line-height: 1.15;
+        }
+
+        .branch-selector-btn .b-label {
+            font-size: 0.62rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #93c5fd;
+        }
+
+        .branch-selector-btn .b-name {
+            font-size: 0.83rem;
+            font-weight: 700;
+            color: #ffffff;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .branch-selector-btn .b-chevron {
+            font-size: 0.72rem;
+            color: #94a3b8;
+            margin-left: 0.2rem;
+            transition: transform 0.2s ease;
+        }
+
+        .branch-selector-dropdown-wrapper.open .b-chevron {
+            transform: rotate(180deg);
+            color: #3b82f6;
+        }
+
+        .branch-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            width: 320px;
+            max-width: 92vw;
+            background: #0f172a;
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            border-radius: 18px;
+            box-shadow: 0 20px 45px -8px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            z-index: 1000;
+            padding: 0.6rem;
+            animation: dropdownFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .branch-selector-dropdown-wrapper.open .branch-dropdown-menu {
+            display: block;
+        }
+
+        @keyframes dropdownFadeIn {
+            from { opacity: 0; transform: translate(-50%, -6px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+
+        .branch-dropdown-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.55rem 0.75rem 0.5rem;
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #94a3b8;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            margin-bottom: 0.4rem;
+        }
+
+        .branch-dropdown-header .count-pill {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            padding: 0.15rem 0.5rem;
+            border-radius: 99px;
+            font-size: 0.68rem;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .branch-dropdown-list {
+            max-height: 320px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .branch-dropdown-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.06);
+            margin: 0.25rem 0.4rem;
+        }
+
+        .branch-option-btn {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid transparent;
+            border-radius: 12px;
+            padding: 0.65rem 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            color: #f1f5f9;
+            font-family: inherit;
+        }
+
+        .branch-option-btn:hover {
+            background: rgba(59, 130, 246, 0.12);
+            border-color: rgba(59, 130, 246, 0.3);
+            transform: translateX(2px);
+        }
+
+        .branch-option-btn.active {
+            background: rgba(37, 99, 235, 0.2);
+            border-color: #3b82f6;
+        }
+
+        .branch-option-btn .bo-icon {
+            font-size: 1.25rem;
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .branch-option-btn .bo-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .branch-option-btn .bo-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .branch-option-btn .bo-subtitle {
+            font-size: 0.72rem;
+            color: #94a3b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .branch-option-btn .bo-badge {
+            background: #22c55e;
+            color: #ffffff;
+            font-size: 0.65rem;
+            font-weight: 800;
+            padding: 0.2rem 0.5rem;
+            border-radius: 99px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            flex-shrink: 0;
+        }
+
+        .branch-badge-locked {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(100, 116, 139, 0.3);
+            border-radius: 9999px;
+            padding: 0.4rem 0.95rem 0.4rem 0.65rem;
+            font-size: 0.84rem;
+            font-weight: 700;
+            color: #cbd5e1;
+            white-space: nowrap;
+        }
+
+        .branch-badge-locked .b-pill-indicator {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(148, 163, 184, 0.15);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.88rem;
+            flex-shrink: 0;
+        }
+
+        .branch-badge-locked .b-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+            line-height: 1.15;
+        }
+
+        .branch-badge-locked .b-label {
+            font-size: 0.62rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #94a3b8;
+        }
+
+        .branch-badge-locked .b-name {
+            font-size: 0.83rem;
+            font-weight: 700;
+            color: #e2e8f0;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .branch-badge-locked .b-lock-tag {
+            background: rgba(234, 179, 8, 0.15);
+            color: #facc15;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            font-size: 0.65rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 99px;
+            font-weight: 800;
+            margin-left: 0.2rem;
+        }
+
         .container {
             width: 100%;
             max-width: 1360px;
@@ -518,18 +810,197 @@
                 padding: 0.5rem;
                 align-items: flex-end !important;
             }
-            .modal, .modal-content, .modal-card {
-                max-height: 88vh !important;
-                overflow-y: auto !important;
-                -webkit-overflow-scrolling: touch;
-                width: 100% !important;
-                max-width: 100% !important;
-                border-bottom-left-radius: 0 !important;
-                border-bottom-right-radius: 0 !important;
-                margin: 0 !important;
+        /* Branch Switcher & Context Styling */
+        .topbar-branch-wrap {
+            display: flex;
+            align-items: center;
+        }
+        .branch-badge-locked {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(71, 85, 105, 0.6);
+            border-radius: 10px;
+            padding: 0.35rem 0.75rem;
+            font-size: 0.84rem;
+            font-weight: 700;
+            color: #cbd5e1;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            user-select: none;
+        }
+        .branch-badge-locked .b-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+        }
+        .branch-badge-locked .b-tag {
+            background: rgba(100, 116, 139, 0.3);
+            color: #94a3b8;
+            font-size: 0.68rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 6px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .branch-selector-dropdown-wrapper {
+            position: relative;
+        }
+        .branch-selector-btn {
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            border-radius: 10px;
+            padding: 0.38rem 0.85rem;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #f8fafc;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        .branch-selector-btn:hover {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: #3b82f6;
+            color: #93c5fd;
+            transform: translateY(-1px);
+        }
+        .branch-selector-btn .b-chevron {
+            color: #94a3b8;
+            font-size: 0.75rem;
+            transition: transform 0.2s ease;
+        }
+        .branch-selector-dropdown-wrapper.open .branch-selector-btn .b-chevron {
+            transform: rotate(180deg);
+        }
+        .branch-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            width: 320px;
+            max-width: 90vw;
+            background: #0f172a;
+            border: 1px solid rgba(71, 85, 105, 0.6);
+            border-radius: 14px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            padding: 0.6rem;
+            z-index: 1050;
+            animation: dropdownFadeIn 0.15s ease-out;
+        }
+        .branch-selector-dropdown-wrapper.open .branch-dropdown-menu {
+            display: block;
+        }
+        @keyframes dropdownFadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .branch-dropdown-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.4rem 0.5rem 0.5rem;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            margin-bottom: 0.4rem;
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .branch-dropdown-list {
+            max-height: 280px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .branch-option-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            padding: 0.55rem 0.7rem;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            color: #f1f5f9;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .branch-option-btn:hover {
+            background: rgba(30, 41, 59, 0.8);
+            border-color: rgba(71, 85, 105, 0.5);
+        }
+        .branch-option-btn.active {
+            background: rgba(37, 99, 235, 0.15);
+            border-color: rgba(59, 130, 246, 0.5);
+        }
+        .branch-option-btn .bo-icon {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+        .branch-option-btn .bo-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .branch-option-btn .bo-title {
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: #f8fafc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .branch-option-btn.active .bo-title {
+            color: #60a5fa;
+        }
+        .branch-option-btn .bo-subtitle {
+            font-size: 0.72rem;
+            color: #94a3b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .branch-option-btn .bo-badge {
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 0.15rem 0.45rem;
+            border-radius: 6px;
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            flex-shrink: 0;
+        }
+        .branch-dropdown-divider {
+            height: 1px;
+            background: rgba(51, 65, 85, 0.5);
+            margin: 0.25rem 0;
+        }
+
+        @media (max-width: 768px) {
+            .topbar-branch-wrap {
+                width: 100%;
+                justify-content: center;
+                order: 2;
+            }
+            .branch-selector-btn, .branch-badge-locked {
+                width: 100%;
+                justify-content: center;
+            }
+            .branch-dropdown-menu {
+                width: 100%;
+                left: 0;
+                right: 0;
             }
         }
     </style>
+
     @stack('styles')
 </head>
 <body>
@@ -545,7 +1016,27 @@
             $displayBrandName = ($activeTenantId !== 'default-tenant' && $tenantModel) 
                 ? $tenantModel->name 
                 : config('saas.platform_name', 'VMARKET POS');
+
+            $globalAuthUser = auth()->user();
+            $currentRole = $globalAuthUser->role ?? 'admin';
+            $isBranchLocked = $globalAuthUser && $globalAuthUser->isBranchScoped();
+
+            if ($globalAuthUser) {
+                if ($isBranchLocked) {
+                    $accessibleWarehouses = \App\Models\Warehouse::where('id', $globalAuthUser->warehouse_id)->get();
+                    $globalActiveWarehouseId = $globalAuthUser->warehouse_id;
+                } else {
+                    $accessibleWarehouses = \App\Models\Warehouse::where('is_active', true)->get();
+                    $globalActiveWarehouseId = session('active_warehouse_id');
+                }
+                $globalActiveWarehouse = $globalActiveWarehouseId ? \App\Models\Warehouse::find($globalActiveWarehouseId) : null;
+            } else {
+                $accessibleWarehouses = collect();
+                $globalActiveWarehouse = null;
+                $globalActiveWarehouseId = null;
+            }
         @endphp
+
         <div class="sidebar-header">
             <div class="brand-icon">📦</div>
             <div class="brand-text">
@@ -666,6 +1157,78 @@
                     <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 800; color: #facc15; display: inline-flex; align-items: center; gap: 0.4rem;">
                         <span>👑</span> <span>Executive Observer</span>
                     </div>
+                @endif
+            </div>
+
+            <!-- Center: Active Branch Context Switcher -->
+            <div class="topbar-branch-wrap">
+                @if($globalAuthUser)
+                    @if($isBranchLocked)
+                        <div class="branch-badge-locked" title="Assigned branch location (Locked for frontline staff)">
+                            <span class="b-pill-indicator">🏬</span>
+                            <div class="b-meta">
+                                <span class="b-label">Assigned Branch</span>
+                                <span class="b-name">{{ $globalActiveWarehouse->name ?? 'My Branch' }}</span>
+                            </div>
+                            <span class="b-lock-tag">🔒 Assigned</span>
+                        </div>
+                    @else
+                        <div class="branch-selector-dropdown-wrapper" id="globalBranchDropdownWrapper">
+                            <button type="button" class="branch-selector-btn" id="globalBranchDropdownBtn" onclick="toggleGlobalBranchDropdown(event)" aria-haspopup="true" aria-expanded="false" title="Click to switch active branch context">
+                                <span class="b-pill-indicator">{{ $globalActiveWarehouse ? '🏬' : '🌐' }}</span>
+                                <div class="b-meta">
+                                    <span class="b-label">{{ $globalActiveWarehouse ? 'Active Branch' : 'Scope' }}</span>
+                                    <span class="b-name">{{ $globalActiveWarehouse ? $globalActiveWarehouse->name : 'All Branches (Consolidated)' }}</span>
+                                </div>
+                                <span class="b-chevron">▾</span>
+                            </button>
+                            
+                            <div class="branch-dropdown-menu" id="globalBranchDropdownMenu">
+                                <div class="branch-dropdown-header">
+                                    <span>Select Branch Context</span>
+                                    <span class="count-pill">{{ $accessibleWarehouses->count() }} Available</span>
+                                </div>
+                                
+                                <div class="branch-dropdown-list">
+                                    <!-- Consolidated Option -->
+                                    <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;">
+                                        @csrf
+                                        <input type="hidden" name="warehouse_id" value="ALL">
+                                        <button type="submit" class="branch-option-btn {{ is_null($globalActiveWarehouseId) ? 'active' : '' }}">
+                                            <span class="bo-icon">🌐</span>
+                                            <div class="bo-content">
+                                                <div class="bo-title">All Branches (Consolidated)</div>
+                                                <div class="bo-subtitle">Company-wide analytics & totals</div>
+                                            </div>
+                                            @if(is_null($globalActiveWarehouseId))
+                                                <span class="bo-badge">Active ✓</span>
+                                            @endif
+                                        </button>
+                                    </form>
+
+                                    <div class="branch-dropdown-divider"></div>
+
+                                    <!-- Individual Authorized Branches -->
+                                    @foreach($accessibleWarehouses as $wh)
+                                        <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;">
+                                            @csrf
+                                            <input type="hidden" name="warehouse_id" value="{{ $wh->id }}">
+                                            <button type="submit" class="branch-option-btn {{ (string)$globalActiveWarehouseId === (string)$wh->id ? 'active' : '' }}">
+                                                <span class="bo-icon">🏬</span>
+                                                <div class="bo-content">
+                                                    <div class="bo-title">{{ $wh->name }}</div>
+                                                    <div class="bo-subtitle">{{ $wh->address ?: ($wh->location ?: 'Physical Store') }}</div>
+                                                </div>
+                                                @if((string)$globalActiveWarehouseId === (string)$wh->id)
+                                                    <span class="bo-badge">Active ✓</span>
+                                                @endif
+                                            </button>
+                                        </form>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                 @endif
             </div>
 
@@ -1545,6 +2108,30 @@
                 r.style.display = text.includes(q) ? '' : 'none';
             });
         };
+
+        // Global Branch Selector Dropdown Handlers
+        window.toggleGlobalBranchDropdown = function(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            const wrap = document.getElementById('globalBranchDropdownWrapper');
+            if (!wrap) return;
+            const isOpen = wrap.classList.contains('open');
+            wrap.classList.toggle('open', !isOpen);
+            const btn = document.getElementById('globalBranchDropdownBtn');
+            if (btn) btn.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+        };
+
+        document.addEventListener('click', function(e) {
+            const wrap = document.getElementById('globalBranchDropdownWrapper');
+            if (wrap && !wrap.contains(e.target)) {
+                wrap.classList.remove('open');
+                const btn = document.getElementById('globalBranchDropdownBtn');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+
 
         // 3. Instant client-side row filtering on pre-rendered tables (0ms latency!)
         const searchInputs = document.querySelectorAll('input[name="search"], input[placeholder*="Search"]');

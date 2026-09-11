@@ -51,9 +51,20 @@ class ReportController extends Controller
         $datePreset = $request->get('date_preset', 'ALL');
         $fromDate = $request->get('from_date');
         $toDate = $request->get('to_date');
+        $effectiveWh = $request->has('warehouse_id') ? $request->warehouse_id : session('active_warehouse_id');
+        if ($effectiveWh === 'ALL' || $effectiveWh === '' || is_null($effectiveWh)) {
+            $effectiveWh = null;
+        }
+
         $filters = array_merge(['date_preset' => $datePreset], $request->all());
+        if ($effectiveWh) {
+            $filters['warehouse_id'] = $effectiveWh;
+        } else {
+            unset($filters['warehouse_id']);
+        }
 
         // 1. Unified Authoritative Sales Query via AccountingReportService
+
         $salesQuery = $accountingService->buildSalesQuery($filters);
         $sales = (clone $salesQuery)->get();
         $saleIds = $sales->pluck('id');
@@ -71,7 +82,8 @@ class ReportController extends Controller
             $s->event_paid_amount = max(0.0, round((float) $s->totalAmount - $retCredit - $debt, 2));
         }
 
-        // 2. High-Level Aggregates (Event-Authoritative)
+        // 2. High-Level Aggregates (Event-Authoritative via AccountingReportService)
+        $periodSummary = $accountingService->getPeriodSummary($filters);
         $totalRevenue = (float) $sales->sum('totalAmount');
         $inflows = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
             ->where('amount', '>', 0)
@@ -87,8 +99,9 @@ class ReportController extends Controller
         $totalInvoices = $sales->count();
 
         // 3. Debt Aging Analysis (Batch Calculated, Zero N+1 Queries)
-        if ($isBranchScoped) {
-            $branchSales = Sale::where('warehouse_id', $authUser->warehouse_id)
+        $scopedWh = $isBranchScoped ? (int) $authUser->warehouse_id : ($effectiveWh ? (int) $effectiveWh : null);
+        if ($scopedWh) {
+            $branchSales = Sale::where('warehouse_id', $scopedWh)
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->orderBy('createdAt', 'asc')
                 ->get();
@@ -123,7 +136,7 @@ class ReportController extends Controller
                     $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
                     $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
                     $c->branch_debt = $bDebt;
-                    $c->total_debt = $bDebt; // Never expose tenant-wide total_debt to branch personnel
+                    $c->total_debt = $bDebt; // Never expose tenant-wide total_debt to branch personnel or filtered branch views
                     return $c;
                 })
                 ->sortByDesc('branch_debt')
@@ -158,18 +171,32 @@ class ReportController extends Controller
                 });
         }
 
-        // 4. Top Selling Products (by revenue) - Strictly scoped to filtered sales within tenant & branch
-        $topProductsQuery = SaleItem::selectRaw('productName, code, sum(quantity) as total_qty, sum(totalPrice) as total_revenue');
+        // 4. Top Selling Products (by revenue) - Strictly scoped to filtered sales within tenant & branch, netting out returns
+        $topProductsQuery = SaleItem::selectRaw('productId, productName, code, sum(quantity) as total_qty, sum(totalPrice) as total_revenue');
         if ($sales->isNotEmpty()) {
             $topProductsQuery->whereIn('saleId', $sales->pluck('id'));
         } else {
             $topProductsQuery->whereRaw('1 = 0');
         }
-        $topProducts = $topProductsQuery
-            ->groupBy('productName', 'code')
+        $topProductsRaw = $topProductsQuery
+            ->groupBy('productId', 'productName', 'code')
             ->orderBy('total_revenue', 'desc')
-            ->take(5)
             ->get();
+
+        $returnsByProduct = \App\Models\SalesReturn::whereIn('saleId', $saleIds)
+            ->groupBy('productId')
+            ->selectRaw('productId, SUM(quantity) as ret_qty, SUM(refundAmount) as ret_amount')
+            ->get()
+            ->keyBy('productId');
+
+        $topProducts = $topProductsRaw->map(function ($item) use ($returnsByProduct) {
+            $ret = $returnsByProduct->get($item->productId);
+            $retQty = $ret ? (int) $ret->ret_qty : 0;
+            $retAmount = $ret ? (float) $ret->ret_amount : 0.0;
+            $item->total_qty = max(0, (int) $item->total_qty - $retQty);
+            $item->total_revenue = max(0.0, round((float) $item->total_revenue - $retAmount, 2));
+            return $item;
+        })->sortByDesc('total_revenue')->take(5)->values();
 
         // 5. Top Staff by Sales Volume (Batch In-Memory, Zero N+1 Queries)
         $topStaff = $sales->groupBy('userName')->map(function ($group, $name) {
@@ -193,6 +220,8 @@ class ReportController extends Controller
         $stockLevelsQuery = StockLevel::whereIn('product_id', $productIds);
         if ($isBranchScoped) {
             $stockLevelsQuery->where('warehouse_id', $authUser->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $stockLevelsQuery->where('warehouse_id', (int) $effectiveWh);
         }
         $stockLevelsGrouped = $stockLevelsQuery->get()->groupBy('product_id');
 
@@ -200,7 +229,7 @@ class ReportController extends Controller
             $levels = $stockLevelsGrouped->get($p->id, collect());
             $p->branch_stocks = $levels->pluck('physical_stock', 'warehouse_id')->toArray();
             $p->total_physical_stock = array_sum($p->branch_stocks);
-            $p->total_valuation = $p->total_physical_stock * (float) $p->unitPrice;
+            $p->total_valuation = max(0, $p->total_physical_stock) * (float) $p->unitPrice;
             $threshold = (int) ($p->minStockLevel ?? 5);
             $p->stock_status = $p->total_physical_stock <= 0 ? 'OUT_OF_STOCK' : ($p->total_physical_stock <= $threshold ? 'LOW_STOCK' : 'IN_STOCK');
             return $p;
@@ -208,25 +237,20 @@ class ReportController extends Controller
         $totalStockValuation = $products->sum('total_valuation');
         $totalPhysicalUnits = $products->sum('total_physical_stock');
 
-        // 7. Transfers & Logistics via AccountingReportService
+        // 7. Transfers & Logistics via AccountingReportService (Untruncated Total)
         $transfersQuery = $accountingService->buildTransfersQuery($filters);
         $transfers = $transfersQuery->take(50)->get();
-        $totalDiscrepancyUnits = 0;
-        foreach ($transfers as $trf) {
-            if ($trf->status === 'DISCREPANCY') {
-                foreach ($trf->items as $item) {
-                    $totalDiscrepancyUnits += max(0, $item->discrepancy_qty);
-                }
-            }
-        }
+        $totalDiscrepancyUnits = $accountingService->getTotalDiscrepancyUnits($filters);
 
-        // 8. Damaged Goods Write-offs
+        // 8. Damaged Goods Write-offs (Untruncated Total)
         $adjustmentsQuery = StockAdjustment::with('warehouse');
         if ($isBranchScoped) {
             $adjustmentsQuery->where('warehouse_id', $authUser->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $adjustmentsQuery->where('warehouse_id', (int) $effectiveWh);
         }
         $adjustments = $adjustmentsQuery->orderBy('created_at', 'desc')->take(50)->get();
-        $totalDamagedUnits = $adjustments->sum('quantity');
+        $totalDamagedUnits = $accountingService->getTotalDamagedUnits($filters);
 
         // 9. Immutable Activity Logs
         $activitiesQuery = Activity::query();
@@ -240,6 +264,9 @@ class ReportController extends Controller
         $returns = $returnsQuery->get();
         $totalRefunded = (float) $returns->sum('refundAmount');
 
+        // 11. Pending Orders Backlog & Aging Analytics
+        $pendingOrders = $accountingService->getPendingOrdersAnalytics($scopedWh, $filters);
+
         return view('reports.index', compact(
             'activeTab',
             'warehouses',
@@ -248,6 +275,7 @@ class ReportController extends Controller
             'sales',
             'totalRevenue',
             'totalCollected',
+            'netPayable',
             'totalDebtCreated',
             'totalInvoices',
             'totalDebtOwedAllTime',
@@ -264,6 +292,8 @@ class ReportController extends Controller
             'activities',
             'returns',
             'totalRefunded',
+            'periodSummary',
+            'pendingOrders',
             'datePreset',
             'fromDate',
             'toDate'
@@ -281,13 +311,20 @@ class ReportController extends Controller
         }
 
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
-        $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
+        $rawWh = $request->get('warehouse_id');
+        $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
+        $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
         $fileName = "hysam_{$type}_report_" . date('Y_m_d_His') . ".csv";
 
         $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         $filters = array_merge(['date_preset' => $request->get('date_preset', 'ALL')], $request->all());
+        if ($branchWarehouseId) {
+            $filters['warehouse_id'] = $branchWarehouseId;
+        } else {
+            unset($filters['warehouse_id']);
+        }
 
-        return new StreamedResponse(function () use ($type, $isBranchScoped, $branchWarehouseId, $accountingService, $filters) {
+        return new StreamedResponse(function () use ($type, $branchWarehouseId, $accountingService, $filters) {
             $handle = fopen('php://output', 'w');
 
             if ($type === 'sales') {
@@ -320,8 +357,8 @@ class ReportController extends Controller
                 });
             } elseif ($type === 'inventory') {
                 fputcsv($handle, ['Product ID', 'SKU', 'Product Name', 'Category', 'Brand', 'Size', 'Selling Price (NGN)', 'Total Physical Shelf Units', 'Stock Status', 'Total Asset Valuation (NGN)']);
-                $productsQuery = Product::with(['stockLevels' => function ($sq) use ($isBranchScoped, $branchWarehouseId) {
-                    if ($isBranchScoped) {
+                $productsQuery = Product::with(['stockLevels' => function ($sq) use ($branchWarehouseId) {
+                    if ($branchWarehouseId) {
                         $sq->where('warehouse_id', $branchWarehouseId);
                     }
                 }])->where('archived', false);
@@ -330,7 +367,7 @@ class ReportController extends Controller
                     $stock = (float) $p->stockLevels->sum('physical_stock');
                     $threshold = (int) ($p->minStockLevel ?? 5);
                     $status = $stock <= 0 ? 'OUT_OF_STOCK' : ($stock <= $threshold ? 'LOW_STOCK' : 'IN_STOCK');
-                    fputcsv($handle, [$p->id, $p->code, $p->name, $p->category, $p->brand, $p->size, $p->unitPrice, $stock, $status, $stock * (float)$p->unitPrice]);
+                    fputcsv($handle, [$p->id, $p->code, $p->name, $p->category, $p->brand, $p->size, $p->unitPrice, $stock, $status, max(0, $stock) * (float)$p->unitPrice]);
                 }
             } elseif ($type === 'transfers') {
                 fputcsv($handle, ['Transfer No', 'Dispatched Date', 'Origin Branch', 'Destination Branch', 'Carrier Driver', 'Status', 'Dispatched By', 'Received By', 'Notes']);
@@ -350,7 +387,7 @@ class ReportController extends Controller
                 }
             } elseif ($type === 'debtors') {
                 fputcsv($handle, ['Customer Name', 'Phone Number', 'Address / Market Location', 'Total Debt Owed (NGN)', 'Last Updated']);
-                if ($isBranchScoped) {
+                if ($branchWarehouseId) {
                     $branchSales = Sale::where('warehouse_id', $branchWarehouseId)
                         ->whereNotNull('customerId')
                         ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
@@ -377,7 +414,7 @@ class ReportController extends Controller
             } elseif (in_array($type, ['damages', 'stock'])) {
                 fputcsv($handle, ['Date & Time', 'Shop Location', 'SKU', 'Product Name', 'Incident Category', 'Quantity Deducted', 'Reason / Notes', 'Staff Responsible']);
                 $damagesQuery = StockAdjustment::with('warehouse')->orderBy('created_at', 'desc');
-                if ($isBranchScoped) {
+                if ($branchWarehouseId) {
                     $damagesQuery->where('warehouse_id', $branchWarehouseId);
                 }
                 foreach ($damagesQuery->cursor() as $a) {
@@ -404,8 +441,26 @@ class ReportController extends Controller
                         $r->productName,
                         $r->quantity,
                         $r->refundAmount,
-                        $r->reason,
+                        $r->reason ?? 'Customer Return',
                         $r->userName
+                    ]);
+                }
+            } elseif ($type === 'pending_orders') {
+                fputcsv($handle, ['SALE ID', 'DATE', 'CUSTOMER', 'PHONE', 'BRANCH', 'TOTAL UNITS', 'TOTAL VALUE', 'PAID AMOUNT', 'DEBT BALANCE', 'AGE (DAYS)', 'STATUS']);
+                $pending = $accountingService->getPendingOrdersAnalytics($branchWarehouseId, $filters);
+                foreach ($pending['backlog'] as $ord) {
+                    fputcsv($handle, [
+                        $ord['sale_id'],
+                        $ord['created_at'],
+                        $ord['customer_name'],
+                        $ord['customer_phone'],
+                        $ord['warehouse_name'],
+                        $ord['total_units'],
+                        $ord['total_value'],
+                        $ord['paid_amount'],
+                        $ord['debt_balance'],
+                        $ord['age_days'],
+                        $ord['delivery_status'],
                     ]);
                 }
             }
@@ -428,18 +483,25 @@ class ReportController extends Controller
         }
 
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
-        $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : null;
+        $rawWh = $request->get('warehouse_id');
+        $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
+        $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
         $fileName = "hysam_{$type}_business_data_" . date('Y_m_d_His') . ".json";
 
         $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         $filters = array_merge(['date_preset' => $request->get('date_preset', 'ALL')], $request->all());
+        if ($branchWarehouseId) {
+            $filters['warehouse_id'] = $branchWarehouseId;
+        } else {
+            unset($filters['warehouse_id']);
+        }
 
         $salesQuery = $accountingService->buildSalesQuery($filters);
         $transfersQuery = $accountingService->buildTransfersQuery($filters);
         $returnsQuery = $accountingService->buildReturnsQuery($filters);
         $damagesQuery = $accountingService->buildStockMovementsQuery($filters);
 
-        if ($isBranchScoped) {
+        if ($branchWarehouseId) {
             $branchSales = Sale::where('warehouse_id', $branchWarehouseId)
                 ->whereNotNull('customerId')
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
@@ -466,7 +528,7 @@ class ReportController extends Controller
         }
 
         $activitiesQuery = Activity::orderBy('timestamp', 'desc');
-        if ($isBranchScoped) {
+        if ($branchWarehouseId) {
             $branchUserIds = User::where('warehouse_id', $branchWarehouseId)->pluck('id');
             $activitiesQuery->whereIn('userId', $branchUserIds);
         }
@@ -499,7 +561,7 @@ class ReportController extends Controller
             'inventory' => [
                 'meta' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Multi-Branch Inventory Valuation', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
-                'data' => $isBranchScoped
+                'data' => $branchWarehouseId
                     ? Product::with(['stockLevels' => fn($q) => $q->where('warehouse_id', $branchWarehouseId)])
                         ->where('archived', false)
                         ->whereHas('stockLevels', fn($q) => $q->where('warehouse_id', $branchWarehouseId))
@@ -530,6 +592,11 @@ class ReportController extends Controller
                 'meta' => ['report' => 'Customer Returns & Refunds Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Customer Returns & Refunds Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'data' => $returnsQuery->get()
+            ],
+            'pending_orders' => [
+                'meta' => ['report' => 'Pending Orders Carryover & Aging Backlog', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'metadata' => ['report' => 'Pending Orders Carryover & Aging Backlog', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'data' => $accountingService->getPendingOrdersAnalytics($branchWarehouseId, $filters),
             ],
             default => ['error' => 'Invalid report type'],
         };

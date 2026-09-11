@@ -180,25 +180,6 @@
         .btn-submit:active {
             transform: scale(0.98);
         }
-
-        .dev-badge {
-            background: rgba(59, 130, 246, 0.15);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 12px;
-            padding: 0.85rem 1rem;
-            margin-top: 1rem;
-            font-size: 0.82rem;
-            color: #93c5fd;
-            text-align: center;
-        }
-        .dev-badge a {
-            color: #60a5fa;
-            font-weight: 700;
-            text-decoration: underline;
-            word-break: break-all;
-            display: inline-block;
-            margin-top: 0.35rem;
-        }
     </style>
 </head>
 <body>
@@ -241,13 +222,6 @@
                 📨 Send Password Reset Link
             </button>
         </form>
-
-        @if(session('dev_reset_link'))
-            <div class="dev-badge">
-                <strong>🛠️ Instant Reset Link:</strong><br>
-                <a href="{{ session('dev_reset_link') }}">Click here to proceed to Password Reset</a>
-            </div>
-        @endif
 
         <div style="margin-top: 1.75rem; text-align: center; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 1.25rem;">
             <a href="{{ route('portal.tenant.login') }}" style="color: var(--text-muted); font-size: 0.88rem; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 0.35rem;">

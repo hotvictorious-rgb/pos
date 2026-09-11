@@ -97,6 +97,19 @@ class TransactionController extends Controller
     }
 
     /**
+     * Resolve effective warehouse filter (request query parameter takes priority, falls back to active session).
+     */
+    private function getEffectiveWarehouseId(Request $request): ?string
+    {
+        if ($request->has('warehouse_id')) {
+            $val = $request->warehouse_id;
+            return ($val === 'ALL' || $val === '' || is_null($val)) ? null : (string) $val;
+        }
+        $sessionWh = session('active_warehouse_id');
+        return ($sessionWh === 'ALL' || $sessionWh === '' || is_null($sessionWh)) ? null : (string) $sessionWh;
+    }
+
+    /**
      * Shared Query Builders for each of the 8 Tabs (Role-Scoped for Privacy & Fraud Prevention)
      */
     public function getSalesQuery(Request $request)
@@ -104,6 +117,7 @@ class TransactionController extends Controller
         $query = Sale::with('items');
         $this->applyDateFilter($query, 'createdAt', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Role & Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -111,8 +125,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $query->where('warehouse_id', $effectiveWh);
         }
 
         if ($request->filled('payment_status')) {
@@ -176,6 +190,7 @@ class TransactionController extends Controller
         $query = InventoryLog::where('type', 'STOCK_IN');
         $this->applyDateFilter($query, 'timestamp', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Privacy Scoping: Branch staff see their shop
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -183,8 +198,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $query->where('warehouse_id', $effectiveWh);
         }
 
         if ($request->filled('inflow_category')) {
@@ -223,17 +238,20 @@ class TransactionController extends Controller
     {
         $query = InventoryLog::where(function ($q) {
             $q->whereIn('type', [
+                'SALE',
                 'DISPATCH_FULFILLED',
                 'STOCK_ADJUSTMENT_DAMAGE',
                 'STOCK_ADJUSTMENT_EXPIRED',
                 'STOCK_ADJUSTMENT_LOST',
-                'TRANSFER_OUT'
+                'TRANSFER_OUT',
+                'STOCK_OUT'
             ])->orWhere(function ($sub) {
-                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'SALES_RETURN']);
+                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
             });
         });
         $this->applyDateFilter($query, 'timestamp', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Privacy Scoping: Branch staff see their shop
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -241,8 +259,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $query->where('warehouse_id', $effectiveWh);
         }
 
         $outflowParam = $request->get('outflow_type') ?: $request->get('movement_type');
@@ -250,6 +268,8 @@ class TransactionController extends Controller
             $oType = strtoupper($outflowParam);
             if ($oType === 'CUSTOMER_PICKUP' || $oType === 'DISPATCH_FULFILLED') {
                 $query->where('type', 'DISPATCH_FULFILLED');
+            } elseif ($oType === 'SALE' || $oType === 'RETAIL_SALE') {
+                $query->where('type', 'SALE');
             } elseif ($oType === 'TRANSFER' || $oType === 'TRANSFER_OUT') {
                 $query->where('type', 'TRANSFER_OUT');
             } elseif (str_contains($oType, 'DAMAGE')) {
@@ -372,6 +392,7 @@ class TransactionController extends Controller
         $query = SalesReturn::query();
         $this->applyDateFilter($query, 'createdAt', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -379,9 +400,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $whId = (int) $request->warehouse_id;
-            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
+        } elseif (!empty($effectiveWh)) {
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $effectiveWh));
         }
 
         if ($request->filled('return_reason')) {
@@ -410,6 +430,7 @@ class TransactionController extends Controller
         $query = SalesReturn::where('refundAmount', '>', 0);
         $this->applyDateFilter($query, 'createdAt', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -417,9 +438,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $whId = (int) $request->warehouse_id;
-            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
+        } elseif (!empty($effectiveWh)) {
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $effectiveWh));
         }
 
         if ($request->filled('min_amount')) {
@@ -498,7 +518,7 @@ class TransactionController extends Controller
         $datePreset = $request->get('date_preset', 'ALL');
         $fromDate = $request->get('from_date');
         $toDate = $request->get('to_date');
-        $warehouseId = $request->get('warehouse_id');
+        $warehouseId = $this->getEffectiveWarehouseId($request);
         $search = trim($request->get('search', ''));
         $userName = $request->get('user_name');
 

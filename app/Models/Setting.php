@@ -9,6 +9,9 @@ class Setting extends Model
 {
     use BelongsToTenant;
 
+    public $incrementing = false;
+    protected $keyType = 'int';
+
     protected $fillable = [
         'id',
         'tenant_id',

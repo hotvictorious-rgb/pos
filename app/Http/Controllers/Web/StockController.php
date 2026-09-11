@@ -127,9 +127,9 @@ class StockController extends Controller
         if ($stockStatus === 'OUT') {
             $query->where('physical_stock', '<=', 0);
         } elseif ($stockStatus === 'LOW') {
-            $query->where('physical_stock', '>', 0)->where('physical_stock', '<=', 10);
+            $query->where('physical_stock', '>', 0)->where('physical_stock', '<=', 5);
         } elseif ($stockStatus === 'HEALTHY') {
-            $query->where('physical_stock', '>', 10);
+            $query->where('physical_stock', '>', 5);
         }
 
         $stockLevels = $query->get();
@@ -149,18 +149,19 @@ class StockController extends Controller
         // Pending incoming transfers for this shop
         $incomingTransfers = Transfer::with(['source', 'items'])
             ->where('destination_warehouse_id', $activeWarehouse->id)
-            ->where('status', 'DISPATCHED')
+            ->whereIn('status', ['DISPATCHED', 'IN_TRANSIT', 'PENDING'])
             ->get();
 
         // Count of unsupplied sales waiting in this shop
-        $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')
+        $unsuppliedCount = Sale::whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending'])
+            ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
             ->where('warehouse_id', $activeWarehouse->id)
             ->count();
 
         // Stock Summary Metrics for this shop
         $totalItemsCount = $stockLevels->count();
         $totalPhysicalUnits = $stockLevels->sum('physical_stock');
-        $lowStockCount = $stockLevels->where('physical_stock', '>', 0)->where('physical_stock', '<=', 10)->count();
+        $lowStockCount = $stockLevels->where('physical_stock', '>', 0)->where('physical_stock', '<=', 5)->count();
         $outOfStockCount = $stockLevels->where('physical_stock', '<=', 0)->count();
 
         return view('stock.index', compact(

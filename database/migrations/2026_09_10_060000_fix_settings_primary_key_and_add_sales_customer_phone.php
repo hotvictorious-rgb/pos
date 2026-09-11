@@ -29,6 +29,15 @@ return new class extends Migration
                 // Non-fatal: Setting model booted creating hook provides software-level auto-increment fallback
             }
         }
+
+        // 3. Ensure password_reset_tokens table exists
+        if (!Schema::hasTable('password_reset_tokens')) {
+            Schema::create('password_reset_tokens', function (Blueprint $table) {
+                $table->string('email')->primary();
+                $table->string('token');
+                $table->timestamp('created_at')->nullable();
+            });
+        }
     }
 
     /**

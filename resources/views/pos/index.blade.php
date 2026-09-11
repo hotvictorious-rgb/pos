@@ -21,6 +21,57 @@
         flex-wrap: wrap;
     }
 
+    .btn-branch-pos {
+        background: rgba(30, 41, 59, 0.85);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        border-radius: 8px;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.82rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        transition: all 0.2s ease;
+    }
+    .btn-branch-pos:hover {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: #3b82f6;
+        transform: translateY(-1px);
+    }
+    .badge-switch {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #93c5fd;
+        background: rgba(59, 130, 246, 0.2);
+        border: 1px solid rgba(59, 130, 246, 0.35);
+        border-radius: 6px;
+        padding: 0.1rem 0.4rem;
+    }
+    .branch-modal-choice {
+        width: 100%;
+        padding: 0.85rem 1rem;
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(71, 85, 105, 0.5);
+        border-radius: 12px;
+        cursor: pointer;
+        text-align: left;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .branch-modal-choice:hover {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: #3b82f6;
+        transform: translateY(-1px);
+    }
+    .branch-modal-choice.active {
+        background: rgba(37, 99, 235, 0.15);
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4);
+    }
+
+
     .category-pills {
         display: flex;
         gap: 0.4rem;
@@ -377,9 +428,21 @@
         <div class="catalog-header">
             <div>
                 <h2 style="font-size: 1.35rem; font-weight: 800;">Point of Sale 💰</h2>
-                <p style="font-size: 0.82rem; color: var(--text-muted);">
-                    Selling from: <strong style="color: #60a5fa;">{{ $activeWarehouse->name }}</strong>
-                </p>
+                @if($warehouses->count() > 1)
+                    <div style="display: flex; align-items: center; gap: 0.45rem; margin-top: 0.25rem;">
+                        <span style="font-size: 0.82rem; color: var(--text-muted);">Selling from:</span>
+                        <button type="button" onclick="openBranchModal()" class="btn-branch-pos" title="Click to switch selling branch">
+                            <span style="font-weight: 800; color: #60a5fa;">🏬 {{ $activeWarehouse->name }}</span>
+                            <span class="badge-switch">⇄ Switch Branch</span>
+                        </button>
+                    </div>
+                @else
+                    <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        Selling from: <strong style="color: #60a5fa;">🏬 {{ $activeWarehouse->name }}</strong>
+                        <span style="font-size: 0.7rem; color: #94a3b8; background: rgba(148,163,184,0.15); padding: 0.15rem 0.4rem; border-radius: 4px; margin-left: 0.3rem;">🔒 Assigned</span>
+                    </p>
+                @endif
+
             </div>
 
             <!-- Instant Search -->
@@ -561,9 +624,25 @@
                 </div>
 
                 <!-- Part-Payment Input (Visible when Part-Paid / Not Paid is selected) -->
-                <div id="debtBox" style="display: none; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 0.75rem; margin-bottom: 1rem;">
-                    <label style="color: #c084fc;">Amount Paying Now (₦) [Part-Paid or 0 for Not Paid]:</label>
-                    <input type="number" id="partPayInput" placeholder="e.g. 5000 (or 0 if totally unpaid)" onkeyup="updateDebtCalculation()" step="any">
+                <div id="debtBox" style="display: none; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
+                    <label style="color: #c084fc; font-weight: 700; font-size: 0.82rem;">Amount Paying Now (₦) [Part-Paid or 0 for Not Paid]:</label>
+                    <input type="number" id="partPayInput" placeholder="e.g. 5000 (or 0 if totally unpaid)" onkeyup="updateDebtCalculation()" step="any" style="margin-bottom: 0.6rem;">
+
+                    <!-- Sleek Part-Payment Tender Method Selector (Defaults to POS) -->
+                    <div id="partPayTenderBox" style="margin-bottom: 0.75rem; background: rgba(15,23,42,0.6); padding: 0.5rem 0.65rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+                        <div style="font-size: 0.72rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.35rem;">
+                            <span>💳</span> Tender Method for Amount Paid Now:
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                            <button type="button" id="btnPartPos" onclick="setPartPayTender('POS')" style="padding: 0.45rem 0.6rem; font-size: 0.8rem; font-weight: 700; border-radius: 8px; border: 2px solid #3b82f6; background: rgba(59,130,246,0.25); color: #93c5fd; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.35rem; box-shadow: 0 0 10px rgba(59,130,246,0.3);">
+                                <span>💳</span> POS (Default)
+                            </button>
+                            <button type="button" id="btnPartCash" onclick="setPartPayTender('CASH')" style="padding: 0.45rem 0.6rem; font-size: 0.8rem; font-weight: 700; border-radius: 8px; border: 1px solid #475569; background: rgba(15,23,42,0.8); color: #94a3b8; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                                <span>💵</span> Cash
+                            </button>
+                        </div>
+                    </div>
+
                     <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #cbd5e1;">
                         <span>Remaining Debt Balance:</span>
                         <strong style="color: #f87171;" id="remainingDebtDisplay">₦0</strong>
@@ -579,6 +658,60 @@
     </div>
 
 </div>
+
+@if($warehouses->count() > 1)
+<!-- Switch Selling Branch Modal -->
+<div id="modalBranchSelect" class="modal-backdrop" style="display: none; z-index: 1060;" onclick="if(event.target === this) closeBranchModal()">
+    <div class="modal" style="max-width: 520px; padding: 1.5rem; background: #0f172a; border: 2px solid #3b82f6; border-radius: 20px; box-shadow: 0 25px 60px rgba(0,0,0,0.8);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h3 style="font-size: 1.2rem; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                <span>🏬</span> Select Selling Branch
+            </h3>
+            <button type="button" onclick="closeBranchModal()" style="background: none; border: none; color: #94a3b8; font-size: 1.25rem; cursor: pointer;">✕</button>
+        </div>
+        <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 1.25rem;">
+            Choose which physical branch register you are ringing up sales for. Catalog inventory will instantly refresh.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 55vh; overflow-y: auto; padding-right: 0.25rem;">
+            @foreach($warehouses as $wh)
+            <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;">
+                @csrf
+                <input type="hidden" name="warehouse_id" value="{{ $wh->id }}">
+                <button type="submit" class="branch-modal-choice {{ $activeWarehouse->id === $wh->id ? 'active' : '' }}">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span style="font-size: 1.4rem;">🏬</span>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <strong style="font-size: 0.95rem; color: {{ $activeWarehouse->id === $wh->id ? '#60a5fa' : '#f8fafc' }};">{{ $wh->name }}</strong>
+                                @if($activeWarehouse->id === $wh->id)
+                                    <span style="font-size: 0.68rem; font-weight: 800; background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.4); padding: 0.1rem 0.45rem; border-radius: 6px;">CURRENT</span>
+                                @endif
+                            </div>
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">
+                                📍 {{ $wh->address ?: ($wh->location ?: 'Physical Store') }}
+                                @if($wh->manager_name) • 👤 {{ $wh->manager_name }} @endif
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        @if($activeWarehouse->id === $wh->id)
+                            <span style="color: #4ade80; font-size: 1.2rem; font-weight: 800;">✓</span>
+                        @else
+                            <span style="font-size: 0.78rem; font-weight: 700; color: #93c5fd; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); padding: 0.3rem 0.65rem; border-radius: 8px;">Switch Here</span>
+                        @endif
+                    </div>
+                </button>
+            </form>
+            @endforeach
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 1.25rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeBranchModal()">Close</button>
+        </div>
+    </div>
+</div>
+@endif
 
 <!-- Quick Register Customer Modal -->
 <div id="modalQuickCustomer" class="modal-backdrop" style="display: none; z-index: 1050;">
@@ -676,7 +809,18 @@
 let cart = [];
 let paymentMode = 'POS';
 
+window.openBranchModal = function() {
+    const m = document.getElementById('modalBranchSelect');
+    if (m) m.style.display = 'flex';
+};
+
+window.closeBranchModal = function() {
+    const m = document.getElementById('modalBranchSelect');
+    if (m) m.style.display = 'none';
+};
+
 function ensureCheckoutIdempotencyKey() {
+
     const input = document.getElementById('idempotencyKeyInput');
     if (input && !input.value) {
         input.value = 'pos_cart_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + '-' + Math.random().toString(36).substring(2)));
@@ -887,6 +1031,42 @@ function selectHandover(val) {
     updateCustomerRequirements();
 }
 
+let partPayTender = 'POS';
+
+function setPartPayTender(tender) {
+    partPayTender = tender;
+    const btnPos = document.getElementById('btnPartPos');
+    const btnCash = document.getElementById('btnPartCash');
+    if (tender === 'POS') {
+        if (btnPos) {
+            btnPos.style.border = '2px solid #3b82f6';
+            btnPos.style.background = 'rgba(59,130,246,0.25)';
+            btnPos.style.color = '#93c5fd';
+            btnPos.style.boxShadow = '0 0 10px rgba(59,130,246,0.3)';
+        }
+        if (btnCash) {
+            btnCash.style.border = '1px solid #475569';
+            btnCash.style.background = 'rgba(15,23,42,0.8)';
+            btnCash.style.color = '#94a3b8';
+            btnCash.style.boxShadow = 'none';
+        }
+    } else {
+        if (btnCash) {
+            btnCash.style.border = '2px solid #22c55e';
+            btnCash.style.background = 'rgba(34,197,94,0.25)';
+            btnCash.style.color = '#86efac';
+            btnCash.style.boxShadow = '0 0 10px rgba(34,197,94,0.3)';
+        }
+        if (btnPos) {
+            btnPos.style.border = '1px solid #475569';
+            btnPos.style.background = 'rgba(15,23,42,0.8)';
+            btnPos.style.color = '#94a3b8';
+            btnPos.style.boxShadow = 'none';
+        }
+    }
+    updateDebtCalculation();
+}
+
 function selectPaymentMode(mode) {
     paymentMode = mode;
     document.getElementById('tabCash').className = mode === 'CASH' ? 'pay-tab active' : 'pay-tab';
@@ -896,6 +1076,9 @@ function selectPaymentMode(mode) {
     const debtBox = document.getElementById('debtBox');
     if (debtBox) {
         debtBox.style.display = mode === 'DEBT' ? 'block' : 'none';
+        if (mode === 'DEBT') {
+            setPartPayTender('POS');
+        }
     }
 
     updateDebtCalculation();
@@ -925,8 +1108,13 @@ function updateDebtCalculation() {
             remainingEl.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
         }
         document.getElementById('hiddenPaid').value = partPay;
-        document.getElementById('hiddenCash').value = partPay;
-        document.getElementById('hiddenPos').value = 0;
+        if (partPayTender === 'CASH') {
+            document.getElementById('hiddenCash').value = partPay;
+            document.getElementById('hiddenPos').value = 0;
+        } else {
+            document.getElementById('hiddenPos').value = partPay;
+            document.getElementById('hiddenCash').value = 0;
+        }
     } else if (paymentMode === 'POS') {
         if (remainingEl) remainingEl.textContent = '₦0';
         document.getElementById('hiddenPaid').value = total;

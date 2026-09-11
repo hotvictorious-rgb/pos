@@ -470,7 +470,7 @@
 
                 <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
                     <div style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cash in My Drawer (Till)</div>
-                    <div style="font-size: 1.4rem; font-weight: 800; color: #38bdf8; margin-top: 0.2rem;">₦{{ number_format($myCashAmount) }}</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #38bdf8; margin-top: 0.2rem;">₦{{ number_format($myExpectedCashInDrawer) }}</div>
                 </div>
 
                 <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1rem;">
@@ -600,7 +600,10 @@
             <div>
                 <div class="hero-label">Total Inflow Collected</div>
                 <div class="hero-val" style="color: #38bdf8;">₦{{ number_format($totalCollections, 0) }}</div>
-                <span class="hero-sub">₦{{ number_format($totalCashAmount, 0) }} Cash · ₦{{ number_format($totalPosAmount, 0) }} POS/Bank</span>
+                <span class="hero-sub" style="line-height: 1.4;">
+                    💵 ₦{{ number_format($totalCashInflow, 0) }} Cash (Sales ₦{{ number_format($totalCashAmount, 0) }} + Debt ₦{{ number_format($cashDebtRecovered, 0) }})<br>
+                    💳 ₦{{ number_format($totalPosInflow, 0) }} POS @if($totalRefundAmount > 0)<span style="color: #f87171;">· Refunds -₦{{ number_format($totalRefundAmount, 0) }}</span>@endif
+                </span>
             </div>
             <div class="hero-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
                 🪙
@@ -622,9 +625,14 @@
         <!-- 4. Unsupplied Goods Liability -->
         <div class="hero-card hero-unsupplied">
             <div>
-                <div class="hero-label">Unsupplied (In Shop)</div>
-                <div class="hero-val" style="color: #fbbf24;">{{ $unsuppliedCount }} Orders</div>
-                <span class="hero-sub" style="color: #fcd34d;">₦{{ number_format($unsuppliedValue, 0) }} liability awaiting pickup</span>
+                <div class="hero-label">Unsupplied Backlog</div>
+                <div class="hero-val" style="color: #fbbf24;">{{ $unsuppliedCount }} Orders <span style="font-size: 0.95rem; font-weight: 700; color: #fde68a;">({{ number_format($unsuppliedUnits) }} Units)</span></div>
+                <span class="hero-sub" style="color: #fcd34d;">
+                    ₦{{ number_format($unsuppliedValue, 0) }} goods awaiting customer collection
+                    @if(isset($pendingOrders['over_7d']) && $pendingOrders['over_7d'] > 0)
+                        <span class="badge badge-danger" style="font-size: 0.7rem; margin-left: 0.35rem;">⚠️ {{ $pendingOrders['over_7d'] }} Critical (> 7d)</span>
+                    @endif
+                </span>
             </div>
             <div class="hero-icon" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">
                 ⏳
@@ -713,12 +721,12 @@
                     <div class="panel-item-left">
                         <span class="panel-item-icon">💵</span>
                         <div>
-                            <div class="panel-item-name">Drawer Cash Collected</div>
-                            <div class="panel-item-sub">Physical cash inflow</div>
+                            <div class="panel-item-name">Total Cash Inflow</div>
+                            <div class="panel-item-sub">Sales ₦{{ number_format($totalCashAmount, 0) }} + Debt ₦{{ number_format($cashDebtRecovered, 0) }}</div>
                         </div>
                     </div>
                     <div class="panel-item-val" style="color: #38bdf8;">
-                        ₦{{ number_format($totalCashAmount, 0) }}
+                        ₦{{ number_format($totalCashInflow, 0) }}
                     </div>
                 </div>
 
@@ -726,12 +734,12 @@
                     <div class="panel-item-left">
                         <span class="panel-item-icon">💳</span>
                         <div>
-                            <div class="panel-item-name">POS & Bank Transfers</div>
-                            <div class="panel-item-sub">Card & electronic payments</div>
+                            <div class="panel-item-name">Total POS Inflow</div>
+                            <div class="panel-item-sub">Sales ₦{{ number_format($totalPosAmount, 0) }} + Debt ₦{{ number_format($posDebtRecovered, 0) }}</div>
                         </div>
                     </div>
                     <div class="panel-item-val" style="color: #a78bfa;">
-                        ₦{{ number_format($totalPosAmount, 0) }}
+                        ₦{{ number_format($totalPosInflow, 0) }}
                     </div>
                 </div>
 

@@ -582,11 +582,27 @@ class AuthController extends Controller
         // Pre-auth user resolution (safely bypasses TenantScope)
         $user = User::findForAuthentication($email);
 
-        // Fail-safe generic notification to prevent email enumeration
-        $genericSuccessMsg = 'If your email is associated with a registered account, a password reset link has been dispatched.';
+        if (!$user) {
+            return back()->withInput()->with('error', "No registered account found with the email address '{$email}'. Please check your spelling or contact support.");
+        }
 
-        if (!$user || $user->disabled) {
-            return back()->with('status', $genericSuccessMsg);
+        if ($user->disabled) {
+            return back()->withInput()->with('error', 'This account has been deactivated. Please contact your store administrator.');
+        }
+
+        // 🔒 Invariant: Password reset recovery is strictly restricted to active business tenants
+        if ($user->tenant_id === 'default-tenant' || empty($user->tenant_id)) {
+            return back()->withInput()->with('error', 'Platform administrators cannot reset credentials via the tenant portal. Please contact server operations.');
+        }
+
+        // Validate that the user belongs to an active tenant
+        $tenant = Tenant::find($user->tenant_id);
+        if (!$tenant) {
+            return back()->withInput()->with('error', 'Your business account was not found. Please contact support.');
+        }
+
+        if (!$tenant->isActive()) {
+            return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
         }
 
         // Generate cryptographically secure reset token
@@ -605,23 +621,52 @@ class AuthController extends Controller
         $resetUrl = url(route('password.reset', ['token' => $rawToken, 'email' => $email]));
 
         // Attempt sending email via configured mailer
+        $mailSent = false;
+        $mailError = null;
+
         try {
             Mail::raw("Hello {$user->name},\n\nYou have requested to reset your password for your account.\nClick the link below to set a new password:\n\n{$resetUrl}\n\nThis link will expire in 60 minutes.\nIf you did not request this, please disregard this email.", function ($message) use ($email, $user) {
                 $message->to($email, $user->name)
                         ->subject('Password Reset Request - ' . config('app.name', 'Victorious POS'));
             });
+            $mailSent = true;
         } catch (\Throwable $e) {
-            Log::warning("Password reset email delivery failed for {$email}: " . $e->getMessage());
+            $mailError = $e->getMessage();
+            Log::warning("Password reset email delivery failed for {$email}: " . $mailError);
         }
 
-        // Always log for diagnostics & provide flash link for local development
-        Log::info("Password reset token generated for [{$email}]. Reset Link: {$resetUrl}");
+        // Secondary Transport: Attempt native PHP mail() if primary mailer did not dispatch
+        if (!$mailSent && function_exists('mail')) {
+            try {
+                $subject = 'Password Reset Request - ' . config('app.name', 'Victorious POS');
+                $fromEmail = config('mail.from.address') ?: 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'pos.victoriousmarket.com.ng');
+                $fromName = config('mail.from.name') ?: config('app.name', 'Victorious POS');
+                $headers = [
+                    'From: ' . $fromName . ' <' . $fromEmail . '>',
+                    'Reply-To: ' . $fromEmail,
+                    'X-Mailer: PHP/' . phpversion(),
+                    'MIME-Version: 1.0',
+                    'Content-Type: text/plain; charset=UTF-8',
+                ];
+                $body = "Hello {$user->name},\n\nYou have requested to reset your password for your account.\nClick the link below to set a new password:\n\n{$resetUrl}\n\nThis link will expire in 60 minutes.\nIf you did not request this, please disregard this email.";
 
-        if (app()->environment('local', 'testing') || config('app.debug')) {
-            session()->flash('dev_reset_link', $resetUrl);
+                if (@mail($email, $subject, $body, implode("\r\n", $headers))) {
+                    $mailSent = true;
+                    Log::info("Password reset email sent successfully via native PHP mail() to {$email}");
+                }
+            } catch (\Throwable $ex) {
+                Log::warning("Native PHP mail() fallback failed for {$email}: " . $ex->getMessage());
+            }
         }
 
-        return back()->with('status', $genericSuccessMsg);
+        // High Security Audit Logging: Log event without exposing raw token URL
+        Log::info("Password reset token generated for [{$email}]. Delivery status: " . ($mailSent ? 'DISPATCHED' : 'FAILED'));
+
+        if ($mailSent) {
+            return back()->with('status', "✓ Password reset instructions have been sent to {$email}. Please check your email inbox and spam folder.");
+        }
+
+        return back()->with('error', "⚠️ We were unable to dispatch the password reset email. Please contact your system administrator or support.");
     }
 
     /**
@@ -698,6 +743,16 @@ class AuthController extends Controller
 
         if ($user->disabled) {
             return back()->withErrors(['email' => 'This account is currently disabled. Please contact the store administrator.'])->withInput();
+        }
+
+        // 🔒 Invariant: Password reset recovery is strictly restricted to active business tenants
+        if ($user->tenant_id === 'default-tenant' || empty($user->tenant_id)) {
+            return back()->withErrors(['email' => 'Platform administrator credentials cannot be reset via the tenant portal.'])->withInput();
+        }
+
+        $tenant = Tenant::find($user->tenant_id);
+        if (!$tenant || !$tenant->isActive()) {
+            return back()->withErrors(['email' => 'Your business subscription has expired or been suspended.'])->withInput();
         }
 
         // Update password

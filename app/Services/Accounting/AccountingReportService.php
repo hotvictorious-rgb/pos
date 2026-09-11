@@ -469,14 +469,10 @@ class AccountingReportService
         $now = Carbon::now($tz);
         $period = !empty($period) ? strtoupper(trim($period)) : null;
 
-        if (empty($period)) {
-            if (!empty($from) || !empty($to)) {
-                $period = 'CUSTOM';
-            } else {
-                $period = 'TODAY';
-            }
-        } elseif (($period === 'CUSTOM' || $period === 'TODAY') && (!empty($from) || !empty($to))) {
+        if (!empty($from) || !empty($to)) {
             $period = 'CUSTOM';
+        } elseif (empty($period)) {
+            $period = 'TODAY';
         }
 
         switch ($period) {
@@ -924,17 +920,20 @@ class AccountingReportService
 
         $netSales = max(0.0, round($grossSales - $totalReturnCredits, 2));
 
-        // 3. Payment Collections (Inflows)
+        // 3. Payment Collections (Inflows Breakdown)
         $paymentsQuery = $this->buildPaymentsQuery($filters);
         $payments = $paymentsQuery->get();
 
-        $cashCollected = (float) $payments->where('method', 'CASH')->where('amount', '>', 0)->sum('amount');
-        $posCollected  = (float) $payments->where('method', 'POS')->where('amount', '>', 0)->sum('amount');
-        $totalCollected = round($cashCollected + $posCollected, 2);
+        // Separate collections from normal sales vs debt recovery
+        $cashFromSales = (float) $payments->where('method', 'CASH')->where('amount', '>', 0)
+            ->reject(fn($p) => str_contains($p->recordedBy ?? '', '[DEBT_RECOVERY]'))
+            ->sum('amount');
+        $posFromSales = (float) $payments->where('method', 'POS')->where('amount', '>', 0)
+            ->reject(fn($p) => str_contains($p->recordedBy ?? '', '[DEBT_RECOVERY]'))
+            ->sum('amount');
 
-        // Refunds paid out in cash
+        // Cash refunds paid out to customers
         $cashRefunded = (float) abs($payments->where('method', 'REFUND_CASH')->sum('amount'));
-        $netCollected = max(0.0, round($totalCollected - $cashRefunded, 2));
 
         // 4. Debt & Credit Exposure
         $newDebtCreated = 0.0;
@@ -966,6 +965,32 @@ class AccountingReportService
         $cashDebtRecovered = (float) (clone $debtPaymentsQuery)->where('payment_method', 'CASH')->sum('amount');
         $posDebtRecovered  = (float) (clone $debtPaymentsQuery)->where('payment_method', 'POS')->sum('amount');
 
+        // Debt payment records in Payments table
+        $cashDebtInPayments = (float) $payments->where('method', 'CASH')
+            ->filter(fn($p) => str_contains($p->recordedBy ?? '', '[DEBT_RECOVERY]'))
+            ->sum('amount');
+        $unlinkedCashDebt = max(0.0, round($cashDebtRecovered - $cashDebtInPayments, 2));
+        $totalCashFromDebt = round($cashDebtInPayments + $unlinkedCashDebt, 2);
+
+        $posDebtInPayments = (float) $payments->where('method', 'POS')
+            ->filter(fn($p) => str_contains($p->recordedBy ?? '', '[DEBT_RECOVERY]'))
+            ->sum('amount');
+        $unlinkedPosDebt = max(0.0, round($posDebtRecovered - $posDebtInPayments, 2));
+        $totalPosFromDebt = round($posDebtInPayments + $unlinkedPosDebt, 2);
+
+        // Authoritative Tender Aggregates
+        $totalCashInflow = round($cashFromSales + $totalCashFromDebt, 2);
+        $totalPosInflow = round($posFromSales + $totalPosFromDebt, 2);
+        $netCashInflow = max(0.0, round($totalCashInflow - $cashRefunded, 2));
+        $netPosInflow = $totalPosInflow;
+        $totalNetMoneyRealized = round($netCashInflow + $netPosInflow, 2);
+
+        // Backward-compatible totals
+        $cashCollected = $totalCashInflow;
+        $posCollected = $totalPosInflow;
+        $totalCollected = round($cashCollected + $posCollected, 2);
+        $netCollected = $totalNetMoneyRealized;
+
         if ($scopedWarehouseId) {
             // Branch-isolated debt liability: strictly derive from open sales originating at this branch
             $openSalesBranch = Sale::where('warehouse_id', $scopedWarehouseId)
@@ -980,8 +1005,7 @@ class AccountingReportService
             $currentOutstanding = (float) Customer::sum('total_debt');
         }
 
-        // 5. Stock & Inventory Valuation
-        $user = Auth::user();
+        // 5. Stock & Inventory Valuation (Selling Price Valuation Only)
         $stockLevelsQuery = StockLevel::query();
         if ($user && $user->isBranchScoped()) {
             $stockLevelsQuery->where('warehouse_id', $user->warehouse_id);
@@ -995,29 +1019,20 @@ class AccountingReportService
         $totalAvailableUnits = max(0, $totalPhysicalUnits - $totalAllocatedUnits);
 
         $retailInventoryValue = 0.0;
-        $costInventoryValue = 0.0;
 
         foreach ($stockLevels as $sl) {
             $p = $sl->product;
             if ($p) {
+                // Clamped so negative physical stock never decreases inventory valuation
                 $units = max(0, (int) $sl->physical_stock);
                 $retailPrice = (float) ($p->unitPrice ?? 0);
-                $costPrice = (float) ($p->costPrice ?? $p->cost_price ?? 0.0); // Exact cost basis without synthetic fallbacks
                 $retailInventoryValue += ($units * $retailPrice);
-                $costInventoryValue   += ($units * $costPrice);
             }
         }
 
         // 6. Cashier Shift / Drawer physical cash reconciliation:
-        // Physical Cash = Total Cash Inflows - Cash Refunds
-        // Identify debt payments that are already captured in $cashCollected to prevent double-counting,
-        // while properly counting unlinked debt payments that were not attached to specific sale invoices.
-        $cashDebtInPayments = (float) $payments->where('method', 'CASH')
-            ->filter(fn($p) => str_contains($p->recordedBy ?? '', '[DEBT_RECOVERY]'))
-            ->sum('amount');
-        $unlinkedCashDebt = max(0.0, round($cashDebtRecovered - $cashDebtInPayments, 2));
-
-        $expectedCash = round($cashCollected + $unlinkedCashDebt - $cashRefunded, 2);
+        // Drawer Cash = Net Cash Inflow (Cash Sales + Cash Debt Collected - Cash Refunds)
+        $expectedCash = $netCashInflow;
 
         return [
             'dateInfo'                   => $dateInfo,
@@ -1028,29 +1043,180 @@ class AccountingReportService
             'averageInvoice'             => $averageInvoice,
             'returnCount'                => $returnCount,
             'totalReturnCredits'         => $totalReturnCredits,
-            'cashCollected'              => $cashCollected,
-            'cash_collected'             => round($cashCollected, 2),
-            'posCollected'               => $posCollected,
-            'pos_collected'              => round($posCollected, 2),
-            'totalCollected'             => $totalCollected,
-            'cashRefunded'               => $cashRefunded,
+            'cashFromSales'              => round($cashFromSales, 2),
+            'posFromSales'               => round($posFromSales, 2),
+            'cashDebtRecovered'          => round($totalCashFromDebt, 2),
+            'posDebtRecovered'           => round($totalPosFromDebt, 2),
+            'totalCashInflow'            => round($totalCashInflow, 2),
+            'totalPosInflow'             => round($totalPosInflow, 2),
+            'cashRefunded'               => round($cashRefunded, 2),
             'refunds'                    => round($cashRefunded, 2),
-            'netCollected'               => $netCollected,
+            'netCashInflow'              => round($netCashInflow, 2),
+            'netPosInflow'               => round($netPosInflow, 2),
+            'totalNetMoneyRealized'      => round($totalNetMoneyRealized, 2),
+            'cashCollected'              => round($cashCollected, 2),
+            'cash_collected'             => round($cashCollected, 2),
+            'posCollected'               => round($posCollected, 2),
+            'pos_collected'              => round($posCollected, 2),
+            'totalCollected'             => round($totalCollected, 2),
+            'netCollected'               => round($netCollected, 2),
             'net_payments'               => round($netCollected, 2),
             'newDebtCreated'             => $newDebtCreated,
             'debtRecovered'              => $debtRecovered,
-            'cashDebtRecovered'          => $cashDebtRecovered,
-            'posDebtRecovered'           => $posDebtRecovered,
             'currentOutstanding'         => round($currentOutstanding, 2),
             'totalPhysicalUnits'         => $totalPhysicalUnits,
             'totalAllocatedUnits'        => $totalAllocatedUnits,
             'totalAvailableUnits'        => $totalAvailableUnits,
             'retailInventoryValue'       => round($retailInventoryValue, 2),
             'inventory_retail_valuation' => round($retailInventoryValue, 2),
-            'costInventoryValue'         => round($costInventoryValue, 2),
-            'inventory_cost_valuation'   => round($costInventoryValue, 2),
             'expectedCashInDrawer'       => $expectedCash,
         ];
+    }
+
+    /**
+     * Authoritative Pending/Unsupplied Orders Analytics.
+     * Evaluates unsupplied sales backlog, units awaiting delivery, aging cohorts, and customer backlog.
+     */
+    public function getPendingOrdersAnalytics(?int $warehouseId = null, ?array $filters = null): array
+    {
+        $user = Auth::user();
+        if ($user && $user->isBranchScoped()) {
+            $effectiveWh = (int) $user->warehouse_id;
+        } elseif ($warehouseId) {
+            $effectiveWh = (int) $warehouseId;
+        } elseif (!empty($filters['warehouse_id'])) {
+            $effectiveWh = (int) $filters['warehouse_id'];
+        } else {
+            $effectiveWh = null;
+        }
+
+        $query = Sale::with(['items.product', 'customer', 'warehouse'])
+            ->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending'])
+            ->whereNotIn('status', ['CANCELLED', 'RETURNED']);
+
+        if ($effectiveWh) {
+            $query->where('warehouse_id', $effectiveWh);
+        }
+
+        $pendingSales = $query->orderBy('createdAt', 'asc')->get();
+
+        $totalOrders = $pendingSales->count();
+        $totalUnits = 0;
+        $totalValue = 0.0;
+
+        $now = Carbon::now();
+        $under24h = 0;
+        $from24hto48h = 0;
+        $from3dto7d = 0;
+        $over7d = 0;
+
+        $backlogItems = [];
+
+        foreach ($pendingSales as $sale) {
+            $totalValue += (float) $sale->totalAmount;
+            $orderUnits = 0;
+            foreach ($sale->items as $item) {
+                $orderUnits += (int) $item->quantity;
+            }
+            $totalUnits += $orderUnits;
+
+            $created = Carbon::parse($sale->createdAt ?: $sale->created_at);
+            $hoursOld = $created->diffInHours($now);
+            $daysOld = (int) floor($hoursOld / 24);
+
+            if ($hoursOld < 24) {
+                $under24h++;
+                $agingBadge = 'RECENT (< 24h)';
+            } elseif ($hoursOld <= 48) {
+                $from24hto48h++;
+                $agingBadge = '24h - 48h';
+            } elseif ($daysOld <= 7) {
+                $from3dto7d++;
+                $agingBadge = '3 - 7 Days';
+            } else {
+                $over7d++;
+                $agingBadge = 'CRITICAL (> 7 Days)';
+            }
+
+            if (count($backlogItems) < 50) {
+                $backlogItems[] = [
+                    'id'             => $sale->id,
+                    'sale_id'        => $sale->id,
+                    'customer_name'  => $sale->customerName ?: ($sale->customer->name ?? 'Walk-in Customer'),
+                    'customer_phone' => $sale->customerPhone ?: ($sale->customer->phone ?? '—'),
+                    'warehouse_name' => $sale->warehouse->name ?? 'Shop Branch',
+                    'created_at'     => $created->format('M d, Y H:i'),
+                    'days_old'       => $daysOld,
+                    'age_days'       => $daysOld,
+                    'hours_old'      => $hoursOld,
+                    'aging_badge'    => $agingBadge,
+                    'units_pending'  => $orderUnits,
+                    'total_units'    => $orderUnits,
+                    'total_amount'   => (float) $sale->totalAmount,
+                    'total_value'    => (float) $sale->totalAmount,
+                    'paid_amount'    => (float) $sale->paidAmount,
+                    'debt_balance'   => max(0.0, (float) $sale->totalAmount - (float) $sale->paidAmount),
+                    'delivery_status'=> $sale->deliveryStatus,
+                    'cashier'        => $sale->userName,
+                ];
+            }
+        }
+
+        return [
+            'total_orders'    => $totalOrders,
+            'total_units'     => $totalUnits,
+            'total_value'     => round($totalValue, 2),
+            'under_24h'       => $under24h,
+            'from_24h_to_48h' => $from24hto48h,
+            'from_3d_to_7d'   => $from3dto7d,
+            'over_7d'         => $over7d,
+            'backlog'         => $backlogItems,
+        ];
+    }
+
+    /**
+     * Authoritative calculation of total transfer discrepancy units across entire date & branch range.
+     * Evaluates in pure integer units without pagination/limit truncation.
+     */
+    public function getTotalDiscrepancyUnits(array $filters): int
+    {
+        $transfers = $this->buildTransfersQuery($filters)
+            ->where('status', 'DISCREPANCY')
+            ->with('items')
+            ->get();
+
+        $totalUnits = 0;
+        foreach ($transfers as $trf) {
+            foreach ($trf->items as $item) {
+                $totalUnits += max(0, (int) ($item->discrepancy_qty ?? $item->quantity_discrepancy ?? 0));
+            }
+        }
+
+        return $totalUnits;
+    }
+
+    /**
+     * Authoritative calculation of total damaged / written-off units across entire date & branch range.
+     */
+    public function getTotalDamagedUnits(array $filters): int
+    {
+        $dates = $this->resolveDateRange(
+            $filters['date_preset'] ?? $filters['date_range'] ?? $filters['period'] ?? null,
+            $filters['from_date'] ?? $filters['from'] ?? null,
+            $filters['to_date'] ?? $filters['to'] ?? null
+        );
+
+        $query = StockAdjustment::query();
+        $query->whereBetween('created_at', [$dates['start'], $dates['end']]);
+
+        $user = Auth::user();
+        if ($user && $user->isBranchScoped()) {
+            $query->where('warehouse_id', (int) $user->warehouse_id);
+        } elseif (!empty($filters['warehouse_id'])) {
+            $query->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
+
+        return (int) $query->sum('quantity');
     }
 
     /**

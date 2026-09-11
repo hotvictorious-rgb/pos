@@ -14,6 +14,8 @@ use App\Models\Transfer;
 use App\Models\StockAdjustment;
 use App\Models\InventoryLog;
 use App\Models\User;
+use App\Models\Payment;
+use App\Services\Accounting\AccountingReportService;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
@@ -27,45 +29,39 @@ class DashboardController extends Controller
         $datePreset = strtoupper($request->get('date_preset', 'TODAY'));
         $fromDate = $request->get('from_date');
         $toDate = $request->get('to_date');
-        $warehouseId = $request->get('warehouse_id');
+        $authUser = \Illuminate\Support\Facades\Auth::user();
+        $userRole = $authUser->role ?? 'admin';
 
-        $warehouses = Warehouse::where('is_active', true)->get();
-        $selectedWarehouse = $warehouseId ? Warehouse::find($warehouseId) : null;
-        $locationLabel = $selectedWarehouse ? $selectedWarehouse->name : 'All Branches (Consolidated)';
+        // 🔒 Branch Scoping & Session Synchronization
+        if ($authUser && $authUser->isBranchScoped() && !empty($authUser->warehouse_id)) {
+            $warehouseId = (int) $authUser->warehouse_id;
+            $warehouses = Warehouse::where('id', $warehouseId)->get();
+            $selectedWarehouse = Warehouse::find($warehouseId);
+            $locationLabel = $selectedWarehouse ? $selectedWarehouse->name : 'My Branch';
+        } else {
+            if ($request->has('warehouse_id')) {
+                $rawWh = $request->get('warehouse_id');
+                if ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) {
+                    $warehouseId = null;
+                    session(['active_warehouse_id' => null]);
+                } else {
+                    $warehouseId = (int) $rawWh;
+                    session(['active_warehouse_id' => $rawWh]);
+                }
+            } else {
+                $warehouseId = session('active_warehouse_id') ? (int) session('active_warehouse_id') : null;
+            }
+            $warehouses = Warehouse::where('is_active', true)->get();
+            $selectedWarehouse = $warehouseId ? Warehouse::find($warehouseId) : null;
+            $locationLabel = $selectedWarehouse ? $selectedWarehouse->name : 'All Branches (Consolidated)';
+        }
 
         // 1. Determine active date range for UI display
-        $rangeLabel = 'Today (' . Carbon::today()->format('d M Y') . ')';
-        $startDate = null;
-        $endDate = null;
-
-        if ($fromDate && $toDate) {
-            $datePreset = 'CUSTOM';
-            $startDate = Carbon::parse($fromDate)->startOfDay();
-            $endDate = Carbon::parse($toDate)->endOfDay();
-            $rangeLabel = $startDate->format('d M Y') . ' — ' . $endDate->format('d M Y');
-        } elseif ($datePreset === 'TODAY') {
-            $startDate = Carbon::today()->startOfDay();
-            $endDate = Carbon::today()->endOfDay();
-            $rangeLabel = 'Today (' . Carbon::today()->format('d M Y') . ')';
-        } elseif ($datePreset === 'YESTERDAY') {
-            $startDate = Carbon::yesterday()->startOfDay();
-            $endDate = Carbon::yesterday()->endOfDay();
-            $rangeLabel = 'Yesterday (' . Carbon::yesterday()->format('d M Y') . ')';
-        } elseif ($datePreset === 'THIS_WEEK') {
-            $startDate = Carbon::now()->startOfWeek()->startOfDay();
-            $endDate = Carbon::now()->endOfWeek()->endOfDay();
-            $rangeLabel = 'This Week (' . $startDate->format('d M') . ' — ' . $endDate->format('d M Y') . ')';
-        } elseif ($datePreset === 'THIS_MONTH') {
-            $startDate = Carbon::now()->startOfMonth()->startOfDay();
-            $endDate = Carbon::now()->endOfMonth()->endOfDay();
-            $rangeLabel = 'This Month (' . Carbon::now()->format('F Y') . ')';
-        } elseif ($datePreset === 'THIS_YEAR') {
-            $startDate = Carbon::now()->startOfYear()->startOfDay();
-            $endDate = Carbon::now()->endOfYear()->endOfDay();
-            $rangeLabel = 'This Year (' . Carbon::now()->format('Y') . ')';
-        } elseif ($datePreset === 'ALL') {
-            $rangeLabel = 'All-Time';
-        }
+        $accountingService = app(AccountingReportService::class);
+        $dateInfo = $accountingService->resolveDateRange($datePreset, $fromDate, $toDate);
+        $rangeLabel = $dateInfo['label'];
+        $startDate = $dateInfo['start'];
+        $endDate = $dateInfo['end'];
 
         // Helper filter function for timestamps
         $applyDateFilter = function ($query, string $column) use ($startDate, $endDate, $datePreset) {
@@ -86,96 +82,131 @@ class DashboardController extends Controller
             }
         };
 
-        $authUser = \Illuminate\Support\Facades\Auth::user();
-        $userRole = $authUser->role ?? 'admin';
-
-        // 🔒 Strict Shop Isolation: only frontline branch-scoped staff (cashiers, storekeepers) are locked to their assigned branch
-        if ($authUser && $authUser->isBranchScoped() && !empty($authUser->warehouse_id)) {
-            $warehouseId = $authUser->warehouse_id;
-            $warehouses = Warehouse::where('id', $warehouseId)->get();
-            $selectedWarehouse = Warehouse::find($warehouseId);
-            $locationLabel = $selectedWarehouse ? $selectedWarehouse->name : 'My Branch';
+        // Filters for AccountingReportService
+        $filters = [
+            'date_preset' => $datePreset,
+            'from_date'   => $fromDate,
+            'to_date'     => $toDate,
+        ];
+        if ($warehouseId) {
+            $filters['warehouse_id'] = $warehouseId;
         }
 
-        // Staff assigned to selected location
-        $branchUserIds = $warehouseId ? User::where('warehouse_id', $warehouseId)->pluck('id') : collect([]);
+        // Authoritative Accounting Summary
+        $periodSummary = $accountingService->getPeriodSummary($filters);
+        $pendingOrders = $accountingService->getPendingOrdersAnalytics($warehouseId, $filters);
 
         // Cashier Personal Shift Metrics
         $mySalesQuery = Sale::with('items')->where('userId', $authUser->id ?? '');
         $applyDateFilter($mySalesQuery, 'createdAt');
-        $mySalesCount = (clone $mySalesQuery)->count();
-        $mySalesAmount = (float) (clone $mySalesQuery)->sum('totalAmount');
-        $myCashAmount = (float) (clone $mySalesQuery)->sum('cashAmount');
-        $myPosAmount = (float) (clone $mySalesQuery)->sum('posAmount');
-        $myTransferAmount = (float) (clone $mySalesQuery)->sum('transferAmount');
-        $myPaidAmount = (float) (clone $mySalesQuery)->sum('paidAmount');
-        $myDebtAmount = max(0, $mySalesAmount - $myPaidAmount);
+        $mySales = (clone $mySalesQuery)->get();
+        $mySalesCount = $mySales->count();
+        $mySalesAmount = (float) $mySales->sum('totalAmount');
+        $mySaleIds = $mySales->pluck('id');
+
+        $myPaymentsQuery = Payment::whereIn('saleId', $mySaleIds);
+        $applyDateFilter($myPaymentsQuery, 'timestamp');
+        $myPayments = (clone $myPaymentsQuery)->get();
+
+        $myCashAmount = (float) $myPayments->where('method', 'CASH')->where('amount', '>', 0)->sum('amount');
+        $myPosAmount  = (float) $myPayments->where('method', 'POS')->where('amount', '>', 0)->sum('amount');
+        $myTransferAmount = 0.0;
+
+        // Cashier debt recoveries collected in cash during shift
+        $myDebtCashQuery = CustomerLedger::where('type', 'PAYMENT')
+            ->where('payment_method', 'CASH')
+            ->where(function($q) use ($authUser) {
+                $q->where('recorded_by', $authUser->name ?? '')
+                  ->orWhere('recorded_by', 'like', "%{$authUser->id}%");
+            });
+        $applyDateFilter($myDebtCashQuery, 'created_at');
+        $myDebtCashRecovered = (float) (clone $myDebtCashQuery)->sum('amount');
+
+        // Cashier cash refunds paid out during shift
+        $myCashRefunds = (float) abs($myPayments->where('method', 'REFUND_CASH')->sum('amount'));
+
+        $myPaidAmount = round($myCashAmount + $myPosAmount, 2);
+        $myDebtAmount = max(0.0, round($mySalesAmount - $myPaidAmount, 2));
+        $myExpectedCashInDrawer = max(0.0, round($myCashAmount + $myDebtCashRecovered - $myCashRefunds, 2));
         $myRecentSales = (clone $mySalesQuery)->orderBy('createdAt', 'desc')->take(15)->get();
 
-        // 2. Sales & Revenue Aggregates
-        $salesQuery = Sale::query();
-        $applyDateFilter($salesQuery, 'createdAt');
-        if ($warehouseId) {
-            $salesQuery->where(function($sq) use ($warehouseId, $branchUserIds) {
-                $sq->where('warehouse_id', $warehouseId);
-                if ($branchUserIds->isNotEmpty()) {
-                    $sq->orWhereIn('userId', $branchUserIds);
-                }
-            });
-        }
+        // 2. Sales & Inflow Aggregates
+        $salesCount = $periodSummary['invoiceCount'];
+        $totalSalesAmount = $periodSummary['grossSales'];
+        $netSales = $periodSummary['netSales'];
+        $totalCashAmount = $periodSummary['cashFromSales'];
+        $totalPosAmount = $periodSummary['posFromSales'];
+        $cashDebtRecovered = $periodSummary['cashDebtRecovered'];
+        $posDebtRecovered = $periodSummary['posDebtRecovered'];
+        $totalCashInflow = $periodSummary['totalCashInflow'];
+        $totalPosInflow = $periodSummary['totalPosInflow'];
+        $totalCollections = $periodSummary['totalNetMoneyRealized'];
+        $newDebtIncurred = $periodSummary['newDebtCreated'];
+        $totalRefundAmount = $periodSummary['cashRefunded'];
+        $returnsCount = $periodSummary['returnCount'];
+        $totalReturnCredits = $periodSummary['totalReturnCredits'];
 
-        $salesCount = (clone $salesQuery)->count();
-        $totalSalesAmount = (float) (clone $salesQuery)->sum('totalAmount');
-        $totalPaidAmount = (float) (clone $salesQuery)->sum('paidAmount');
-        $totalCashAmount = (float) (clone $salesQuery)->sum('cashAmount');
-        $totalPosAmount = (float) (clone $salesQuery)->sum('posAmount');
-        $totalCollections = $totalCashAmount + $totalPosAmount;
-        $newDebtIncurred = max(0, $totalSalesAmount - $totalPaidAmount);
+        // Returned units
+        $returnsQuery = $accountingService->buildReturnsQuery($filters);
+        $returnedUnits = (int) $returnsQuery->sum('quantity');
 
-        // 3. Returns & Refunds
-        $returnsQuery = SalesReturn::query();
-        $applyDateFilter($returnsQuery, 'createdAt');
-        if ($warehouseId && $branchUserIds->isNotEmpty()) {
-            $returnsQuery->whereIn('userId', $branchUserIds);
-        }
-
-        $returnsCount = (clone $returnsQuery)->count();
-        $returnedUnits = (int) (clone $returnsQuery)->sum('quantity');
-        $totalRefundAmount = (float) (clone $returnsQuery)->sum('refundAmount');
-
-        // 4. Stock Movements (In & Out)
-        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN']);
+        // 3. Stock Movements (In & Out) - Strictly Scoped by Warehouse
+        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
         $applyDateFilter($stockInQuery, 'timestamp');
-        if ($warehouseId && $branchUserIds->isNotEmpty()) {
-            $stockInQuery->whereIn('userId', $branchUserIds);
+        if ($warehouseId) {
+            $stockInQuery->where('warehouse_id', $warehouseId);
         }
         $totalStockInUnits = (int) (clone $stockInQuery)->sum('quantity');
 
-        $stockOutQuery = InventoryLog::whereIn('type', ['STOCK_OUT', 'TRANSFER_OUT', 'ADJUSTMENT', 'DAMAGE']);
+        $stockOutQuery = InventoryLog::where(function($q) {
+            $q->whereIn('type', [
+                'SALE',
+                'DISPATCH_FULFILLED',
+                'TRANSFER_OUT',
+                'STOCK_OUT',
+                'STOCK_ADJUSTMENT_DAMAGE',
+                'STOCK_ADJUSTMENT_EXPIRED',
+                'STOCK_ADJUSTMENT_LOST'
+            ])->orWhere('type', 'like', 'STOCK_ADJUSTMENT%')
+              ->orWhere(function ($sub) {
+                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+              });
+        });
         $applyDateFilter($stockOutQuery, 'timestamp');
-        if ($warehouseId && $branchUserIds->isNotEmpty()) {
-            $stockOutQuery->whereIn('userId', $branchUserIds);
+        if ($warehouseId) {
+            $stockOutQuery->where('warehouse_id', $warehouseId);
         }
-        $totalStockOutUnits = (int) (clone $stockOutQuery)->sum('quantity');
+        $totalStockOutUnits = (int) abs((clone $stockOutQuery)->sum('quantity'));
 
-        // 5. Debt Recovery
+        // 4. Debt Portfolio & Recovery
         $debtPaymentQuery = CustomerLedger::where('type', 'PAYMENT');
         $applyDateFilter($debtPaymentQuery, 'created_at');
-        $debtRecoveredInPeriod = (float) (clone $debtPaymentQuery)->sum('amount');
+        if ($warehouseId) {
+            $debtPaymentQuery->where('warehouse_id', $warehouseId);
+        }
+        $debtRecoveredInPeriod = $periodSummary['debtRecovered'];
         $debtRecoveryCount = (clone $debtPaymentQuery)->count();
 
-        $totalOutstandingDebt = (float) Customer::sum('total_debt');
-        $activeDebtorsCount = Customer::where('total_debt', '>', 0)->count();
-
-        // 6. Fulfillment & Unsupplied Backlog
-        $unsuppliedSalesQuery = Sale::whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending']);
-        if ($warehouseId && $branchUserIds->isNotEmpty()) {
-            $unsuppliedSalesQuery->whereIn('userId', $branchUserIds);
+        $totalOutstandingDebt = $periodSummary['currentOutstanding'];
+        if ($warehouseId) {
+            $activeDebtorsCount = Sale::where('warehouse_id', $warehouseId)
+                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                ->whereNotNull('customerId')
+                ->get()
+                ->filter(fn($s) => $accountingService->calculateInvoiceBalance($s) > 0.01)
+                ->pluck('customerId')
+                ->unique()
+                ->count();
+        } else {
+            $activeDebtorsCount = Customer::where('total_debt', '>', 0)->count();
         }
-        $unsuppliedCount = (clone $unsuppliedSalesQuery)->count();
-        $unsuppliedValue = (float) (clone $unsuppliedSalesQuery)->sum('totalAmount');
 
-        // 7. Transfers & Anti-Theft Discrepancies
+        // 5. Fulfillment & Unsupplied Backlog
+        $unsuppliedCount = $pendingOrders['total_orders'];
+        $unsuppliedValue = $pendingOrders['total_value'];
+        $unsuppliedUnits = $pendingOrders['total_units'];
+
+        // 6. Transfers & Discrepancies
         $transferQuery = Transfer::query();
         $applyDateFilter($transferQuery, 'created_at');
         if ($warehouseId) {
@@ -184,28 +215,15 @@ class DashboardController extends Controller
                   ->orWhere('destination_warehouse_id', $warehouseId);
             });
         }
-        $discrepancyCount = (clone $transferQuery)->where('status', 'DISCREPANCY')->count();
+        $discrepancyCount = $accountingService->getTotalDiscrepancyUnits($filters);
         $inTransitCount = (clone $transferQuery)->whereIn('status', ['DISPATCHED', 'IN_TRANSIT', 'PENDING'])->count();
 
-        // 8. Damaged Goods Adjustments
-        $damageQuery = StockAdjustment::query();
-        $applyDateFilter($damageQuery, 'created_at');
-        if ($warehouseId) {
-            $damageQuery->where('warehouse_id', $warehouseId);
-        }
-        $damagedUnits = (int) (clone $damageQuery)->sum('quantity');
+        // 7. Damaged Goods Adjustments
+        $damagedUnits = $accountingService->getTotalDamagedUnits($filters);
 
-        // 9. Physical Inventory & Valuation
-        $stockLevelQuery = StockLevel::with('product');
-        if ($warehouseId) {
-            $stockLevelQuery->where('warehouse_id', $warehouseId);
-        }
-        $stockLevels = $stockLevelQuery->get();
-
-        $totalPhysicalUnits = (int) $stockLevels->sum('physical_stock');
-        $totalStockValuation = (float) $stockLevels->sum(function ($sl) {
-            return $sl->physical_stock * ($sl->product->unitPrice ?? 0);
-        });
+        // 8. Physical Inventory & Valuation (Selling Price Valuation)
+        $totalPhysicalUnits = $periodSummary['totalPhysicalUnits'];
+        $totalStockValuation = $periodSummary['retailInventoryValue'];
 
         $lowStockQuery = StockLevel::where('physical_stock', '>', 0)->where('physical_stock', '<=', 5);
         $outOfStockQuery = StockLevel::where('physical_stock', '<=', 0);
@@ -217,14 +235,14 @@ class DashboardController extends Controller
         $outOfStockCount = $outOfStockQuery->count();
         $totalProducts = Product::where('archived', false)->count();
 
-        // 10. Multi-Branch Summary Breakdown (Batch loaded, Zero N+1 Queries)
+        // 9. Multi-Branch Summary Breakdown (Batch loaded, Zero N+1 Queries)
         $whIds = $warehouses->pluck('id');
         $allBranchLevels = StockLevel::with('product')->whereIn('warehouse_id', $whIds)->get()->groupBy('warehouse_id');
 
         $branchBreakdown = $warehouses->map(function ($wh) use ($allBranchLevels) {
             $levels = $allBranchLevels->get($wh->id, collect());
-            $units = (int) $levels->sum('physical_stock');
-            $val = (float) $levels->sum(fn($sl) => $sl->physical_stock * ($sl->product->unitPrice ?? 0));
+            $units = (int) $levels->sum(fn($sl) => max(0, (int)$sl->physical_stock));
+            $val = (float) $levels->sum(fn($sl) => max(0, (int)$sl->physical_stock) * ($sl->product->unitPrice ?? 0));
             $lowCount = $levels->where('physical_stock', '<=', 5)->count();
             return [
                 'id' => $wh->id,
@@ -247,9 +265,13 @@ class DashboardController extends Controller
             'rangeLabel',
             'salesCount',
             'totalSalesAmount',
-            'totalPaidAmount',
+            'netSales',
             'totalCashAmount',
             'totalPosAmount',
+            'cashDebtRecovered',
+            'posDebtRecovered',
+            'totalCashInflow',
+            'totalPosInflow',
             'totalCollections',
             'newDebtIncurred',
             'returnsCount',
@@ -263,6 +285,8 @@ class DashboardController extends Controller
             'activeDebtorsCount',
             'unsuppliedCount',
             'unsuppliedValue',
+            'unsuppliedUnits',
+            'pendingOrders',
             'discrepancyCount',
             'inTransitCount',
             'damagedUnits',
@@ -280,6 +304,7 @@ class DashboardController extends Controller
             'myTransferAmount',
             'myPaidAmount',
             'myDebtAmount',
+            'myExpectedCashInDrawer',
             'myRecentSales'
         ));
     }

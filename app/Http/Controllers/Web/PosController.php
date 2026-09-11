@@ -47,14 +47,19 @@ class PosController extends Controller
             $activeWarehouseId = $user->warehouse_id;
             $warehouses = Warehouse::where('id', $user->warehouse_id)->get();
         } else {
-            $activeWarehouseId = $request->get('warehouse_id', session('active_warehouse_id', $warehouses->first()->id));
-            if ($user && !$user->canAccessWarehouse($activeWarehouseId)) {
+            $candidateId = $request->get('warehouse_id') ?: session('active_warehouse_id');
+            if (!$candidateId || !$warehouses->contains('id', $candidateId)) {
+                $candidateId = $warehouses->first()->id;
+            }
+            if ($user && !$user->canAccessWarehouse($candidateId)) {
                 abort(403, '🔒 Access Restricted: You do not have permission to access this branch.');
             }
+            $activeWarehouseId = $candidateId;
         }
         session(['active_warehouse_id' => $activeWarehouseId]);
 
         $activeWarehouse = Warehouse::find($activeWarehouseId) ?? $warehouses->first();
+
 
         // Batch load products with their stock levels at this warehouse (Zero N+1 Queries)
         $productsList = Product::where('archived', false)->get();

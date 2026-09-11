@@ -305,7 +305,7 @@
             <div class="form-group">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
                     <label for="password" style="margin-bottom: 0;">Password</label>
-                    <a href="{{ route('password.request') }}" style="color: #93c5fd; font-size: 0.78rem; text-decoration: none; font-weight: 600; transition: color 0.15s;" title="Recover account password">
+                    <a href="{{ \Illuminate\Support\Facades\Route::has('password.request') ? route('password.request') : url('/forgot-password') }}" style="color: #93c5fd; font-size: 0.78rem; text-decoration: none; font-weight: 600; transition: color 0.15s;" title="Recover account password">
                         Forgot Password?
                     </a>
                 </div>
