@@ -17,6 +17,7 @@ use App\Models\Transfer;
 use App\Models\TransferItem;
 use App\Models\StockAdjustment;
 use App\Models\SalesReturn;
+use App\Models\InventoryLog;
 use App\Services\Accounting\AccountingReportService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -771,5 +772,250 @@ class ReportAndDashboardAccuracyTest extends TestCase
         $this->assertEquals(5, $response->viewData('damagedUnits'), 'Yesterday 5 damaged units');
         $this->assertEquals(2, $response->viewData('discrepancyCount'), 'Yesterday 2 discrepancy units');
         $this->assertEquals(1, $response->viewData('returnsCount'), 'Yesterday 1 return');
+    }
+
+    /**
+     * Test that Daily Comprehensive Report calculates all 11 operational dimensions accurately.
+     */
+    public function test_daily_comprehensive_report_calculates_all_operational_dimensions_accurately(): void
+    {
+        $this->actingAs($this->adminUser);
+        $service = app(AccountingReportService::class);
+        $todayIso = Carbon::now('Africa/Lagos')->toIso8601String();
+        $todaySql = Carbon::now('Africa/Lagos')->toDateTimeString();
+
+        // 1. Create a period sale: Total 50,000, Paid 20,000 (10k Cash + 10k POS), Credit balance 30,000
+        $sale = Sale::create([
+            'id' => 'SALE-DAILY-01',
+            'tenant_id' => 'default-tenant',
+            'warehouse_id' => $this->branch1->id,
+            'userId' => $this->cashierUser->id,
+            'userName' => $this->cashierUser->name,
+            'customerId' => $this->customer1->id,
+            'customerName' => $this->customer1->name,
+            'totalAmount' => 50000,
+            'paidAmount' => 20000,
+            'cashAmount' => 10000,
+            'posAmount' => 10000,
+            'changeAmount' => 0,
+            'status' => 'PARTIAL',
+            'deliveryStatus' => 'UNSUPPLIED',
+            'createdAt' => $todayIso,
+        ]);
+        SaleItem::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $sale->id,
+            'productId' => $this->product1->id,
+            'productName' => $this->product1->name,
+            'productCode' => $this->product1->code,
+            'quantity' => 1,
+            'unitPrice' => 50000,
+            'totalPrice' => 50000,
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $sale->id,
+            'amount' => 10000,
+            'method' => 'CASH',
+            'timestamp' => $todayIso,
+            'recordedBy' => $this->cashierUser->name,
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $sale->id,
+            'amount' => 10000,
+            'method' => 'POS',
+            'timestamp' => $todayIso,
+            'recordedBy' => $this->cashierUser->name,
+        ]);
+
+        // 2. Create Debt Recovery payment: 15,000 CASH
+        CustomerLedger::create([
+            'customer_id' => $this->customer2->id,
+            'warehouse_id' => $this->branch1->id,
+            'type' => 'PAYMENT',
+            'amount' => 15000,
+            'balance_after' => 0,
+            'payment_method' => 'CASH',
+            'recorded_by' => $this->cashierUser->name,
+            'created_at' => $todaySql,
+        ]);
+
+        // 3. Create Return & Cash Refund: 5,000 CASH
+        SalesReturn::create([
+            'id' => (string) Str::uuid(),
+            'code' => 'RET-DAILY-001',
+            'saleId' => $sale->id,
+            'productId' => $this->product1->id,
+            'productName' => $this->product1->name,
+            'productCode' => $this->product1->code,
+            'quantity' => 1,
+            'refundAmount' => 5000,
+            'reason' => 'Defective packaging',
+            'createdAt' => $todayIso,
+            'userId' => $this->cashierUser->id,
+            'userName' => $this->cashierUser->name,
+        ]);
+        Payment::create([
+            'id' => (string) Str::uuid(),
+            'saleId' => $sale->id,
+            'amount' => -5000,
+            'method' => 'REFUND_CASH',
+            'timestamp' => $todayIso,
+            'recordedBy' => $this->cashierUser->name,
+        ]);
+
+        // 4. Stock Movement logs
+        InventoryLog::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'warehouse_id' => $this->branch1->id,
+            'productId' => $this->product1->id,
+            'product_id' => $this->product1->id,
+            'userId' => $this->cashierUser->id,
+            'userName' => $this->cashierUser->name,
+            'type' => 'STOCK_IN',
+            'quantity' => 20,
+            'timestamp' => $todayIso,
+        ]);
+        InventoryLog::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'warehouse_id' => $this->branch1->id,
+            'productId' => $this->product1->id,
+            'product_id' => $this->product1->id,
+            'userId' => $this->cashierUser->id,
+            'userName' => $this->cashierUser->name,
+            'type' => 'SALE',
+            'quantity' => -5,
+            'timestamp' => $todayIso,
+        ]);
+
+        $report = $service->getDailyComprehensiveReport(['date_preset' => 'TODAY', 'warehouse_id' => $this->branch1->id]);
+
+        // Assert 1: Sales & Invoices
+        $this->assertEquals(50000.0, $report['total_amount_sold']);
+        $this->assertEquals(1, $report['invoice_count']);
+        $this->assertEquals(50000.0, $report['average_invoice']);
+
+        // Assert 2: Collections
+        // Gross Cash = 10k sale + 15k debt = 25k. Net Cash = 25k - 5k refund = 20,000.
+        $this->assertEquals(20000.0, $report['net_cash_inflow']);
+        // Net POS = 10k sale + 0 debt = 10,000.
+        $this->assertEquals(10000.0, $report['net_pos_inflow']);
+        // Total Net Collections = 20k + 10k = 30,000.
+        $this->assertEquals(30000.0, $report['total_net_collections']);
+        $this->assertEquals(20000.0, $report['drawer_physical_cash']);
+
+        // Assert 3: Credit & Debt
+        // Net balance on sale = 50k - 5k return - 15k net payments = 30,000.
+        $this->assertEquals(30000.0, $report['new_credit_issued']);
+        $this->assertEquals(15000.0, $report['debt_recovered']);
+        $this->assertEquals(15000.0, $report['debt_recovered_cash']);
+        $this->assertEquals(0.0, $report['debt_recovered_pos']);
+        // Net Debt Change = 30k new credit - 15k recovered = 15,000
+        $this->assertEquals(15000.0, $report['net_debt_change']);
+
+        // Assert 4: Stock Flow
+        $this->assertEquals(5, $report['stock_out_total_units']);
+        $this->assertEquals(20, $report['stock_in_total_units']);
+        $this->assertEquals(15, $report['net_inventory_movement_units']);
+
+        // Assert 5: Pending Orders (New in Period)
+        $this->assertEquals(1, $report['pending_orders_new_count']);
+        $this->assertEquals(1, $report['pending_orders_new_units']);
+        $this->assertEquals(50000.0, $report['pending_orders_new_value']);
+
+        // Assert 6: Returns & Refunds
+        $this->assertEquals(1, $report['returns_count']);
+        $this->assertEquals(1, $report['returned_units']);
+        $this->assertEquals(5000.0, $report['refunds_amount']);
+    }
+
+    /**
+     * Test that One-Sheet CSV and JSON exports stream valid data with all sections.
+     */
+    public function test_daily_summary_one_sheet_csv_and_json_export_endpoints(): void
+    {
+        $this->actingAs($this->adminUser);
+
+        // 1. Test CSV One-Sheet Export
+        $csvResponse = $this->get(route('reports.export.csv', [
+            'type' => 'daily_summary',
+            'date_preset' => 'TODAY',
+            'warehouse_id' => $this->branch1->id,
+        ]));
+
+        $csvResponse->assertStatus(200);
+        $this->assertStringContainsString('text/csv', $csvResponse->headers->get('Content-Type'));
+
+        // Stream output check
+        ob_start();
+        $csvResponse->sendContent();
+        $content = ob_get_clean();
+
+        $this->assertStringContainsString('VICTORIOUS MARKET - DAILY OPERATIONS & RECONCILIATION DAY-BOOK', $content);
+        $this->assertStringContainsString('--- 1. EXECUTIVE KPI SUMMARY ---', $content);
+        $this->assertStringContainsString('--- 2. TENDER & CASH FLOW BREAKDOWN ---', $content);
+        $this->assertStringContainsString('--- 3. NEW CREDIT ISSUED IN PERIOD ---', $content);
+        $this->assertStringContainsString('--- 4. DEBTS RECOVERED LEDGER ---', $content);
+        $this->assertStringContainsString('--- 5. PENDING ORDERS (NEW IN PERIOD & CARRIED BACKLOG) ---', $content);
+        $this->assertStringContainsString('--- 6. CUSTOMER RETURNS & REFUNDS ---', $content);
+
+        // 2. Test JSON Export
+        $jsonResponse = $this->get(route('reports.export.json', [
+            'type' => 'daily_summary',
+            'date_preset' => 'TODAY',
+            'warehouse_id' => $this->branch1->id,
+        ]));
+
+        $jsonResponse->assertStatus(200);
+        $data = $jsonResponse->json();
+        $this->assertArrayHasKey('data', $data);
+        $this->assertArrayHasKey('total_amount_sold', $data['data']);
+        $this->assertArrayHasKey('total_net_collections', $data['data']);
+        $this->assertArrayHasKey('new_credit_issued', $data['data']);
+        $this->assertArrayHasKey('debt_recovered', $data['data']);
+        $this->assertArrayHasKey('stock_out_total_units', $data['data']);
+        $this->assertArrayHasKey('stock_in_total_units', $data['data']);
+        $this->assertArrayHasKey('physical_stock_remaining_units', $data['data']);
+    }
+
+    /**
+     * Test that StockController, TransactionController, PosController, and DebtController
+     * all filter cleanly without any undefined method errors on Today and Yesterday.
+     */
+    public function test_all_controllers_filter_cleanly_on_today_and_yesterday(): void
+    {
+        $this->actingAs($this->adminUser);
+
+        // StockController transfers
+        $resTrf = $this->get(route('stock.transfers', ['date_preset' => 'YESTERDAY']));
+        $resTrf->assertStatus(200);
+
+        // StockController unsupplied
+        $resUns = $this->get(route('stock.unsupplied', ['date_preset' => 'YESTERDAY']));
+        $resUns->assertStatus(200);
+
+        // StockController adjustments
+        $resAdj = $this->get(route('stock.adjustments', ['date_preset' => 'YESTERDAY']));
+        $resAdj->assertStatus(200);
+
+        // TransactionController
+        $resTx = $this->get(route('transactions.index', ['date_preset' => 'YESTERDAY']));
+        $resTx->assertStatus(200);
+
+        // PosController returns
+        $resRet = $this->get(route('pos.returns', ['date_preset' => 'YESTERDAY']));
+        $resRet->assertStatus(200);
+
+        // DebtController
+        $resDebt = $this->get(route('debts.index', ['date_preset' => 'YESTERDAY']));
+        $resDebt->assertStatus(200);
+
+        // ReportController index with DayBook tab
+        $resRep = $this->get(route('reports.index', ['date_preset' => 'YESTERDAY']));
+        $resRep->assertStatus(200);
+        $resRep->assertSee('Daily Operations');
     }
 }

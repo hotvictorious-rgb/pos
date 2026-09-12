@@ -1379,15 +1379,15 @@ function submitSale() {
     if (!isSupplied) {
         if (!rawCustPhone || !phoneCheck.valid) {
             errors.push({
-                title: '11-Digit Phone Number Required for Delayed Pickup',
-                desc: 'A verified 11-digit Nigerian GSM phone number (e.g. 08031234567) is mandatory for unsupplied goods to contact and verify the customer during pickup.',
+                title: '11-Digit Phone Number Required for Pending Orders',
+                desc: 'A verified 11-digit Nigerian GSM phone number (e.g. 08031234567) is mandatory for unsupplied goods to contact and verify the customer during order handover.',
                 focus: 'customerPhoneInput'
             });
         }
         if (!custName || custName.toLowerCase() === 'walk-in customer') {
             errors.push({
                 title: 'Specific Customer Name Required',
-                desc: 'Delayed pickup orders must be assigned to a specific customer name so the warehouse knows who owns the buffer goods.',
+                desc: 'Pending orders (unsupplied goods) must be assigned to a specific customer name so the warehouse knows who owns the buffer goods.',
                 focus: 'customerNameInput'
             });
         }

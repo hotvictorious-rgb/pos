@@ -140,13 +140,19 @@ class DebtController extends Controller
         }
 
         $recentPaymentsQuery = CustomerLedger::with(['customer', 'sale'])->where('type', 'PAYMENT');
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $accountingService->applyDateFilterToQuery($recentPaymentsQuery, 'created_at', [
+            'date_preset' => $request->get('date_preset', 'ALL'),
+            'from_date'   => $request->get('from_date'),
+            'to_date'     => $request->get('to_date'),
+        ]);
         if ($assignedWarehouseId) {
             $recentPaymentsQuery->where(function ($q) use ($assignedWarehouseId) {
                 $q->where('warehouse_id', $assignedWarehouseId)
                   ->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $assignedWarehouseId));
             });
         }
-        $recentPayments = $recentPaymentsQuery->orderBy('created_at', 'desc')->take(15)->get();
+        $recentPayments = $recentPaymentsQuery->orderBy('created_at', 'desc')->take(25)->get();
 
         return view('debts.index', compact(
             'debtors',

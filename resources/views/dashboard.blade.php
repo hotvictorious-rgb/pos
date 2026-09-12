@@ -384,7 +384,7 @@
                 </a>
             @elseif($userRole === 'storekeeper')
                 <a href="{{ route('stock.index') }}" class="btn btn-primary btn-sm" style="font-weight: 800; padding: 0.45rem 1rem; border-radius: 10px;">
-                    📦 Stock In / Out
+                    📥 Stock In
                 </a>
             @endif
         </div>

@@ -158,23 +158,323 @@
         }
 
         .topbar {
-            background: rgba(17, 24, 39, 0.85);
-            backdrop-filter: blur(12px);
+            background: rgba(17, 24, 39, 0.88);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
             border-bottom: 1px solid var(--border);
-            padding: 0.85rem 2rem;
+            padding: 0.75rem 1.75rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 1rem;
             position: sticky;
             top: 0;
             z-index: 40;
+            min-height: 64px;
+        }
+
+        .topbar-left-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        #liveClockWidget {
+            background: rgba(31, 41, 55, 0.75);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.4rem 0.85rem;
+            font-size: 0.83rem;
+            font-weight: 700;
+            color: #93c5fd;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        #liveClockWidget .clock-divider {
+            color: #4b5563;
+        }
+
+        #liveClockWidget #headerTime {
+            color: #4ade80;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .observer-pill {
+            background: rgba(234, 179, 8, 0.15);
+            border: 1px solid rgba(234, 179, 8, 0.4);
+            border-radius: 10px;
+            padding: 0.4rem 0.85rem;
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: #facc15;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            white-space: nowrap;
         }
 
         /* 🏬 Topbar Branch Context Switcher Styles */
         .topbar-branch-wrap {
             display: flex;
             align-items: center;
+            justify-content: center;
             position: relative;
+            flex: 1;
+            max-width: 440px;
+            margin: 0 0.5rem;
+        }
+
+        .topbar-right-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            flex-shrink: 0;
+        }
+
+        .topbar-operator-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(31, 41, 59, 0.7);
+            border: 1px solid rgba(75, 85, 99, 0.45);
+            border-radius: 10px;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.82rem;
+            color: #9ca3af;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .topbar-operator-badge .op-icon {
+            font-size: 0.85rem;
+        }
+
+        .topbar-operator-badge .op-label {
+            color: #94a3b8;
+        }
+
+        .topbar-operator-badge .op-name {
+            color: #f3f4f6;
+            font-weight: 700;
+        }
+
+        .topbar-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.38rem;
+            padding: 0.42rem 0.8rem;
+            font-size: 0.82rem;
+            font-weight: 700;
+            border-radius: 10px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            white-space: nowrap;
+            line-height: 1.25;
+            text-decoration: none;
+            border: 1px solid transparent;
+        }
+
+        .topbar-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .topbar-btn-calc {
+            background: rgba(31, 41, 55, 0.9);
+            border-color: #4b5563;
+            color: #f3f4f6;
+        }
+
+        .topbar-btn-calc:hover {
+            background: rgba(55, 65, 81, 0.95);
+            border-color: #6b7280;
+            color: #ffffff;
+        }
+
+        .topbar-btn-password {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: rgba(59, 130, 246, 0.4);
+            color: #93c5fd;
+        }
+
+        .topbar-btn-password:hover {
+            background: rgba(59, 130, 246, 0.28);
+            border-color: #3b82f6;
+            color: #ffffff;
+        }
+
+        .topbar-btn-logout {
+            background: rgba(220, 38, 38, 0.15);
+            border-color: rgba(220, 38, 38, 0.4);
+            color: #fca5a5;
+        }
+
+        .topbar-btn-logout:hover {
+            background: rgba(220, 38, 38, 0.28);
+            border-color: #ef4444;
+            color: #ffffff;
+        }
+
+        .btn-text-mobile {
+            display: none;
+        }
+
+        .btn-text-desktop {
+            display: inline;
+        }
+
+        /* 🧮 POS Calculator Modal Styles */
+        .calc-modal-card {
+            max-width: 370px !important;
+            width: 100%;
+            padding: 1.25rem !important;
+            background: #0f172a !important;
+            border: 1.5px solid #334155 !important;
+            border-radius: 20px !important;
+            box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+            animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .calc-close-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            width: 30px;
+            height: 30px;
+            color: #94a3b8;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+        }
+
+        .calc-close-btn:hover {
+            background: rgba(220, 38, 38, 0.2);
+            color: #fca5a5;
+            border-color: rgba(220, 38, 38, 0.4);
+        }
+
+        .calc-display-box {
+            background: #030712;
+            border: 1.5px solid #1e293b;
+            border-radius: 14px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.7);
+        }
+
+        .calc-history {
+            font-size: 0.8rem;
+            color: #64748b;
+            min-height: 1.2rem;
+            text-align: right;
+            overflow-x: auto;
+            white-space: nowrap;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            letter-spacing: 0.04em;
+        }
+
+        .calc-screen {
+            font-size: 1.85rem;
+            font-weight: 800;
+            text-align: right;
+            color: #34d399;
+            overflow-x: auto;
+            white-space: nowrap;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            line-height: 1.25;
+            margin-top: 0.2rem;
+        }
+
+        .calc-keypad-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.55rem;
+        }
+
+        .calc-key {
+            border: none;
+            border-radius: 12px;
+            padding: 0.8rem 0.5rem;
+            font-size: 1.15rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            font-family: inherit;
+        }
+
+        .calc-key:active {
+            transform: scale(0.94);
+        }
+
+        .calc-key-num {
+            background: #1e293b;
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .calc-key-num:hover {
+            background: #334155;
+            color: #ffffff;
+        }
+
+        .calc-key-op {
+            background: rgba(37, 99, 235, 0.18);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.35);
+        }
+
+        .calc-key-op:hover {
+            background: rgba(37, 99, 235, 0.35);
+            color: #ffffff;
+            border-color: #3b82f6;
+        }
+
+        .calc-key-clear {
+            background: rgba(220, 38, 38, 0.18);
+            color: #f87171;
+            border: 1px solid rgba(220, 38, 38, 0.35);
+        }
+
+        .calc-key-clear:hover {
+            background: #dc2626;
+            color: #ffffff;
+        }
+
+        .calc-key-del {
+            background: rgba(217, 119, 6, 0.18);
+            color: #fbbf24;
+            border: 1px solid rgba(217, 119, 6, 0.35);
+        }
+
+        .calc-key-del:hover {
+            background: #d97706;
+            color: #ffffff;
+        }
+
+        .calc-key-equals {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            color: #ffffff;
+            border: 1px solid #22c55e;
+            box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);
+            font-weight: 800;
+        }
+
+        .calc-key-equals:hover {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            box-shadow: 0 6px 18px rgba(34, 197, 94, 0.5);
         }
 
         .branch-selector-dropdown-wrapper {
@@ -722,26 +1022,80 @@
                 flex-direction: column;
                 align-items: stretch;
                 gap: 0.65rem;
-                padding: 0.75rem;
+                padding: 0.65rem 0.85rem;
+                min-height: auto;
             }
             .topbar-left-wrap {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
-                width: 100%;
                 justify-content: space-between;
+                width: 100%;
+                gap: 0.5rem;
+            }
+            .topbar-left-wrap .mobile-menu-btn {
+                flex-shrink: 0;
+            }
+            #liveClockWidget {
+                font-size: 0.76rem;
+                padding: 0.32rem 0.6rem;
+                border-radius: 8px;
+            }
+            .topbar-branch-wrap {
+                width: 100%;
+                max-width: 100%;
+                margin: 0;
+                order: 2;
+                justify-content: center;
+            }
+            .branch-selector-btn, .branch-badge-locked {
+                width: 100%;
+                justify-content: center;
+                padding: 0.45rem 0.85rem;
+                border-radius: 12px;
+            }
+            .branch-dropdown-menu {
+                width: 100%;
+                left: 0;
+                right: 0;
+                transform: none !important;
+                max-width: 100%;
             }
             .topbar-right-wrap {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 0.5rem;
                 width: 100%;
-                flex-wrap: wrap;
+                gap: 0.45rem;
+                order: 3;
+                flex-wrap: nowrap;
             }
-            #liveClockWidget {
+            .topbar-operator-badge {
+                flex: 1.1;
+                min-width: 0;
+                padding: 0.38rem 0.55rem;
+                font-size: 0.76rem;
+                justify-content: flex-start;
+                overflow: hidden;
+            }
+            .topbar-operator-badge .op-label {
+                display: none;
+            }
+            .topbar-operator-badge .op-name {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .topbar-btn {
+                padding: 0.4rem 0.55rem;
                 font-size: 0.78rem;
-                padding: 0.3rem 0.6rem;
+                justify-content: center;
+                flex: 1;
+            }
+            .btn-text-desktop {
+                display: none;
+            }
+            .btn-text-mobile {
+                display: inline;
             }
             .container {
                 padding: 1rem 0.6rem;
@@ -765,6 +1119,13 @@
             }
             .grid-2, .grid-3, .grid-4 {
                 grid-template-columns: 1fr;
+            }
+            .modal-backdrop, .modal-overlay {
+                padding: 0.5rem;
+                align-items: flex-end !important;
+            }
+            .modal-backdrop#modalCalculator {
+                align-items: center !important;
             }
         }
 
@@ -804,199 +1165,17 @@
             background: rgba(255, 255, 255, 0.08);
         }
 
-        /* Modal Mobile Bottom-Sheet Responsiveness */
-        @media (max-width: 768px) {
-            .modal-backdrop, .modal-overlay {
-                padding: 0.5rem;
-                align-items: flex-end !important;
+        @media (max-width: 480px) {
+            #headerDate, .clock-divider {
+                display: none;
             }
-        /* Branch Switcher & Context Styling */
-        .topbar-branch-wrap {
-            display: flex;
-            align-items: center;
-        }
-        .branch-badge-locked {
-            background: rgba(30, 41, 59, 0.9);
-            border: 1px solid rgba(71, 85, 105, 0.6);
-            border-radius: 10px;
-            padding: 0.35rem 0.75rem;
-            font-size: 0.84rem;
-            font-weight: 700;
-            color: #cbd5e1;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.45rem;
-            user-select: none;
-        }
-        .branch-badge-locked .b-dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background: #22c55e;
-            box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
-        }
-        .branch-badge-locked .b-tag {
-            background: rgba(100, 116, 139, 0.3);
-            color: #94a3b8;
-            font-size: 0.68rem;
-            padding: 0.1rem 0.4rem;
-            border-radius: 6px;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
-
-        .branch-selector-dropdown-wrapper {
-            position: relative;
-        }
-        .branch-selector-btn {
-            background: rgba(30, 41, 59, 0.85);
-            border: 1px solid rgba(59, 130, 246, 0.4);
-            border-radius: 10px;
-            padding: 0.38rem 0.85rem;
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: #f8fafc;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
-        .branch-selector-btn:hover {
-            background: rgba(59, 130, 246, 0.15);
-            border-color: #3b82f6;
-            color: #93c5fd;
-            transform: translateY(-1px);
-        }
-        .branch-selector-btn .b-chevron {
-            color: #94a3b8;
-            font-size: 0.75rem;
-            transition: transform 0.2s ease;
-        }
-        .branch-selector-dropdown-wrapper.open .branch-selector-btn .b-chevron {
-            transform: rotate(180deg);
-        }
-        .branch-dropdown-menu {
-            display: none;
-            position: absolute;
-            top: calc(100% + 8px);
-            left: 0;
-            width: 320px;
-            max-width: 90vw;
-            background: #0f172a;
-            border: 1px solid rgba(71, 85, 105, 0.6);
-            border-radius: 14px;
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
-            padding: 0.6rem;
-            z-index: 1050;
-            animation: dropdownFadeIn 0.15s ease-out;
-        }
-        .branch-selector-dropdown-wrapper.open .branch-dropdown-menu {
-            display: block;
-        }
-        @keyframes dropdownFadeIn {
-            from { opacity: 0; transform: translateY(-6px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .branch-dropdown-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.4rem 0.5rem 0.5rem;
-            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
-            margin-bottom: 0.4rem;
-            font-size: 0.78rem;
-            font-weight: 800;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .branch-dropdown-list {
-            max-height: 280px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-        .branch-option-btn {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            gap: 0.7rem;
-            padding: 0.55rem 0.7rem;
-            background: transparent;
-            border: 1px solid transparent;
-            border-radius: 10px;
-            color: #f1f5f9;
-            text-align: left;
-            cursor: pointer;
-            transition: all 0.15s ease;
-        }
-        .branch-option-btn:hover {
-            background: rgba(30, 41, 59, 0.8);
-            border-color: rgba(71, 85, 105, 0.5);
-        }
-        .branch-option-btn.active {
-            background: rgba(37, 99, 235, 0.15);
-            border-color: rgba(59, 130, 246, 0.5);
-        }
-        .branch-option-btn .bo-icon {
-            font-size: 1.25rem;
-            flex-shrink: 0;
-        }
-        .branch-option-btn .bo-content {
-            flex: 1;
-            min-width: 0;
-        }
-        .branch-option-btn .bo-title {
-            font-size: 0.88rem;
-            font-weight: 700;
-            color: #f8fafc;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .branch-option-btn.active .bo-title {
-            color: #60a5fa;
-        }
-        .branch-option-btn .bo-subtitle {
-            font-size: 0.72rem;
-            color: #94a3b8;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .branch-option-btn .bo-badge {
-            font-size: 0.68rem;
-            font-weight: 800;
-            padding: 0.15rem 0.45rem;
-            border-radius: 6px;
-            background: rgba(34, 197, 94, 0.2);
-            color: #4ade80;
-            border: 1px solid rgba(34, 197, 94, 0.4);
-            flex-shrink: 0;
-        }
-        .branch-dropdown-divider {
-            height: 1px;
-            background: rgba(51, 65, 85, 0.5);
-            margin: 0.25rem 0;
-        }
-
-        @media (max-width: 768px) {
-            .topbar-branch-wrap {
-                width: 100%;
-                justify-content: center;
-                order: 2;
+            .topbar-operator-badge {
+                display: none;
             }
-            .branch-selector-btn, .branch-badge-locked {
-                width: 100%;
-                justify-content: center;
-            }
-            .branch-dropdown-menu {
-                width: 100%;
-                left: 0;
-                right: 0;
+            .topbar-btn {
+                flex: 1;
+                font-size: 0.8rem;
+                padding: 0.45rem 0.5rem;
             }
         }
     </style>
@@ -1068,16 +1247,16 @@
                     <span>🛍️</span> <span>Products Catalog</span>
                 </a>
                 <a href="{{ route('stock.index') }}" class="nav-item {{ request()->routeIs('stock.index') ? 'active' : '' }}">
-                    <span>📦</span> <span>Stock In / Out</span>
+                    <span>📥</span> <span>Stock In</span>
                 </a>
                 <a href="{{ route('stock.transfers') }}" class="nav-item {{ request()->routeIs('stock.transfers') ? 'active' : '' }}">
                     <span>🚚</span> <span>Shop Transfers</span>
                 </a>
                 <a href="{{ route('stock.unsupplied') }}" class="nav-item {{ request()->routeIs('stock.unsupplied') ? 'active' : '' }}">
-                    <span>⏳</span> <span>Pickup Orders</span>
+                    <span>⏳</span> <span>Pending Orders</span>
                 </a>
                 <a href="{{ route('stock.adjustments') }}" class="nav-item {{ request()->routeIs('stock.adjustments') ? 'active' : '' }}">
-                    <span>📉</span> <span>Stock Out / Adjustments</span>
+                    <span>📉</span> <span>Stock Out & Deductions</span>
                 </a>
             @endif
 
@@ -1147,14 +1326,14 @@
                     <span>☰</span>
                 </button>
 
-                <div id="liveClockWidget" style="background: rgba(31,41,55,0.7); border: 1px solid var(--border); border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.85rem; font-weight: 700; color: #93c5fd; display: flex; align-items: center; gap: 0.5rem;">
+                <div id="liveClockWidget">
                     <span>📅</span> <span id="headerDate">--</span>
-                    <span style="color: #4b5563;">|</span>
-                    <span>⏰</span> <span id="headerTime" style="color: #4ade80;">--:--:--</span>
+                    <span class="clock-divider">|</span>
+                    <span>⏰</span> <span id="headerTime">--:--:--</span>
                 </div>
 
                 @if($currentRole === 'viewer')
-                    <div style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 800; color: #facc15; display: inline-flex; align-items: center; gap: 0.4rem;">
+                    <div class="observer-pill">
                         <span>👑</span> <span>Executive Observer</span>
                     </div>
                 @endif
@@ -1232,22 +1411,24 @@
                 @endif
             </div>
 
-            <!-- Right: Quick Calculator, Operator & Logout -->
+            <!-- Right: Operator, Quick Calculator, Password & Logout -->
             <div class="topbar-right-wrap">
-                <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.85rem; background: rgba(31,41,55,0.9); border-color: #4b5563; color: #f3f4f6;" onclick="toggleCalculator()">
-                    🧮 Calculator
-                </button>
-
-                <div style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">
-                    Operator: <strong style="color: #f3f4f6;">{{ auth()->user()->name ?? session('user_name', 'Auditor / Lead') }}</strong>
+                <div class="topbar-operator-badge" title="Active Logged In Operator">
+                    <span class="op-icon">👤</span>
+                    <span class="op-label">Operator:</span>
+                    <strong class="op-name">{{ auth()->user()->name ?? session('user_name', 'Auditor / Lead') }}</strong>
                 </div>
 
-                <a href="{{ route('account.password') }}" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #93c5fd; display: inline-flex; align-items: center; gap: 0.35rem;" title="Change your account password">
-                    <span>🔑</span> <span>Password</span>
+                <button type="button" class="topbar-btn topbar-btn-calc" onclick="toggleCalculator()" title="Quick POS Calculator (Alt+C)">
+                    <span>🧮</span> <span class="btn-text-desktop">Calculator</span><span class="btn-text-mobile">Calc</span>
+                </button>
+
+                <a href="{{ route('account.password') }}" class="topbar-btn topbar-btn-password" title="Change your account password">
+                    <span>🔑</span> <span class="btn-text-desktop">Password</span><span class="btn-text-mobile">Pass</span>
                 </a>
 
-                <a href="{{ route('logout') }}" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; background: rgba(220,38,38,0.15); border-color: rgba(220,38,38,0.4); color: #fca5a5; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sign out of system">
-                    <span>🚪</span> <span>Log Out</span>
+                <a href="{{ route('logout') }}" class="topbar-btn topbar-btn-logout" title="Sign out of system">
+                    <span>🚪</span> <span class="btn-text-desktop">Log Out</span><span class="btn-text-mobile">Exit</span>
                 </a>
             </div>
         </header>
@@ -1303,44 +1484,57 @@
     </div>
 
     <!-- Quick Header Calculator Modal -->
-    <div id="modalCalculator" class="modal-backdrop" style="display: none;">
-        <div class="modal" style="max-width: 360px; padding: 1.5rem; background: #111827; border: 2px solid #374151;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.1rem; font-weight: 800; color: #f9fafb;">🧮 POS Calculator</h3>
-                <button type="button" onclick="toggleCalculator()" style="background: none; border: none; color: #9ca3af; font-size: 1.25rem; cursor: pointer;">✕</button>
+    <div id="modalCalculator" class="modal-backdrop" style="display: none;" onclick="handleCalcBackdropClick(event)">
+        <div class="modal calc-modal-card" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.3rem;">🧮</span>
+                    <div>
+                        <h3 style="font-size: 1.05rem; font-weight: 800; color: #f8fafc; line-height: 1.2;">POS Calculator</h3>
+                        <span style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Supports Keyboard & Numpad</span>
+                    </div>
+                </div>
+                <button type="button" onclick="toggleCalculator()" class="calc-close-btn" title="Close (Esc)">✕</button>
             </div>
 
-            <!-- Display -->
-            <div id="calcDisplay" style="background: #030712; border: 1px solid #374151; border-radius: 12px; padding: 1rem; font-size: 1.8rem; font-weight: 800; text-align: right; color: #4ade80; overflow-x: auto; margin-bottom: 1rem; min-height: 60px; font-family: monospace;">
-                0
+            <!-- Dual-Line Display (History + Main) -->
+            <div class="calc-display-box">
+                <div id="calcHistory" class="calc-history"></div>
+                <div id="calcDisplay" class="calc-screen">0</div>
             </div>
 
-            <!-- Keypad Grid -->
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem;">
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #dc2626; color: #fff;" onclick="calcClear()">C</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('(')">(</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput(')')">)</button>
-                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('/')">÷</button>
+            <!-- Keypad Grid (4 columns x 5 rows) -->
+            <div class="calc-keypad-grid">
+                <!-- Row 1 -->
+                <button type="button" class="calc-key calc-key-clear" onclick="calcClear()" title="Clear (C or Esc)">C</button>
+                <button type="button" class="calc-key calc-key-del" onclick="calcBackspace()" title="Backspace (⌫)">⌫</button>
+                <button type="button" class="calc-key calc-key-op" onclick="calcPercent()" title="Percentage (%)">%</button>
+                <button type="button" class="calc-key calc-key-op" onclick="calcInput('/')" title="Divide (/)">÷</button>
 
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('7')">7</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('8')">8</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('9')">9</button>
-                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('*')">×</button>
+                <!-- Row 2 -->
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('7')">7</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('8')">8</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('9')">9</button>
+                <button type="button" class="calc-key calc-key-op" onclick="calcInput('*')" title="Multiply (*)">×</button>
 
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('4')">4</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('5')">5</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('6')">6</button>
-                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('-')">−</button>
+                <!-- Row 3 -->
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('4')">4</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('5')">5</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('6')">6</button>
+                <button type="button" class="calc-key calc-key-op" onclick="calcInput('-')" title="Subtract (-)">−</button>
 
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('1')">1</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('2')">2</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('3')">3</button>
-                <button type="button" class="btn btn-primary" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcInput('+')">+</button>
+                <!-- Row 4 -->
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('1')">1</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('2')">2</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('3')">3</button>
+                <button type="button" class="calc-key calc-key-op" onclick="calcInput('+')" title="Add (+)">+</button>
 
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('0')">0</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('00')">00</button>
-                <button type="button" class="btn btn-secondary" style="padding: 0.85rem; font-size: 1.1rem; background: #1f2937;" onclick="calcInput('.')">.</button>
-                <button type="button" class="btn btn-success" style="padding: 0.85rem; font-size: 1.1rem;" onclick="calcEquals()">=</button>
+                <!-- Row 5 -->
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('0')">0</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('00')">00</button>
+                <button type="button" class="calc-key calc-key-num" onclick="calcInput('.')">.</button>
+                <button type="button" class="calc-key calc-key-equals" onclick="calcEquals()" title="Equals (= or Enter)">=</button>
             </div>
         </div>
     </div>
@@ -1404,38 +1598,389 @@
     setInterval(updateClock, 1000);
     updateClock();
 
-    // 2. Interactive Calculator Engine
+    // 2. Interactive POS Calculator Engine
     let calcExpression = '';
+    let calcHistoryText = '';
+    let calcJustEvaluated = false;
 
     function toggleCalculator() {
         const modal = document.getElementById('modalCalculator');
-        modal.style.display = (modal.style.display === 'none' || modal.style.display === '') ? 'flex' : 'none';
+        if (!modal) return;
+        const isVisible = (modal.style.display === 'flex');
+        if (isVisible) {
+            modal.style.display = 'none';
+            document.removeEventListener('keydown', handleCalcKeyboard);
+        } else {
+            modal.style.display = 'flex';
+            document.addEventListener('keydown', handleCalcKeyboard);
+            updateCalcDisplay();
+        }
+    }
+
+    function handleCalcBackdropClick(e) {
+        if (e.target.id === 'modalCalculator') {
+            toggleCalculator();
+        }
+    }
+
+    function updateCalcDisplay() {
+        const displayEl = document.getElementById('calcDisplay');
+        const historyEl = document.getElementById('calcHistory');
+        if (displayEl) {
+            displayEl.textContent = calcExpression || '0';
+        }
+        if (historyEl) {
+            historyEl.textContent = calcHistoryText;
+        }
     }
 
     function calcInput(val) {
-        if (calcExpression === '0' && val !== '.') calcExpression = '';
+        // If user just evaluated an expression and types a number, start fresh
+        if (calcJustEvaluated) {
+            if (['0','1','2','3','4','5','6','7','8','9','00'].includes(val)) {
+                calcExpression = '';
+            } else if (val === '.') {
+                calcExpression = '0';
+            }
+            calcJustEvaluated = false;
+        }
+
+        const operators = ['+', '-', '*', '/'];
+
+        // If expression is empty or "0"
+        if (!calcExpression || calcExpression === '0') {
+            if (operators.includes(val)) {
+                if (val === '-') {
+                    calcExpression = '-';
+                    updateCalcDisplay();
+                    return;
+                }
+                return; // Ignore +, *, / on empty/0
+            }
+            if (val === '.') {
+                calcExpression = '0.';
+                updateCalcDisplay();
+                return;
+            }
+            if (val === '00') {
+                calcExpression = '0';
+                updateCalcDisplay();
+                return;
+            }
+            calcExpression = val;
+            updateCalcDisplay();
+            return;
+        }
+
+        const lastChar = calcExpression.slice(-1);
+
+        // If new input is an operator and last char is an operator: replace last operator
+        if (operators.includes(val)) {
+            if (operators.includes(lastChar)) {
+                calcExpression = calcExpression.slice(0, -1) + val;
+                updateCalcDisplay();
+                return;
+            }
+        }
+
+        // Decimal point handling
+        if (val === '.') {
+            if (operators.includes(lastChar)) {
+                calcExpression += '0.';
+                updateCalcDisplay();
+                return;
+            }
+            const segments = calcExpression.split(/[-+*/]/);
+            const currentSegment = segments[segments.length - 1];
+            if (currentSegment.includes('.')) {
+                return; // already has decimal point
+            }
+        }
+
+        // Leading zero handling within current number segment
+        const segments = calcExpression.split(/[-+*/]/);
+        const currentSegment = segments[segments.length - 1];
+        if (currentSegment === '0') {
+            if (['1','2','3','4','5','6','7','8','9'].includes(val)) {
+                calcExpression = calcExpression.slice(0, -1) + val;
+                updateCalcDisplay();
+                return;
+            }
+            if (val === '0' || val === '00') {
+                return; // prevent multiple zeros like "00"
+            }
+        }
+
         calcExpression += val;
-        document.getElementById('calcDisplay').textContent = calcExpression;
+        updateCalcDisplay();
+    }
+
+    function calcBackspace() {
+        if (calcJustEvaluated) {
+            calcClear();
+            return;
+        }
+        if (calcExpression.length > 0) {
+            calcExpression = calcExpression.slice(0, -1);
+            if (calcExpression === '' || calcExpression === '-') {
+                calcExpression = '0';
+            }
+        } else {
+            calcExpression = '0';
+        }
+        updateCalcDisplay();
     }
 
     function calcClear() {
         calcExpression = '';
-        document.getElementById('calcDisplay').textContent = '0';
+        calcHistoryText = '';
+        calcJustEvaluated = false;
+        updateCalcDisplay();
+    }
+
+    // Safe Arithmetic Evaluator without eval or new Function (CSP & sandbox proof)
+    function safeEvaluate(str) {
+        if (!str) return 0;
+        str = str.replace(/\s+/g, '');
+        if (!str) return 0;
+
+        // Auto-close unclosed parentheses if any
+        let openCount = (str.match(/\(/g) || []).length;
+        let closeCount = (str.match(/\)/g) || []).length;
+        if (openCount > closeCount) {
+            str += ')'.repeat(openCount - closeCount);
+        }
+
+        // Parentheses reduction
+        let parenRegex = /\(([^()]+)\)/;
+        while (parenRegex.test(str)) {
+            let match = str.match(parenRegex);
+            let subVal = evaluateSimpleExpr(match[1]);
+            if (subVal === 'Cannot divide by 0') return 'Cannot divide by 0';
+            str = str.replace(match[0], subVal);
+        }
+
+        return evaluateSimpleExpr(str);
+    }
+
+    function evaluateSimpleExpr(expr) {
+        if (!expr) return 0;
+        let tokens = [];
+        let i = 0;
+        let len = expr.length;
+
+        while (i < len) {
+            let ch = expr[i];
+
+            // Check if '-' is unary (at start or immediately after an operator)
+            let lastToken = tokens[tokens.length - 1];
+            if (ch === '-' && (tokens.length === 0 || ['+', '-', '*', '/'].includes(lastToken))) {
+                let numStr = '-';
+                i++;
+                while (i < len && ((expr[i] >= '0' && expr[i] <= '9') || expr[i] === '.')) {
+                    numStr += expr[i];
+                    i++;
+                }
+                if (numStr === '-') numStr = '0';
+                tokens.push(parseFloat(numStr) || 0);
+                continue;
+            }
+
+            if (['+', '-', '*', '/'].includes(ch)) {
+                tokens.push(ch);
+                i++;
+                continue;
+            }
+
+            if ((ch >= '0' && ch <= '9') || ch === '.') {
+                let numStr = '';
+                while (i < len && ((expr[i] >= '0' && expr[i] <= '9') || expr[i] === '.')) {
+                    numStr += expr[i];
+                    i++;
+                }
+                tokens.push(parseFloat(numStr) || 0);
+                continue;
+            }
+
+            i++;
+        }
+
+        if (tokens.length === 0) return 0;
+
+        // First pass: multiplication and division
+        let j = 0;
+        while (j < tokens.length) {
+            if (tokens[j] === '*' || tokens[j] === '/') {
+                let op = tokens[j];
+                let prev = Number(tokens[j - 1]) || 0;
+                let next = tokens[j + 1] !== undefined ? Number(tokens[j + 1]) : 0;
+
+                let res = 0;
+                if (op === '*') {
+                    res = prev * next;
+                } else {
+                    if (next === 0) return 'Cannot divide by 0';
+                    res = prev / next;
+                }
+
+                tokens.splice(j - 1, 3, res);
+                j--;
+            } else {
+                j++;
+            }
+        }
+
+        // Second pass: addition and subtraction
+        j = 0;
+        while (j < tokens.length) {
+            if (tokens[j] === '+' || tokens[j] === '-') {
+                let op = tokens[j];
+                let prev = Number(tokens[j - 1]) || 0;
+                let next = tokens[j + 1] !== undefined ? Number(tokens[j + 1]) : 0;
+
+                let res = 0;
+                if (op === '+') {
+                    res = prev + next;
+                } else {
+                    res = prev - next;
+                }
+
+                tokens.splice(j - 1, 3, res);
+                j--;
+            } else {
+                j++;
+            }
+        }
+
+        return tokens[0] !== undefined ? tokens[0] : 0;
+    }
+
+    function calcPercent() {
+        if (!calcExpression || calcExpression === '0') return;
+        let expr = calcExpression;
+        while (['+', '-', '*', '/', '.'].includes(expr.slice(-1))) {
+            expr = expr.slice(0, -1);
+        }
+        if (!expr) return;
+
+        // Match base expression, operator, and percentage operand, e.g. "1000 - 10" or "200 * 15" or "50"
+        const match = expr.match(/(.*?)([-+*/])?(\d+(?:\.\d+)?)$/);
+        if (match) {
+            const before = match[1] || '';
+            const op = match[2];
+            const num = parseFloat(match[3]);
+
+            if (op === '+' || op === '-') {
+                // Retail POS percentage (e.g. 1000 + 7.5% = 1000 + 75, or 1000 - 10% = 1000 - 100)
+                try {
+                    const baseVal = safeEvaluate(before);
+                    if (isFinite(baseVal)) {
+                        const percentAmount = Math.round((Number(baseVal) * (num / 100) + Number.EPSILON) * 1000000) / 1000000;
+                        calcExpression = before + op + percentAmount;
+                        updateCalcDisplay();
+                        return;
+                    }
+                } catch(e) {}
+            }
+
+            // Direct rate or standalone (e.g. 200 * 15% = 200 * 0.15, or 50% = 0.5)
+            const percentVal = Math.round(((num / 100) + Number.EPSILON) * 1000000) / 1000000;
+            calcExpression = (before || '') + (op || '') + percentVal;
+            updateCalcDisplay();
+        }
     }
 
     function calcEquals() {
+        if (!calcExpression) return;
         try {
-            // Safe evaluation of arithmetic only
-            const sanitized = calcExpression.replace(/[^0-9+\-*/().]/g, '');
-            if (!sanitized) return;
-            const result = Function('"use strict";return (' + sanitized + ')')();
-            calcExpression = String(result);
-            document.getElementById('calcDisplay').textContent = Number(result).toLocaleString('en-US', { maximumFractionDigits: 4 });
+            // Strip trailing operators and trailing decimal dots
+            let expr = calcExpression;
+            while (['+', '-', '*', '/', '.'].includes(expr.slice(-1))) {
+                expr = expr.slice(0, -1);
+            }
+            if (!expr) return;
+
+            // Remove accidental leading zeros before digits (e.g. +07 -> +7)
+            expr = expr.replace(/(^|[-+*/(])0+([1-9])/g, '$1$2');
+
+            // Pure arithmetic evaluation without eval/new Function
+            const result = safeEvaluate(expr);
+
+            if (result === 'Cannot divide by 0' || !isFinite(result)) {
+                const displayEl = document.getElementById('calcDisplay');
+                if (displayEl) displayEl.textContent = 'Cannot divide by 0';
+                calcHistoryText = expr + ' =';
+                const historyEl = document.getElementById('calcHistory');
+                if (historyEl) historyEl.textContent = calcHistoryText;
+                calcExpression = '';
+                calcJustEvaluated = true;
+                return;
+            }
+
+            // High precision rounding (up to 6 decimal places, no trailing 0s)
+            const rounded = Math.round((Number(result) + Number.EPSILON) * 1000000) / 1000000;
+            calcHistoryText = expr + ' =';
+            calcExpression = String(rounded);
+            calcJustEvaluated = true;
+
+            const displayEl = document.getElementById('calcDisplay');
+            const historyEl = document.getElementById('calcHistory');
+            if (displayEl) {
+                displayEl.textContent = Number(rounded).toLocaleString('en-US', { maximumFractionDigits: 6 });
+            }
+            if (historyEl) {
+                historyEl.textContent = calcHistoryText;
+            }
         } catch (e) {
+            console.error('Calculator Evaluation Error:', e, 'Expression:', calcExpression);
             document.getElementById('calcDisplay').textContent = 'Error';
             calcExpression = '';
+            calcJustEvaluated = true;
         }
     }
+
+    function handleCalcKeyboard(e) {
+        const modal = document.getElementById('modalCalculator');
+        if (!modal || modal.style.display !== 'flex') return;
+
+        // Allow Esc to close
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            toggleCalculator();
+            return;
+        }
+
+        if (e.key >= '0' && e.key <= '9') {
+            e.preventDefault();
+            calcInput(e.key);
+        } else if (['+', '-', '*', '/'].includes(e.key)) {
+            e.preventDefault();
+            calcInput(e.key);
+        } else if (e.key === '.') {
+            e.preventDefault();
+            calcInput('.');
+        } else if (e.key === '%') {
+            e.preventDefault();
+            calcPercent();
+        } else if (e.key === 'Enter' || e.key === '=') {
+            e.preventDefault();
+            calcEquals();
+        } else if (e.key === 'Backspace') {
+            e.preventDefault();
+            calcBackspace();
+        } else if (e.key.toLowerCase() === 'c') {
+            e.preventDefault();
+            calcClear();
+        }
+    }
+
+    // Global Shortcut: Alt+C toggles calculator from anywhere
+    document.addEventListener('keydown', function(e) {
+        if (e.altKey && e.key.toLowerCase() === 'c') {
+            e.preventDefault();
+            toggleCalculator();
+        }
+    });
 
     // 3. Universal Action Confirmation Modal Engine
     let pendingConfirmAction = null;

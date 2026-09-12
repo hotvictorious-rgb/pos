@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Stock Management Hub')
+@section('title', 'Stock In & Restocks')
 
 @push('styles')
 <style>
@@ -104,6 +104,24 @@
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: rgba(51, 65, 85, 0.25); }
 
+    .date-pill {
+        padding: 0.35rem 0.75rem;
+        border-radius: 99px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        border: 1px solid var(--border);
+        background: rgba(11, 15, 25, 0.6);
+        color: var(--text-muted);
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .date-pill.active {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+    }
+
     /* Incoming Transfer Alert Box */
     .incoming-alert {
         background: rgba(37, 99, 235, 0.15);
@@ -126,30 +144,36 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-                <span style="font-size: 1.75rem;">📦</span>
-                <h2 style="font-size: 1.5rem; font-weight: 800;">Stock & Inventory Management Hub</h2>
+                <span style="font-size: 1.75rem;">📥</span>
+                <h2 style="font-size: 1.5rem; font-weight: 800;">Stock In Management Hub</h2>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Managing Physical Counts & Warehouse Stocks for: <strong style="color: #60a5fa;">{{ $activeWarehouse->name }}</strong>
+                Managing Incoming Supplier Restocks, Receipts & Deliveries for: <strong style="color: #60a5fa;">{{ $activeWarehouse->name }}</strong>
             </p>
         </div>
 
         <div style="display: flex; gap: 0.5rem; align-items: center;">
+            @if(auth()->user()?->role !== 'viewer')
+                <button class="btn btn-primary" onclick="openModal('modalStockIn')">
+                    📥 Record Stock In (New Goods)
+                </button>
+            @else
+                <span style="font-size: 0.82rem; font-weight: 800; color: #facc15; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); padding: 0.5rem 1rem; border-radius: 10px;">
+                    👑 Executive Observer
+                </span>
+            @endif
+            <a href="{{ route('stock.adjustments') }}" class="btn btn-secondary">
+                📉 Stock Out & Deductions
+            </a>
             <a href="{{ route('stock.transfers') }}" class="btn btn-secondary">
                 🚚 Shop Transfers
-            </a>
-            <a href="{{ route('stock.adjustments') }}" class="btn btn-secondary">
-                📉 Stock Out / Adjustments
-            </a>
-            <a href="{{ route('transactions.index') }}" class="btn btn-secondary">
-                📜 Ledgers Hub
             </a>
         </div>
     </div>
 
     <!-- Incoming Transfer Notification (if any) -->
     @if($incomingTransfers->isNotEmpty())
-    <div class="incoming-alert">
+    <div class="incoming-alert" style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
         <div style="display: flex; align-items: center; gap: 1rem;">
             <div style="font-size: 2.2rem;">🚚</div>
             <div>
@@ -165,94 +189,48 @@
     </div>
     @endif
 
-    @if(auth()->user()?->role !== 'viewer')
-    <!-- 3 Big Action Cards (Touch Friendly) -->
-    <div class="stock-action-cards">
-        <!-- 1. Stock In -->
-        <div class="stock-card" style="border-color: rgba(34,197,94,0.4);" onclick="openModal('modalStockIn')">
-            <div class="card-icon-wrap" style="background: rgba(34,197,94,0.15); color: #4ade80;">
-                📥
-            </div>
-            <div>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">New Goods Arrived (Stock In)</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted);">Receive stock from supplier into this shop.</p>
-            </div>
-        </div>
-
-        <!-- 2. Transfer Out -->
-        <div class="stock-card" style="border-color: rgba(59,130,246,0.4);" onclick="openModal('modalTransferOut')">
-            <div class="card-icon-wrap" style="background: rgba(59,130,246,0.15); color: #60a5fa;">
-                🚚
-            </div>
-            <div>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Send to Another Shop</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted);">Dispatch items to another branch location.</p>
-            </div>
-        </div>
-
-        <!-- 3. Goods Sold & Not Supplied (Awaiting Pickup) -->
-        <a href="{{ route('stock.unsupplied') }}" class="stock-card" style="border-color: rgba(217,119,6,0.4); text-decoration: none; color: inherit;">
-            <div class="card-icon-wrap" style="background: rgba(217,119,6,0.15); color: #fbbf24;">
-                ⏳
-            </div>
-            <div>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Not Supplied (Pickups)</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted);">Items sold, paid for, but awaiting customer pickup.</p>
-            </div>
-        </a>
-
-        <!-- 4. Stock Out / Inventory Adjustments -->
-        <a href="{{ route('stock.adjustments') }}" class="stock-card" style="border-color: rgba(239,68,68,0.4); text-decoration: none; color: inherit;">
-            <div class="card-icon-wrap" style="background: rgba(239,68,68,0.15); color: #f87171;">
-                📉
-            </div>
-            <div>
-                <h3 style="font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Stock Out / Adjustments</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted);">Record damages, expiry, store use, samples, or losses.</p>
-            </div>
-        </a>
-    </div>
-    @else
-    <!-- View-Only Executive Stock Banner -->
-    <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-        <div>
-            <strong style="color: #facc15; font-size: 1.05rem;">👑 Executive Inventory Observer</strong>
-            <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.2rem; margin-bottom: 0;">
-                Monitoring real-time physical counts, supplier deliveries, and multi-branch inventory balances.
-            </p>
-        </div>
-        <a href="{{ route('reports.export.csv', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.82rem; color: #facc15; border-color: rgba(234, 179, 8, 0.4);">
-            📥 Export Stock Valuation CSV
-        </a>
-    </div>
-    @endif
-
-    <!-- Stock Summary KPI Grid -->
+    <!-- Summary KPI Cards for Stock In -->
     <div class="summary-grid">
         <div class="summary-card">
-            <h4>Total Tracked SKUs</h4>
-            <div class="val" style="color: #60a5fa;">{{ number_format($totalItemsCount) }}</div>
+            <h4>Stock In Events Logged</h4>
+            <div class="val" style="color: #fbbf24;">{{ number_format($totalStockInEvents) }}</div>
         </div>
         <div class="summary-card">
-            <h4>Total Physical Shelf Units</h4>
-            <div class="val" style="color: #4ade80;">{{ number_format($totalPhysicalUnits) }} units</div>
+            <h4>Total Physical Units Received</h4>
+            <div class="val" style="color: #4ade80;">+{{ number_format($totalUnitsReceived) }} units</div>
         </div>
         <div class="summary-card">
-            <h4>Low Stock Alerts (1 - 10)</h4>
-            <div class="val" style="color: #fbbf24;">{{ number_format($lowStockCount) }}</div>
-        </div>
-        <div class="summary-card">
-            <h4>Out of Stock Items</h4>
-            <div class="val" style="color: #f87171;">{{ number_format($outOfStockCount) }}</div>
+            <h4>Active Receiving Branch</h4>
+            <div class="val" style="color: #60a5fa; font-size: 1.15rem;">{{ $activeWarehouse->name }}</div>
         </div>
     </div>
 
-    <!-- Multi-Criteria Filter Bar for Stock -->
+    <!-- Multi-Criteria Filter Card -->
     <div class="filter-card">
-        <form method="GET" action="{{ route('stock.index') }}" id="stockFilterForm">
-            <div class="grid-4" style="gap: 0.75rem;">
+        <form method="GET" action="{{ route('stock.index') }}">
+            <!-- Quick Date Pills -->
+            <div style="display: flex; gap: 0.4rem; margin-bottom: 0.85rem; flex-wrap: wrap; align-items: center;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Quick Dates:</span>
+                <a href="{{ route('stock.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'ALL'])) }}" class="date-pill {{ $datePreset === 'ALL' && !request('from_date') ? 'active' : '' }}">All Time</a>
+                <a href="{{ route('stock.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'TODAY'])) }}" class="date-pill {{ $datePreset === 'TODAY' ? 'active' : '' }}">Today</a>
+                <a href="{{ route('stock.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'YESTERDAY'])) }}" class="date-pill {{ $datePreset === 'YESTERDAY' ? 'active' : '' }}">Yesterday</a>
+                <a href="{{ route('stock.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'THIS_WEEK'])) }}" class="date-pill {{ $datePreset === 'THIS_WEEK' ? 'active' : '' }}">This Week</a>
+                <a href="{{ route('stock.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['date_preset' => 'THIS_MONTH'])) }}" class="date-pill {{ $datePreset === 'THIS_MONTH' ? 'active' : '' }}">This Month</a>
+            </div>
+
+            <div class="grid-3" style="gap: 0.75rem;">
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Branch / Warehouse</label>
+                    <label style="font-size: 0.75rem;">From Date</label>
+                    <input type="date" name="from_date" value="{{ request('from_date') }}">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">To Date</label>
+                    <input type="date" name="to_date" value="{{ request('to_date') }}">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Receiving Branch</label>
                     <select name="warehouse_id" onchange="this.form.submit()">
                         @foreach($warehouses as $wh)
                             <option value="{{ $wh->id }}" {{ $activeWarehouse->id == $wh->id ? 'selected' : '' }}>
@@ -261,37 +239,17 @@
                         @endforeach
                     </select>
                 </div>
-
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Stock Health Status</label>
-                    <select name="stock_status">
-                        <option value="">-- All Stock Statuses --</option>
-                        <option value="HEALTHY" {{ request('stock_status') === 'HEALTHY' ? 'selected' : '' }}>🟢 Healthy Stock (> 10)</option>
-                        <option value="LOW" {{ request('stock_status') === 'LOW' ? 'selected' : '' }}>⚠️ Low Stock (1 - 10)</option>
-                        <option value="OUT" {{ request('stock_status') === 'OUT' ? 'selected' : '' }}>🔴 Out of Stock (0)</option>
-                    </select>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Category</label>
-                    <select name="category">
-                        <option value="">-- All Categories --</option>
-                        @foreach($categories as $cat)
-                            <option value="{{ $cat }}" {{ request('category') === $cat ? 'selected' : '' }}>{{ $cat }}</option>
-                        @endforeach
-                    </select>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Search Item / SKU</label>
-                    <input type="text" name="search" value="{{ request('search') }}" placeholder="🔍 Product name or SKU code...">
-                </div>
             </div>
 
-            <div style="display: flex; gap: 0.75rem; margin-top: 0.85rem; justify-content: flex-end;">
+            <div style="display: flex; gap: 0.75rem; margin-top: 0.85rem; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px;">
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="🔍 Search product name, SKU, supplier, notes, staff...">
+                </div>
+
                 <button type="submit" class="btn btn-primary" style="padding: 0.65rem 1.25rem;">
-                    🔍 Filter Stock
+                    🔍 Apply Filters
                 </button>
+
                 <a href="{{ route('stock.index', ['warehouse_id' => $activeWarehouse->id]) }}" class="btn btn-secondary" style="padding: 0.65rem 1rem;">
                     Reset
                 </a>
@@ -299,64 +257,62 @@
         </form>
     </div>
 
-    <!-- Stock Table Card with Live Filter Box -->
+    <!-- Stock In Audit Log Table Card -->
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
-            <h3 style="font-size: 1.2rem; font-weight: 800;">
-                Physical Stock on Ground ({{ $activeWarehouse->name }})
+            <h3 style="font-size: 1.25rem; font-weight: 800;">
+                Stock In & Supplier Receipts Audit Log ({{ $activeWarehouse->name }})
             </h3>
             <div style="width: 280px;">
-                <input type="text" placeholder="⚡ Live search table..." onkeyup="filterTableRows('stockTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
+                <input type="text" placeholder="⚡ Live search table..." onkeyup="filterTableRows('stockInTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
             </div>
         </div>
 
         <div class="table-wrap">
-            <table id="stockTable">
+            <table id="stockInTable">
                 <thead>
                     <tr>
-                        <th>Product SKU</th>
-                        <th>Category</th>
-                        <th>Unit Price</th>
-                        <th style="color: #4ade80;">Physical Count (Units on Ground)</th>
-                        <th>Min Alert Level</th>
-                        <th>Stock Health</th>
+                        <th>Date & Time</th>
+                        <th>Branch Shop</th>
+                        <th>Product SKU & Item</th>
+                        <th style="color: #4ade80;">Qty Received</th>
+                        <th>Supplier / Notes</th>
+                        <th>Staff Responsible</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse($stockLevels as $level)
+                    @forelse($stockInLogs as $log)
                     <tr>
+                        <td style="font-size: 0.8rem; color: var(--text-muted);">
+                            {{ date('d M Y, h:i A', strtotime($log->created_at ?? $log->timestamp)) }}
+                        </td>
+                        <td><strong>{{ $log->warehouse->name ?? $activeWarehouse->name }}</strong></td>
                         <td>
-                            <strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $level->product->code ?? 'N/A' }}</strong>
+                            <strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $log->productCode ?? ($log->product->code ?? 'N/A') }}</strong>
+                            <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.15rem;">
+                                {{ $log->productName ?? ($log->product->name ?? 'Product') }}
+                            </div>
                         </td>
-                        <td>{{ $level->product->category ?? 'General' }}</td>
-                        <td style="font-weight: 700;">₦{{ number_format($level->product->unitPrice ?? 0, 0) }}</td>
-                        <td>
-                            <span style="font-size: 1.15rem; font-weight: 800; color: #4ade80;">
-                                {{ number_format($level->physical_stock) }}
-                            </span> units
+                        <td style="font-weight: 800; color: #4ade80; font-size: 1.1rem;">
+                            +{{ number_format($log->quantity) }} units
                         </td>
-                        <td style="color: var(--text-muted);">
-                            {{ $level->min_stock_alert ?? 5 }} units
+                        <td style="font-size: 0.9rem;">
+                            {{ $log->description ?: ($log->notes ?: 'Supplier Delivery') }}
                         </td>
-                        <td>
-                            @if($level->physical_stock <= 0)
-                                <span class="badge badge-danger">🔴 Out of Stock</span>
-                            @elseif($level->physical_stock <= ($level->min_stock_alert ?? 5))
-                                <span class="badge badge-warning">⚠️ Low Stock ({{ $level->physical_stock }})</span>
-                            @else
-                                <span class="badge badge-success">✓ Sufficient ({{ $level->physical_stock }})</span>
-                            @endif
-                        </td>
+                        <td><strong>{{ $log->userName ?? 'Storekeeper' }}</strong></td>
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="6" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
-                            No stock records found matching filters. Tap <strong>📥 New Goods Arrived</strong> to add inventory!
+                        <td colspan="6" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                            No stock in records matching your filters. Tap <strong>📥 Record Stock In (New Goods)</strong> to add inventory!
                         </td>
                     </tr>
                     @endforelse
                 </tbody>
             </table>
+        </div>
+        <div style="margin-top: 1.25rem;">
+            {{ $stockInLogs->links() }}
         </div>
     </div>
 

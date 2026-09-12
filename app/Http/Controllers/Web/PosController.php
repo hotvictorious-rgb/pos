@@ -398,26 +398,12 @@ class PosController extends Controller
             $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $authUser->warehouse_id));
         }
 
-        if ($fromDate && $toDate) {
-            $query->whereBetween('createdAt', [
-                \Carbon\Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
-                \Carbon\Carbon::parse($toDate)->endOfDay()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'TODAY') {
-            $query->whereDate('createdAt', \Carbon\Carbon::today());
-        } elseif ($datePreset === 'YESTERDAY') {
-            $query->whereDate('createdAt', \Carbon\Carbon::yesterday());
-        } elseif ($datePreset === 'THIS_WEEK') {
-            $query->whereBetween('createdAt', [
-                \Carbon\Carbon::now()->startOfWeek()->toIso8601String(),
-                \Carbon\Carbon::now()->endOfWeek()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'THIS_MONTH') {
-            $query->whereBetween('createdAt', [
-                \Carbon\Carbon::now()->startOfMonth()->toIso8601String(),
-                \Carbon\Carbon::now()->endOfMonth()->toIso8601String()
-            ]);
-        }
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $accountingService->applyDateFilterToQuery($query, 'createdAt', [
+            'date_preset' => $datePreset,
+            'from_date'   => $fromDate,
+            'to_date'     => $toDate,
+        ]);
 
         if ($reason) {
             $query->where('reason', 'like', "%{$reason}%");

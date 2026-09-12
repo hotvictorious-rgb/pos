@@ -188,7 +188,7 @@
             <div class="step-box">
                 <strong style="color: #fbbf24;">3. Customer Debt Recovery & Delayed Pickup Delivery</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Collect debt installments under <em>Customer Debts</em> and release delayed orders under <em>Pickup Orders</em> when customer vehicle arrives.
+                    Collect debt installments under <em>Customer Debts</em> and release delayed orders under <em>Pending Orders</em> when customer vehicle arrives.
                 </p>
             </div>
 
@@ -293,7 +293,7 @@
             </div>
             <div class="faq-answer">
                 <strong>Paid & Supplied</strong> means the customer paid and carried their goods away immediately. The items are subtracted from physical shelf stock right away.<br><br>
-                <strong>Paid & Not Supplied</strong> means the customer paid in full, but left the cartons in your shop to send their transport vehicle later. The items <strong>remain counted in your shop's physical closing stock</strong>. When their driver arrives, the storekeeper goes to <strong>⏳ Pickup Orders</strong> and taps <strong>"Mark as Supplied"</strong>. This prevents physical count discrepancies during audits!
+                <strong>Paid & Not Supplied</strong> means the customer paid in full, but left the cartons in your shop to send their transport vehicle later. The items <strong>remain counted in your shop's physical closing stock</strong>. When their driver arrives, the storekeeper goes to <strong>⏳ Pending Orders</strong> and taps <strong>"Mark as Supplied"</strong>. This prevents physical count discrepancies during audits!
             </div>
         </div>
         <div class="faq-item" onclick="toggleFaq(this)">
@@ -320,7 +320,7 @@
                 <span class="faq-toggle">▼</span>
             </div>
             <div class="faq-answer">
-                Only the <strong>Auditor / Super Admin</strong> can create, edit, or bulk-import new products into the central catalog (this prevents rogue staff from introducing ghost items). However, <strong>Branch Managers</strong>, <strong>Storekeepers</strong>, and <strong>Sales & Stock Officers</strong> can add stock quantities at any time via <strong>📦 Stock In / Out ➔ 📥 New Goods Arrived</strong>!
+                Only the <strong>Auditor / Super Admin</strong> can create, edit, or bulk-import new products into the central catalog (this prevents rogue staff from introducing ghost items). However, <strong>Branch Managers</strong>, <strong>Storekeepers</strong>, and <strong>Sales & Stock Officers</strong> can add stock quantities at any time via <strong>📥 Stock In ➔ 📥 New Goods Arrived</strong>!
             </div>
         </div>
         <div class="faq-item" onclick="toggleFaq(this)">
@@ -359,7 +359,7 @@
             <div class="step-box">
                 <strong style="color: #86efac;">1. Receiving New Goods from Suppliers (Stock In)</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>📦 Stock In / Out</strong> in the sidebar. Click <strong>📥 New Goods Arrived</strong>, select the product, enter quantity offloaded from supplier truck, and save.
+                    Go to <strong>📥 Stock In</strong> in the sidebar. Click <strong>📥 New Goods Arrived</strong>, select the product, enter quantity offloaded from supplier truck, and save.
                 </p>
             </div>
 
@@ -373,7 +373,7 @@
             <div class="step-box">
                 <strong style="color: #fbbf24;">3. Releasing Customer Pickups (Delayed Orders)</strong>
                 <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    When a customer comes to carry goods they bought earlier, go to <strong>⏳ Pickup Orders</strong> in the sidebar and tap <strong>"✓ Handover Goods to Customer"</strong>. This deducts the items from physical closing stock count.
+                    When a customer comes to carry goods they bought earlier, go to <strong>⏳ Pending Orders</strong> in the sidebar and tap <strong>"✓ Handover Goods to Customer"</strong>. This deducts the items from physical closing stock count.
                 </p>
             </div>
 

@@ -112,7 +112,7 @@
                 </span>
             @endif
             <a href="{{ route('stock.index') }}" class="btn btn-secondary">
-                📦 Stock Hub
+                📥 Stock In
             </a>
         </div>
     </div>

@@ -136,14 +136,17 @@
     <!-- 1. ADVANCED GLOBAL FILTERS -->
     <div class="filter-card">
         <form method="GET" action="{{ route('reports.index') }}">
+            <input type="hidden" name="tab" id="activeTabInput" value="{{ $currentTab ?? 'repDayBook' }}">
             <div class="preset-pills">
                 <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); align-self: center; margin-right: 0.25rem;">DATE PRESETS:</span>
-                <a href="{{ route('reports.index', ['date_preset' => 'ALL']) }}" class="preset-pill {{ request('date_preset', 'ALL') === 'ALL' ? 'active' : '' }}">All Time</a>
-                <a href="{{ route('reports.index', ['date_preset' => 'TODAY']) }}" class="preset-pill {{ request('date_preset') === 'TODAY' ? 'active' : '' }}">Today</a>
-                <a href="{{ route('reports.index', ['date_preset' => 'YESTERDAY']) }}" class="preset-pill {{ request('date_preset') === 'YESTERDAY' ? 'active' : '' }}">Yesterday</a>
-                <a href="{{ route('reports.index', ['date_preset' => 'THIS_WEEK']) }}" class="preset-pill {{ request('date_preset') === 'THIS_WEEK' ? 'active' : '' }}">This Week</a>
-                <a href="{{ route('reports.index', ['date_preset' => 'THIS_MONTH']) }}" class="preset-pill {{ request('date_preset') === 'THIS_MONTH' ? 'active' : '' }}">This Month</a>
-                <a href="{{ route('reports.index', ['date_preset' => 'THIS_YEAR']) }}" class="preset-pill {{ request('date_preset') === 'THIS_YEAR' ? 'active' : '' }}">This Year</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'ALL'])) }}" class="preset-pill {{ request('date_preset', 'ALL') === 'ALL' ? 'active' : '' }}">All Time</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'TODAY'])) }}" class="preset-pill {{ request('date_preset') === 'TODAY' ? 'active' : '' }}">Today</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'YESTERDAY'])) }}" class="preset-pill {{ request('date_preset') === 'YESTERDAY' ? 'active' : '' }}">Yesterday</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'THIS_WEEK'])) }}" class="preset-pill {{ request('date_preset') === 'THIS_WEEK' ? 'active' : '' }}">This Week</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'LAST_WEEK'])) }}" class="preset-pill {{ request('date_preset') === 'LAST_WEEK' ? 'active' : '' }}">Last Week</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'THIS_MONTH'])) }}" class="preset-pill {{ request('date_preset') === 'THIS_MONTH' ? 'active' : '' }}">This Month</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'LAST_MONTH'])) }}" class="preset-pill {{ request('date_preset') === 'LAST_MONTH' ? 'active' : '' }}">Last Month</a>
+                <a href="{{ route('reports.index', array_merge(request()->except(['from_date', 'to_date', 'page']), ['date_preset' => 'THIS_YEAR'])) }}" class="preset-pill {{ request('date_preset') === 'THIS_YEAR' ? 'active' : '' }}">This Year</a>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; align-items: end;">
@@ -234,9 +237,9 @@
         </div>
 
         <div class="kpi-card" style="border-top: 4px solid #ec4899;">
-            <h4>Damaged Goods Losses</h4>
+            <h4>Stock Out & Deductions</h4>
             <div class="val" style="color: #f472b6;">{{ $totalDamagedUnits }} Units</div>
-            <div class="sub">Logged Write-offs on Record</div>
+            <div class="sub">Non-Sale Deductions & Write-offs</div>
         </div>
     </div>
 
@@ -284,20 +287,271 @@
 
     <!-- 4. TABBED REPORTS NAVIGATION -->
     <div class="report-tabs">
-        <button class="rep-tab-btn active" onclick="showReport('repSales', this)">📊 Sales & Invoices ({{ $sales->count() }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repPending', this)">⏳ Pending Orders ({{ $pendingOrders['total_orders'] ?? 0 }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repStock', this)">📦 Multi-Branch Stock ({{ $products->count() }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repTransfers', this)">🚚 Transfers & Waybills ({{ $transfers->count() }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repDebts', this)">💳 Debtors Aging ({{ $debtors->count() }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repDamages', this)">📉 Damaged Stock ({{ $adjustments->count() }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repReturns', this)">🔄 Returns & Refunds ({{ $returns->count() }})</button>
-        <button class="rep-tab-btn" onclick="showReport('repAi', this)">🤖 AI Export Hub</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repDayBook' ? 'active' : '' }}" onclick="showReport('repDayBook', this)">📅 Daily Day-Book & Shift Hub</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repSales' ? 'active' : '' }}" onclick="showReport('repSales', this)">📊 Sales & Invoices ({{ $sales->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repPending' ? 'active' : '' }}" onclick="showReport('repPending', this)">⏳ Pending Orders ({{ $pendingOrders['total_orders'] ?? 0 }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repStock' ? 'active' : '' }}" onclick="showReport('repStock', this)">📦 Multi-Branch Stock ({{ $products->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repTransfers' ? 'active' : '' }}" onclick="showReport('repTransfers', this)">🚚 Transfers & Waybills ({{ $transfers->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repDebts' ? 'active' : '' }}" onclick="showReport('repDebts', this)">💳 Debtors Aging ({{ $debtors->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repDamages' ? 'active' : '' }}" onclick="showReport('repDamages', this)">📉 Stock Out & Deductions ({{ $adjustments->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repReturns' ? 'active' : '' }}" onclick="showReport('repReturns', this)">🔄 Returns & Refunds ({{ $returns->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repAi' ? 'active' : '' }}" onclick="showReport('repAi', this)">🤖 AI Export Hub</button>
     </div>
 
     <!-- ========================================================================= -->
-    <!-- TAB 1: SALES & INVOICES -->
+    <!-- MASTER TAB: DAILY DAY-BOOK & SHIFT RECONCILIATION HUB -->
     <!-- ========================================================================= -->
-    <div id="repSales" class="report-section active">
+    <div id="repDayBook" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repDayBook' ? 'active' : '' }}">
+        <!-- Day-Book Action & Export Bar -->
+        <div class="card" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.95)); border: 1px solid rgba(59, 130, 246, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span style="font-size: 1.5rem;">📅</span>
+                        <div>
+                            <h3 style="font-size: 1.3rem; font-weight: 800; margin: 0; color: #f8fafc;">
+                                Daily Operations & Shift Reconciliation Day-Book
+                            </h3>
+                            <p style="font-size: 0.85rem; color: #94a3b8; margin: 0.2rem 0 0 0;">
+                                Period: <strong style="color: #60a5fa;">{{ $dailyReport['dateInfo']['label'] }}</strong> · Timezone: <strong style="color: #a78bfa;">Africa/Lagos (UTC+1)</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'daily_summary'], request()->query())) }}" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.5rem 1rem; background: #2563eb; display: inline-flex; align-items: center; gap: 0.4rem;">
+                        📥 Export One-Sheet CSV
+                    </a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'daily_summary'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 1rem; color: #93c5fd; display: inline-flex; align-items: center; gap: 0.4rem;">
+                        🤖 Export JSON
+                    </a>
+                    <button onclick="window.print()" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">
+                        🖨️ Print Day-Book
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7 OPERATIONAL METRIC CARDS IN RICH GRID -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+
+            <!-- CARD 1: TOTAL AMOUNT SOLD -->
+            <div class="card" style="border-left: 5px solid #22c55e; background: var(--card-bg);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #86efac; text-transform: uppercase;">💰 Total Amount Sold</div>
+                        <h4 style="font-size: 1.5rem; font-weight: 800; color: #f8fafc; margin: 0.25rem 0;">
+                            ₦{{ number_format($dailyReport['total_amount_sold'], 2) }}
+                        </h4>
+                    </div>
+                    <span style="font-size: 1.5rem;">🏷️</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
+                    <div>• Invoiced Sales: <strong style="color: #f8fafc;">{{ $dailyReport['invoice_count'] }} transactions</strong></div>
+                    <div>• Average Ticket: <strong style="color: #4ade80;">₦{{ number_format($dailyReport['average_invoice'], 2) }}</strong></div>
+                    <div>• Status: Gross invoiced period volume</div>
+                </div>
+            </div>
+
+            <!-- CARD 2: POS & CASH COLLECTED -->
+            <div class="card" style="border-left: 5px solid #3b82f6; background: var(--card-bg);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #93c5fd; text-transform: uppercase;">💵 POS & Cash Collections</div>
+                        <h4 style="font-size: 1.5rem; font-weight: 800; color: #60a5fa; margin: 0.25rem 0;">
+                            ₦{{ number_format($dailyReport['total_net_collections'], 2) }}
+                        </h4>
+                    </div>
+                    <span style="font-size: 1.5rem;">💳</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
+                    <div>• 💵 Net Cash Inflow: <strong style="color: #4ade80;">₦{{ number_format($dailyReport['net_cash_inflow'], 2) }}</strong></div>
+                    <div>• 💳 Net POS Inflow: <strong style="color: #60a5fa;">₦{{ number_format($dailyReport['net_pos_inflow'], 2) }}</strong></div>
+                    <div>• 🏧 Expected Cash in Drawer: <strong style="color: #fde047;">₦{{ number_format($dailyReport['drawer_physical_cash'], 2) }}</strong></div>
+                </div>
+            </div>
+
+            <!-- CARD 3: CREDIT ISSUED & DEBTS RECOVERED -->
+            <div class="card" style="border-left: 5px solid #f59e0b; background: var(--card-bg);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #fde047; text-transform: uppercase;">💳 Credit Issued & Debt Recovered</div>
+                        <h4 style="font-size: 1.5rem; font-weight: 800; color: #fbbf24; margin: 0.25rem 0;">
+                            ₦{{ number_format($dailyReport['debt_recovered'], 2) }} <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">Recovered</span>
+                        </h4>
+                    </div>
+                    <span style="font-size: 1.5rem;">🤝</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
+                    <div>• 🔴 New Credit Issued: <strong style="color: #f87171;">₦{{ number_format($dailyReport['new_credit_issued'], 2) }}</strong> ({{ $dailyReport['new_credit_sales_count'] }} invoices)</div>
+                    <div>• 🟢 Debt Recovered: <strong style="color: #4ade80;">₦{{ number_format($dailyReport['debt_recovered'], 2) }}</strong> (Cash: ₦{{ number_format($dailyReport['debt_recovered_cash'], 0) }} · POS: ₦{{ number_format($dailyReport['debt_recovered_pos'], 0) }})</div>
+                    <div>• ⚖️ Net Debt Change: <strong style="color: {{ $dailyReport['net_debt_change'] > 0 ? '#f87171' : '#4ade80' }};">{{ $dailyReport['net_debt_change'] >= 0 ? '+' : '' }}₦{{ number_format($dailyReport['net_debt_change'], 2) }}</strong></div>
+                </div>
+            </div>
+
+            <!-- CARD 4: STOCK MOVEMENTS (STOCK OUT VS STOCK IN) -->
+            <div class="card" style="border-left: 5px solid #a855f7; background: var(--card-bg);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #c084fc; text-transform: uppercase;">📦 Stock Movements (Out vs In)</div>
+                        <h4 style="font-size: 1.3rem; font-weight: 800; color: #f8fafc; margin: 0.25rem 0;">
+                            <span style="color: #f87171;">Out: {{ number_format($dailyReport['stock_out_total_units']) }}</span> · <span style="color: #4ade80;">In: {{ number_format($dailyReport['stock_in_total_units']) }}</span>
+                        </h4>
+                    </div>
+                    <span style="font-size: 1.5rem;">🚚</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
+                    <div>• 📤 Stock Out: Delivered ({{ number_format($dailyReport['stock_out_sales_dispatch_units']) }}) · Transferred Out ({{ number_format($dailyReport['stock_out_transfer_units']) }}) · Deductions ({{ number_format($dailyReport['stock_out_damages_units']) }})</div>
+                    <div>• 📥 Stock In: Restocked ({{ number_format($dailyReport['stock_in_supplier_restock_units']) }}) · Transferred In ({{ number_format($dailyReport['stock_in_transfer_units']) }}) · Returns ({{ number_format($dailyReport['stock_in_returns_units']) }})</div>
+                    <div>• 🔄 Net Inventory Movement: <strong style="color: {{ $dailyReport['net_inventory_movement_units'] >= 0 ? '#4ade80' : '#f87171' }};">{{ $dailyReport['net_inventory_movement_units'] >= 0 ? '+' : '' }}{{ number_format($dailyReport['net_inventory_movement_units']) }} units</strong></div>
+                </div>
+            </div>
+
+            <!-- CARD 5: PENDING ORDERS (NEW VS CARRIED BACKLOG) -->
+            <div class="card" style="border-left: 5px solid #06b6d4; background: var(--card-bg);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #67e8f9; text-transform: uppercase;">⏳ Pending Orders & Carried Backlog</div>
+                        <h4 style="font-size: 1.4rem; font-weight: 800; color: #38bdf8; margin: 0.25rem 0;">
+                            {{ $dailyReport['pending_orders_new_count'] + $dailyReport['pending_orders_carried_count'] }} Orders <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">Unsupplied</span>
+                        </h4>
+                    </div>
+                    <span style="font-size: 1.5rem;">📋</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
+                    <div>• 🆕 New in Period: <strong style="color: #38bdf8;">{{ $dailyReport['pending_orders_new_count'] }} orders ({{ number_format($dailyReport['pending_orders_new_units']) }} units) · ₦{{ number_format($dailyReport['pending_orders_new_value'], 0) }}</strong></div>
+                    <div>• 📦 Carried from Earlier: <strong style="color: #fbbf24;">{{ $dailyReport['pending_orders_carried_count'] }} orders ({{ number_format($dailyReport['pending_orders_carried_units']) }} units) · ₦{{ number_format($dailyReport['pending_orders_carried_value'], 0) }}</strong></div>
+                    <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                        <span style="background: rgba(34,197,94,0.2); color: #86efac; padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700;">&lt;24h: {{ $dailyReport['carried_aging_under_24h'] }}</span>
+                        <span style="background: rgba(245,158,11,0.2); color: #fde047; padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700;">24-48h: {{ $dailyReport['carried_aging_24h_to_48h'] }}</span>
+                        <span style="background: rgba(249,115,22,0.2); color: #fdba74; padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700;">3-7d: {{ $dailyReport['carried_aging_3d_to_7d'] }}</span>
+                        <span style="background: rgba(239,68,68,0.2); color: #fca5a5; padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700;">&gt;7d: {{ $dailyReport['carried_aging_over_7d'] }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARD 6: RETURNS & REFUNDS -->
+            <div class="card" style="border-left: 5px solid #ec4899; background: var(--card-bg);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #f472b6; text-transform: uppercase;">🔄 Returns & Refunds Disbursed</div>
+                        <h4 style="font-size: 1.5rem; font-weight: 800; color: #f472b6; margin: 0.25rem 0;">
+                            ₦{{ number_format($dailyReport['refunds_amount'], 2) }}
+                        </h4>
+                    </div>
+                    <span style="font-size: 1.5rem;">↩️</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
+                    <div>• Return Incidents: <strong style="color: #f8fafc;">{{ $dailyReport['returns_count'] }} returns processed</strong></div>
+                    <div>• Units Restocked: <strong style="color: #4ade80;">{{ number_format($dailyReport['returned_units']) }} physical units</strong></div>
+                    <div>• Cash Refunds Paid Out: <strong style="color: #f472b6;">₦{{ number_format($dailyReport['refunds_amount'], 2) }}</strong></div>
+                </div>
+            </div>
+
+            <!-- CARD 7: PHYSICAL STOCK REMAINING (CLOSING INVENTORY) -->
+            <div class="card" style="border-left: 5px solid #10b981; background: var(--card-bg);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #6ee7b7; text-transform: uppercase;">🏬 Closing Physical Stock on Hand</div>
+                        <h4 style="font-size: 1.5rem; font-weight: 800; color: #34d399; margin: 0.25rem 0;">
+                            ₦{{ number_format($dailyReport['physical_stock_remaining_value'], 2) }}
+                        </h4>
+                    </div>
+                    <span style="font-size: 1.5rem;">📊</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
+                    <div>• Total Shelf Units on Ground: <strong style="color: #f8fafc;">{{ number_format($dailyReport['physical_stock_remaining_units']) }} units</strong></div>
+                    <div>• Valuation Basis: <strong style="color: #34d399;">Retail Selling Price</strong> (Clamped &ge; 0)</div>
+                    <div>• Excludes COGS/Profit: Enforces accurate shelf value</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- EXPANDABLE SECTION 1: NEW CREDIT & DEBT RECOVERY JOURNAL -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.1rem; font-weight: 800; color: #fde047;">
+                    💳 Credit Issued & Debt Recovery Journal ({{ $dailyReport['new_credit_sales_count'] }} Credit Sales · {{ $dailyReport['debt_recoveries_count'] }} Recoveries)
+                </h3>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <!-- New Credit Sales -->
+                <div class="table-wrap">
+                    <h5 style="font-size: 0.85rem; font-weight: 800; color: #f87171; padding: 0.75rem 1rem; margin: 0; background: rgba(239, 68, 68, 0.1);">
+                        🔴 New Credit / Part-Paid Invoices Created
+                    </h5>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Invoice</th>
+                                <th>Customer</th>
+                                <th>Invoiced</th>
+                                <th>Credit Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($dailyReport['new_credit_sales'] as $cs)
+                                <tr>
+                                    <td><strong style="color: #f8fafc;">#{{ $cs['id'] }}</strong></td>
+                                    <td>
+                                        <div>{{ $cs['customer_name'] }}</div>
+                                        <div style="font-size: 0.7rem; color: var(--text-muted);">{{ $cs['customer_phone'] }}</div>
+                                    </td>
+                                    <td>₦{{ number_format($cs['total_amount'], 0) }}</td>
+                                    <td><strong style="color: #f87171;">₦{{ number_format($cs['credit_balance'], 0) }}</strong></td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="4" style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">No new credit issued in this period.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Debt Payments Recovered -->
+                <div class="table-wrap">
+                    <h5 style="font-size: 0.85rem; font-weight: 800; color: #4ade80; padding: 0.75rem 1rem; margin: 0; background: rgba(34, 197, 94, 0.1);">
+                        🟢 Debt Payments Recovered
+                    </h5>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Customer</th>
+                                <th>Method</th>
+                                <th>Recovered</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($dailyReport['debt_recoveries'] as $dr)
+                                <tr>
+                                    <td style="font-size: 0.75rem;">{{ \Carbon\Carbon::parse($dr->created_at)->format('H:i') }}</td>
+                                    <td>
+                                        <div>{{ $dr->customer->name ?? 'Debtor' }}</div>
+                                        <div style="font-size: 0.7rem; color: var(--text-muted);">{{ $dr->customer->phone ?? '—' }}</div>
+                                    </td>
+                                    <td>
+                                        <span style="font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: 700; background: {{ $dr->payment_method === 'CASH' ? 'rgba(34,197,94,0.2)' : 'rgba(59,130,246,0.2)' }}; color: {{ $dr->payment_method === 'CASH' ? '#4ade80' : '#60a5fa' }};">
+                                            {{ $dr->payment_method }}
+                                        </span>
+                                    </td>
+                                    <td><strong style="color: #4ade80;">₦{{ number_format($dr->amount, 0) }}</strong></td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="4" style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">No debt repayments collected in this period.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 2: SALES & INVOICES -->
+    <!-- ========================================================================= -->
+    <div id="repSales" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repSales' ? 'active' : '' }}">
         <div class="card">
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Filtered Sales Transactions</h3>
@@ -365,10 +619,12 @@
                 </table>
             </div>
         </div>
+    </div>
+
     <!-- ========================================================================= -->
     <!-- TAB: PENDING ORDERS & BACKLOG AGING -->
     <!-- ========================================================================= -->
-    <div id="repPending" class="report-section">
+    <div id="repPending" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repPending' ? 'active' : '' }}">
         <!-- 4 Aging Buckets -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
             <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 1rem;">
@@ -477,7 +733,7 @@
     <!-- ========================================================================= -->
     <!-- TAB 2: MULTI-BRANCH STOCK & VALUATION -->
     <!-- ========================================================================= -->
-    <div id="repStock" class="report-section">
+    <div id="repStock" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repStock' ? 'active' : '' }}">
         <div class="card">
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Multi-Branch Inventory & Stock Health</h3>
@@ -536,7 +792,7 @@
     <!-- ========================================================================= -->
     <!-- TAB 3: TRANSFERS & WAYBILLS -->
     <!-- ========================================================================= -->
-    <div id="repTransfers" class="report-section">
+    <div id="repTransfers" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repTransfers' ? 'active' : '' }}">
         <div class="card">
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Inter-Branch Transfers & Discrepancies</h3>
@@ -596,7 +852,7 @@
     <!-- ========================================================================= -->
     <!-- TAB 4: DEBTORS AGING LEDGER -->
     <!-- ========================================================================= -->
-    <div id="repDebts" class="report-section">
+    <div id="repDebts" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repDebts' ? 'active' : '' }}">
         <div class="card">
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Customer Debt Aging & Recovery Ledger</h3>
@@ -654,10 +910,10 @@
     <!-- ========================================================================= -->
     <!-- TAB 5: DAMAGED STOCK WRITE-OFFS -->
     <!-- ========================================================================= -->
-    <div id="repDamages" class="report-section">
+    <div id="repDamages" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repDamages' ? 'active' : '' }}">
         <div class="card">
             <div class="export-bar">
-                <h3 style="font-size: 1.15rem; font-weight: 800;">Damaged, Expired & Lost Stock Audit Write-offs</h3>
+                <h3 style="font-size: 1.15rem; font-weight: 800;">Stock Out, Non-Sale Deductions & Write-Offs Audit</h3>
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'damages'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'damages'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
@@ -671,7 +927,7 @@
                             <th>Date & Time</th>
                             <th>Shop Location</th>
                             <th>Product Item</th>
-                            <th>Incident Category</th>
+                            <th>Stock Out Category</th>
                             <th>Quantity Deducted</th>
                             <th>Reason / Notes</th>
                             <th>Staff Responsible</th>
@@ -692,7 +948,7 @@
                             <td><strong>{{ $a->recorded_by }}</strong></td>
                         </tr>
                         @empty
-                        <tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">No damaged stock write-offs recorded.</td></tr>
+                        <tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">No stock out or deduction records found.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -703,7 +959,7 @@
     <!-- ========================================================================= -->
     <!-- TAB 6: RETURNS & REFUNDS -->
     <!-- ========================================================================= -->
-    <div id="repReturns" class="report-section">
+    <div id="repReturns" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repReturns' ? 'active' : '' }}">
         <div class="card">
             <div class="export-bar">
                 <h3 style="font-size: 1.15rem; font-weight: 800;">Customer Returns & Refunds Audit Ledger</h3>
@@ -763,7 +1019,7 @@
     <!-- ========================================================================= -->
     <!-- TAB 7: AI DATA EXPORT HUB -->
     <!-- ========================================================================= -->
-    <div id="repAi" class="report-section">
+    <div id="repAi" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repAi' ? 'active' : '' }}">
         <div class="card">
             <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; color: #93c5fd;">
                 🤖 AI Business Intelligence & Prompt Ingestion Hub
@@ -773,6 +1029,15 @@
             </p>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+                <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(37,99,235,0.4); border-radius: 14px; padding: 1.25rem;">
+                    <h4 style="font-size: 1rem; font-weight: 800; color: #93c5fd; margin-bottom: 0.35rem;">📅 Daily Operations Day-Book</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">One-sheet consolidated shift reconciliation, total sales, drawer cash, new credit, debts recovered, and stock valuation.</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    </div>
+                </div>
+
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #4ade80; margin-bottom: 0.35rem;">📊 Complete Sales Data</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">All customer transactions, payment methods, debt balances, and cashier records.</p>
@@ -826,6 +1091,24 @@
                         <a href="{{ route('reports.export.json', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
+
+                <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
+                    <h4 style="font-size: 1rem; font-weight: 800; color: #fb7185; margin-bottom: 0.35rem;">📉 Stock Out & Deductions</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Write-offs for damages, expiration, inventory losses, and manual admin adjustments.</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'stock_out'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'stock_out'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    </div>
+                </div>
+
+                <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
+                    <h4 style="font-size: 1rem; font-weight: 800; color: #a78bfa; margin-bottom: 0.35rem;">🛡️ Activity Audit Log</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Immutable chronological audit trail of all staff logins, sales, returns, and configuration edits.</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'activities'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'activities'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -839,7 +1122,17 @@ function showReport(repId, btn) {
     document.querySelectorAll('.report-section').forEach(s => s.classList.remove('active'));
 
     btn.classList.add('active');
-    document.getElementById(repId).classList.add('active');
+    const target = document.getElementById(repId);
+    if (target) {
+        target.classList.add('active');
+    }
+    const tabInput = document.getElementById('activeTabInput');
+    if (tabInput) {
+        tabInput.value = repId;
+    }
+    const url = new URL(window.location);
+    url.searchParams.set('tab', repId);
+    window.history.replaceState({}, '', url);
 }
 </script>
 @endpush

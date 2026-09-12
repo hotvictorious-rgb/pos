@@ -592,6 +592,308 @@ class AccountingReportService
     }
 
     /**
+     * Universal, timezone-safe date filter helper handling both ISO-8601 string columns
+     * ('createdAt', 'timestamp', 'updatedAt') and SQL timestamp columns ('created_at', 'updated_at', etc.).
+     */
+    public function applyDateFilterToQuery(Builder $query, string $dateColumn, array $filters): void
+    {
+        $preset = $filters['date_preset'] ?? $filters['date_range'] ?? $filters['period'] ?? 'ALL';
+        $from = $filters['from_date'] ?? $filters['from'] ?? null;
+        $to = $filters['to_date'] ?? $filters['to'] ?? null;
+
+        $dates = $this->resolveDateRange($preset, $from, $to);
+
+        if ($dates['preset'] === 'ALL' && empty($from) && empty($to)) {
+            return;
+        }
+
+        if (in_array($dateColumn, ['createdAt', 'timestamp', 'updatedAt'])) {
+            $query->whereBetween($dateColumn, [$dates['startIso'], $dates['endIso']]);
+        } else {
+            $query->whereBetween($dateColumn, [$dates['start']->toDateTimeString(), $dates['end']->toDateTimeString()]);
+        }
+    }
+
+    /**
+     * Master Comprehensive Daily Report (Day-Book & Shift Reconciliation).
+     * Consolidates all 11 operational dimensions: Total Sold, Cash & POS Inflows, Stock Out, Stock In,
+     * New Credit Issued, Debt Recovered, Pending Orders (New & Carried Backlog), Returns, Refunds,
+     * and Physical Stock Remaining at Selling Price.
+     */
+    public function getDailyComprehensiveReport(array $filters): array
+    {
+        $dateInfo = $this->resolveDateRange(
+            $filters['date_preset'] ?? 'TODAY',
+            $filters['from_date'] ?? null,
+            $filters['to_date'] ?? null
+        );
+
+        $summary = $this->getPeriodSummary($filters);
+
+        $user = Auth::user();
+        $scopedWh = ($user && $user->isBranchScoped()) ? (int) $user->warehouse_id : (!empty($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null);
+
+        // 1. Stock Out Analysis (Sales Dispatches, Transfers Out, Stock Adjustments/Damages)
+        $stockOutQuery = InventoryLog::where(function ($q) {
+            $q->whereIn('type', [
+                'SALE',
+                'DISPATCH_FULFILLED',
+                'TRANSFER_OUT',
+                'STOCK_OUT',
+                'STOCK_ADJUSTMENT_DAMAGE',
+                'STOCK_ADJUSTMENT_EXPIRED',
+                'STOCK_ADJUSTMENT_LOST'
+            ])->orWhere('type', 'like', 'STOCK_ADJUSTMENT%')
+              ->orWhere(function ($sub) {
+                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+              });
+        });
+        $this->applyDateFilterToQuery($stockOutQuery, 'timestamp', $filters);
+        if ($scopedWh) {
+            $stockOutQuery->where('warehouse_id', $scopedWh);
+        }
+        $stockOutLogs = $stockOutQuery->get();
+        $totalStockOutUnits = (int) abs($stockOutLogs->sum('quantity'));
+
+        $salesDispatchUnits = (int) abs($stockOutLogs->filter(fn($l) => in_array($l->type, ['SALE', 'DISPATCH_FULFILLED']))->sum('quantity'));
+        $transferOutUnits   = (int) abs($stockOutLogs->filter(fn($l) => $l->type === 'TRANSFER_OUT')->sum('quantity'));
+        $damageLossUnits    = max(0, $totalStockOutUnits - $salesDispatchUnits - $transferOutUnits);
+
+        // 2. Stock In Analysis (Supplier Restocks, Transfers In, Customer Returns)
+        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+        $this->applyDateFilterToQuery($stockInQuery, 'timestamp', $filters);
+        if ($scopedWh) {
+            $stockInQuery->where('warehouse_id', $scopedWh);
+        }
+        $stockInLogs = $stockInQuery->get();
+        $totalStockInUnits = (int) $stockInLogs->sum('quantity');
+
+        $supplierRestockUnits = (int) $stockInLogs->filter(fn($l) => $l->type === 'STOCK_IN')->sum('quantity');
+        $transferInUnits      = (int) $stockInLogs->filter(fn($l) => $l->type === 'TRANSFER_IN')->sum('quantity');
+        $returnedRestockUnits = (int) $stockInLogs->filter(fn($l) => in_array($l->type, ['RETURN', 'SALES_RETURN']))->sum('quantity');
+
+        // Net Inventory Movement
+        $netInventoryMovementUnits = $totalStockInUnits - $totalStockOutUnits;
+
+        // 3. New Credit Issued (Period Sales with open invoice balances)
+        $salesQuery = $this->buildSalesQuery($filters);
+        $periodSales = $salesQuery->get();
+        $saleBalances = $this->calculateInvoiceBalancesForSales($periodSales);
+
+        $newCreditSales = [];
+        $totalNewCreditIssued = 0.0;
+        foreach ($periodSales as $ps) {
+            $bal = $saleBalances[$ps->id] ?? 0.0;
+            if ($bal > 0.01) {
+                $totalNewCreditIssued += $bal;
+                $newCreditSales[] = [
+                    'id'             => $ps->id,
+                    'created_at'     => $ps->createdAt ?: $ps->created_at,
+                    'customer_name'  => $ps->customerName ?: ($ps->customer->name ?? 'Walk-in Customer'),
+                    'customer_phone' => $ps->customerPhone ?: ($ps->customer->phone ?? '—'),
+                    'total_amount'   => (float) $ps->totalAmount,
+                    'paid_amount'    => (float) $ps->paidAmount,
+                    'credit_balance' => round($bal, 2),
+                    'user_name'      => $ps->userName,
+                ];
+            }
+        }
+        $totalNewCreditIssued = round($totalNewCreditIssued, 2);
+
+        // 4. Debts Recovered in Period
+        $debtPaymentsQuery = CustomerLedger::with(['customer', 'sale'])
+            ->where('type', 'PAYMENT');
+        $this->applyDateFilterToQuery($debtPaymentsQuery, 'created_at', $filters);
+        if ($scopedWh) {
+            $debtPaymentsQuery->where(function ($q) use ($scopedWh) {
+                $q->where('warehouse_id', $scopedWh)
+                  ->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $scopedWh));
+            });
+        }
+        $debtRecoveriesList = $debtPaymentsQuery->orderBy('created_at', 'desc')->get();
+        $debtRecoveredTotal = round((float) $debtRecoveriesList->sum('amount'), 2);
+        $debtRecoveredCash  = round((float) $debtRecoveriesList->where('payment_method', 'CASH')->sum('amount'), 2);
+        $debtRecoveredPos   = round((float) $debtRecoveriesList->where('payment_method', 'POS')->sum('amount'), 2);
+
+        // Net Debt Portfolio Change (New Credit Issued - Debt Recovered)
+        $netDebtPortfolioChange = round($totalNewCreditIssued - $debtRecoveredTotal, 2);
+
+        // 5. Pending Orders: New in Period vs Carried Backlog
+        $unsuppliedBaseQuery = Sale::with(['items', 'customer', 'warehouse'])
+            ->whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending'])
+            ->whereNotIn('status', ['CANCELLED', 'RETURNED']);
+        if ($scopedWh) {
+            $unsuppliedBaseQuery->where('warehouse_id', $scopedWh);
+        }
+
+        // 5a. New Pending Orders (created within filtered period)
+        $newPendingQuery = (clone $unsuppliedBaseQuery);
+        $this->applyDateFilterToQuery($newPendingQuery, 'createdAt', $filters);
+        $newPendingSales = $newPendingQuery->orderBy('createdAt', 'desc')->get();
+        $newPendingCount = $newPendingSales->count();
+        $newPendingUnits = (int) $newPendingSales->sum(function ($s) {
+            return $s->items->sum('quantity');
+        });
+        $newPendingValue = round((float) $newPendingSales->sum('totalAmount'), 2);
+
+        // 5b. Carried Backlog (created before filtered period start, still unsupplied)
+        $now = Carbon::now('Africa/Lagos');
+        $carriedBacklogQuery = (clone $unsuppliedBaseQuery);
+        if ($dateInfo['preset'] !== 'ALL') {
+            $carriedBacklogQuery->where('createdAt', '<', $dateInfo['startIso']);
+        }
+        $carriedBacklogSales = $carriedBacklogQuery->orderBy('createdAt', 'asc')->get();
+        $carriedBacklogCount = $carriedBacklogSales->count();
+        $carriedBacklogUnits = (int) $carriedBacklogSales->sum(function ($s) {
+            return $s->items->sum('quantity');
+        });
+        $carriedBacklogValue = round((float) $carriedBacklogSales->sum('totalAmount'), 2);
+
+        // Aging cohorts for carried backlog
+        $agingUnder24h = 0;
+        $aging24hTo48h = 0;
+        $aging3dTo7d = 0;
+        $agingOver7d = 0;
+        $carriedBacklogItems = [];
+
+        foreach ($carriedBacklogSales as $bs) {
+            $created = Carbon::parse($bs->createdAt ?: $bs->created_at, 'Africa/Lagos');
+            $hoursOld = $created->diffInHours($now);
+            $daysOld = (int) floor($hoursOld / 24);
+
+            if ($hoursOld < 24) {
+                $agingUnder24h++;
+                $badge = 'RECENT (< 24h)';
+            } elseif ($hoursOld <= 48) {
+                $aging24hTo48h++;
+                $badge = '24h - 48h';
+            } elseif ($daysOld <= 7) {
+                $aging3dTo7d++;
+                $badge = '3 - 7 Days';
+            } else {
+                $agingOver7d++;
+                $badge = 'CRITICAL (> 7 Days)';
+            }
+
+            if (count($carriedBacklogItems) < 50) {
+                $carriedBacklogItems[] = [
+                    'sale_id'        => $bs->id,
+                    'created_at'     => $created->format('M d, Y H:i'),
+                    'customer_name'  => $bs->customerName ?: ($bs->customer->name ?? 'Walk-in Customer'),
+                    'customer_phone' => $bs->customerPhone ?: ($bs->customer->phone ?? '—'),
+                    'warehouse_name' => $bs->warehouse->name ?? 'Shop Branch',
+                    'total_units'    => (int) $bs->items->sum('quantity'),
+                    'total_amount'   => (float) $bs->totalAmount,
+                    'paid_amount'    => (float) $bs->paidAmount,
+                    'debt_balance'   => max(0.0, (float) $bs->totalAmount - (float) $bs->paidAmount),
+                    'days_old'       => $daysOld,
+                    'aging_badge'    => $badge,
+                ];
+            }
+        }
+
+        // 6. Returns & Refunds in Period
+        $returnsQuery = $this->buildReturnsQuery($filters);
+        $returnsList = $returnsQuery->get();
+        $returnsCount = $returnsList->count();
+        $returnedUnits = (int) $returnsList->sum('quantity');
+        $refundsAmount = round((float) $returnsList->sum('refundAmount'), 2);
+
+        return [
+            'dateInfo'                      => $dateInfo,
+            // 1. Total Amount Sold
+            'total_amount_sold'             => $summary['grossSales'],
+            'gross_sales'                   => $summary['grossSales'],
+            'invoice_count'                 => $summary['invoiceCount'],
+            'average_invoice'               => $summary['averageInvoice'],
+            // 2. Collections (Cash & POS)
+            'cash_collected'                => $summary['cashCollected'],
+            'pos_collected'                 => $summary['posCollected'],
+            'cash_refunded'                 => $summary['cashRefunded'],
+            'net_cash_inflow'               => $summary['netCashInflow'],
+            'net_pos_inflow'                => $summary['netPosInflow'],
+            'total_net_collections'         => $summary['totalNetMoneyRealized'],
+            'drawer_physical_cash'          => $summary['expectedCashInDrawer'],
+            // 3. Credit & Debt
+            'new_credit_issued'             => $totalNewCreditIssued,
+            'new_credit_sales_count'        => count($newCreditSales),
+            'new_credit_sales'              => $newCreditSales,
+            'debt_recovered'                => $debtRecoveredTotal,
+            'debt_recovered_cash'           => $debtRecoveredCash,
+            'debt_recovered_pos'            => $debtRecoveredPos,
+            'debt_recoveries_count'         => $debtRecoveriesList->count(),
+            'debt_recoveries'               => $debtRecoveriesList,
+            'net_debt_change'               => $netDebtPortfolioChange,
+            'total_debt_outstanding'        => $summary['currentOutstanding'],
+            // 4. Stock Movements
+            'stock_out_total_units'         => $totalStockOutUnits,
+            'stock_out_sales_dispatch_units'=> $salesDispatchUnits,
+            'stock_out_transfer_units'      => $transferOutUnits,
+            'stock_out_damages_units'       => $damageLossUnits,
+            'stock_in_total_units'          => $totalStockInUnits,
+            'stock_in_supplier_restock_units'=> $supplierRestockUnits,
+            'stock_in_transfer_units'       => $transferInUnits,
+            'stock_in_returns_units'        => $returnedRestockUnits,
+            'net_inventory_movement_units'  => $netInventoryMovementUnits,
+            // 5. Pending Orders
+            'pending_orders_new_count'      => $newPendingCount,
+            'pending_orders_new_units'      => $newPendingUnits,
+            'pending_orders_new_value'      => $newPendingValue,
+            'pending_orders_new_list'       => $newPendingSales,
+            'pending_orders_carried_count'  => $carriedBacklogCount,
+            'pending_orders_carried_units'  => $carriedBacklogUnits,
+            'pending_orders_carried_value'  => $carriedBacklogValue,
+            'pending_orders_carried_list'   => $carriedBacklogItems,
+            'carried_aging_under_24h'       => $agingUnder24h,
+            'carried_aging_24h_to_48h'      => $aging24hTo48h,
+            'carried_aging_3d_to_7d'        => $aging3dTo7d,
+            'carried_aging_over_7d'         => $agingOver7d,
+            // 6. Returns & Refunds
+            'returns_count'                 => $returnsCount,
+            'returned_units'                => $returnedUnits,
+            'refunds_amount'                => $refundsAmount,
+            'returns_list'                  => $returnsList,
+            // 7. Physical Stock Remaining
+            'physical_stock_remaining_units'=> $summary['totalPhysicalUnits'],
+            'physical_stock_remaining_value'=> $summary['retailInventoryValue'],
+            // Reference summary
+            'summary'                       => $summary,
+        ];
+    }
+
+    /**
+     * Authoritative filtered query for New Credit Sales (invoices with unpaid balances).
+     */
+    public function buildNewCreditSalesQuery(array $filters): Builder
+    {
+        $query = $this->buildSalesQuery($filters);
+        $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
+        $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method != 'REFUND_CASH'), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method = 'REFUND_CASH'), 0)";
+        $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$eventNetPaidSql}))";
+        return $query->whereRaw("{$netBalanceSql} > 0.01");
+    }
+
+    /**
+     * Authoritative filtered query for Debt Recoveries (debt payments collected).
+     */
+    public function buildDebtRecoveriesQuery(array $filters): Builder
+    {
+        $query = CustomerLedger::with(['customer', 'sale'])->where('type', 'PAYMENT');
+        $this->applyDateFilterToQuery($query, 'created_at', $filters);
+
+        $user = Auth::user();
+        $scopedWh = ($user && $user->isBranchScoped()) ? (int) $user->warehouse_id : (!empty($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null);
+        if ($scopedWh) {
+            $query->where(function ($q) use ($scopedWh) {
+                $q->where('warehouse_id', $scopedWh)
+                  ->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $scopedWh));
+            });
+        }
+
+        return $query->orderBy('created_at', 'desc');
+    }
+
+    /**
      * Authoritative filtered query for Sales.
      */
     public function buildSalesQuery(array $filters): Builder
@@ -1200,9 +1502,9 @@ class AccountingReportService
     }
 
     /**
-     * Authoritative calculation of total damaged / written-off units across entire date & branch range.
+     * Authoritative filtered query for Stock Adjustments / Non-Sale Stock Out Deductions.
      */
-    public function getTotalDamagedUnits(array $filters): int
+    public function buildAdjustmentsQuery(array $filters): Builder
     {
         $dates = $this->resolveDateRange(
             $filters['date_preset'] ?? $filters['date_range'] ?? $filters['period'] ?? null,
@@ -1210,7 +1512,7 @@ class AccountingReportService
             $filters['to_date'] ?? $filters['to'] ?? null
         );
 
-        $query = StockAdjustment::query();
+        $query = StockAdjustment::with('warehouse');
         $query->whereBetween('created_at', [$dates['start'], $dates['end']]);
 
         $user = Auth::user();
@@ -1220,7 +1522,15 @@ class AccountingReportService
             $query->where('warehouse_id', (int) $filters['warehouse_id']);
         }
 
-        return (int) $query->sum('quantity');
+        return $query->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Authoritative calculation of total damaged / written-off units across entire date & branch range.
+     */
+    public function getTotalDamagedUnits(array $filters): int
+    {
+        return (int) $this->buildAdjustmentsQuery($filters)->sum('quantity');
     }
 
     /**
