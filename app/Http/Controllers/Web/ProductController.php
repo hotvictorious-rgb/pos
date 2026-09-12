@@ -209,6 +209,9 @@ class ProductController extends Controller
     public function update(Request $request, $id)
     {
         if (Auth::check() && !Auth::user()->hasCapability('products.write')) {
+            if ($request->ajax() || $request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => '⛔ Permission Denied: You do not have permission to edit catalog products.'], 403);
+            }
             return redirect()->route('products.index')->with('error', '⛔ Permission Denied: You do not have permission to edit catalog products.');
         }
 
@@ -229,6 +232,41 @@ class ProductController extends Controller
             'minStockLevel' => (int) ($request->minStockLevel ?? 5),
             'updatedAt' => now()->toIso8601String(),
         ]);
+
+        $userName = Auth::user()->name ?? 'Auditor / Admin';
+        $userId = Auth::id() ?? 'ADMIN';
+
+        Activity::create([
+            'id' => (string) Str::uuid(),
+            'type' => 'PRODUCT_UPDATED',
+            'description' => "{$userName} updated product '{$product->name}' ({$product->code}): Price ₦" . number_format($product->unitPrice, 2) . ", Category '{$product->category}'",
+            'userId' => $userId,
+            'userName' => $userName,
+            'timestamp' => now()->toIso8601String(),
+        ]);
+
+        if ($request->ajax() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "✓ Product '{$product->name}' updated successfully.",
+                'product' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'code' => $product->code,
+                    'category' => $product->category,
+                    'brand' => $product->brand,
+                    'size' => $product->size,
+                    'unitPrice' => (float) $product->unitPrice,
+                    'unitPriceFormatted' => '₦' . number_format($product->unitPrice, 0),
+                    'minStockLevel' => $product->minStockLevel,
+                ]
+            ]);
+        }
+
+        $returnUrl = $request->input('return_url');
+        if (!empty($returnUrl) && filter_var($returnUrl, FILTER_VALIDATE_URL)) {
+            return redirect($returnUrl)->with('success', "✓ Product '{$product->name}' updated successfully.");
+        }
 
         return redirect()->route('products.index')->with('success', "✓ Product '{$product->name}' updated successfully.");
     }

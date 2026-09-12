@@ -499,4 +499,88 @@ class ProductImportExportAndFilterHardeningTest extends TestCase
         $this->assertEquals(20000.0, (float)$vitalite->unitPrice);
         $this->assertEquals(0, $vitalite->currentStock);
     }
+
+    /**
+     * Test: Product update via AJAX returns JSON payload for zero-reload in-page updates.
+     */
+    public function test_product_update_via_ajax_returns_json_and_updates_model()
+    {
+        $product = Product::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Energy Drink 500ml',
+            'code' => 'ED-500',
+            'category' => 'Beverages',
+            'unitPrice' => 1200,
+            'currentStock' => 10,
+            'archived' => false,
+            'updatedAt' => now()->toIso8601String(),
+        ]);
+
+        $response = $this->actingAs($this->tenantAdmin)
+            ->withSession(['tenant_id' => $this->tenant->id])
+            ->withHeaders([
+                'X-Requested-With' => 'XMLHttpRequest',
+                'Accept' => 'application/json',
+            ])
+            ->post("/products/{$product->id}", [
+                'name' => 'Energy Drink 500ml Gold',
+                'category' => 'Beverages',
+                'unitPrice' => 1500,
+                'brand' => 'PowerCharge',
+                'size' => '500ml Can',
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'product' => [
+                'id' => $product->id,
+                'name' => 'Energy Drink 500ml Gold',
+                'category' => 'Beverages',
+                'brand' => 'PowerCharge',
+                'size' => '500ml Can',
+                'unitPrice' => 1500,
+            ]
+        ]);
+
+        $product->refresh();
+        $this->assertEquals('Energy Drink 500ml Gold', $product->name);
+        $this->assertEquals(1500, (float)$product->unitPrice);
+    }
+
+    /**
+     * Test: Product update via standard form preserves active category return_url.
+     */
+    public function test_product_update_via_form_preserves_category_return_url()
+    {
+        $product = Product::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Solar Battery 12V 200AH',
+            'code' => 'SOL-BAT-200',
+            'category' => 'Solar Equipment',
+            'unitPrice' => 250000,
+            'currentStock' => 5,
+            'archived' => false,
+            'updatedAt' => now()->toIso8601String(),
+        ]);
+
+        $returnUrl = 'http://localhost/products?category=' . urlencode('Solar Equipment') . '&stock_status=IN_STOCK';
+
+        $response = $this->actingAs($this->tenantAdmin)
+            ->withSession(['tenant_id' => $this->tenant->id])
+            ->post("/products/{$product->id}", [
+                'name' => 'Solar Battery 12V 200AH Tubular',
+                'category' => 'Solar Equipment',
+                'unitPrice' => 265000,
+                'return_url' => $returnUrl,
+            ]);
+
+        $response->assertRedirect($returnUrl);
+        $response->assertSessionHas('success');
+
+        $product->refresh();
+        $this->assertEquals(265000, (float)$product->unitPrice);
+    }
 }
