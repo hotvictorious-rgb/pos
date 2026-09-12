@@ -172,13 +172,14 @@
                 </thead>
                 <tbody>
                     @forelse($products as $p)
-                    <tr>
+                    <tr id="product-row-{{ $p->id }}" data-id="{{ $p->id }}">
                         <td>
                             <strong style="font-size: 1.05rem; color: #60a5fa; letter-spacing: 0.03em;">{{ $p->code }}</strong>
+                            <div class="product-name" style="font-size: 0.95rem; font-weight: 700; color: #f8fafc; margin-top: 0.2rem;">{{ $p->name }}</div>
                         </td>
-                        <td><span class="badge badge-info">{{ $p->category }}</span></td>
-                        <td>{{ $p->brand ?? 'Standard' }} {{ $p->size ? '('.$p->size.')' : '' }}</td>
-                        <td style="font-size: 1.15rem; font-weight: 800; color: #4ade80;">
+                        <td><span class="badge badge-info product-cat">{{ $p->category }}</span></td>
+                        <td class="product-brand-size">{{ $p->brand ?? 'Standard' }} {{ $p->size ? '('.$p->size.')' : '' }}</td>
+                        <td class="product-price" style="font-size: 1.15rem; font-weight: 800; color: #4ade80;">
                             ₦{{ number_format($p->unitPrice, 0) }}
                         </td>
                         @foreach($warehouses as $wh)
@@ -203,8 +204,8 @@
                         </td>
                         <td>
                             @if($isAdmin)
-                                <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;"
-                                        onclick="openEditModal('{{ $p->id }}', '{{ addslashes($p->name) }}', '{{ $p->category }}', {{ $p->unitPrice }}, '{{ $p->brand }}', '{{ $p->size }}')">
+                                <button class="btn btn-secondary btn-edit-product" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;"
+                                        onclick="openEditModal('{{ $p->id }}', '{{ addslashes($p->name) }}', '{{ addslashes($p->category) }}', {{ $p->unitPrice }}, '{{ addslashes($p->brand ?? '') }}', '{{ addslashes($p->size ?? '') }}')">
                                     ✏️ Edit
                                 </button>
                             @else
@@ -248,16 +249,11 @@
                     </div>
 
                     <div class="form-group">
-                        <label>Category</label>
-                        <select name="category" id="addProdCat" required>
-                            @foreach($categories as $cat)
-                                <option value="{{ $cat }}">{{ $cat }}</option>
-                            @endforeach
-                            <option value="Groceries">Groceries</option>
-                            <option value="Beverages">Beverages</option>
-                            <option value="Household">Household</option>
-                            <option value="Hardware">Hardware</option>
-                        </select>
+                        <label style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Category</span>
+                            <span style="font-size: 0.72rem; color: #93c5fd; font-weight: normal;">Select or type new</span>
+                        </label>
+                        <input list="categoryDatalist" name="category" id="addProdCat" placeholder="Pick or type new category..." required autocomplete="off" style="width: 100%;">
                     </div>
                 </div>
 
@@ -310,6 +306,7 @@
 
             <form id="editProductForm" method="POST" action="">
                 @csrf
+                <input type="hidden" name="return_url" id="editReturnUrl" value="">
                 <div class="form-group">
                     <label>Product Name</label>
                     <input type="text" name="name" id="editName" required>
@@ -317,8 +314,11 @@
 
                 <div class="grid-2">
                     <div class="form-group">
-                        <label>Category</label>
-                        <input type="text" name="category" id="editCat" required>
+                        <label style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Category</span>
+                            <span style="font-size: 0.72rem; color: #93c5fd; font-weight: normal;">Select or type new</span>
+                        </label>
+                        <input list="categoryDatalist" name="category" id="editCat" required autocomplete="off" style="width: 100%;">
                     </div>
 
                     <div class="form-group">
@@ -393,6 +393,20 @@
         </div>
     </div>
 
+    <!-- Master Dynamic Category Datalist (Shared for Quick Add & Edit) -->
+    <datalist id="categoryDatalist">
+        @foreach($categories as $cat)
+            <option value="{{ $cat }}"></option>
+        @endforeach
+        <option value="Groceries"></option>
+        <option value="Beverages"></option>
+        <option value="Household"></option>
+        <option value="Hardware"></option>
+        <option value="Electronics"></option>
+        <option value="Frozen Foods"></option>
+        <option value="Cosmetics & Personal Care"></option>
+    </datalist>
+
 @endsection
 
 @push('scripts')
@@ -402,6 +416,10 @@ function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
 function openEditModal(id, name, cat, price, brand, size) {
     document.getElementById('editProductForm').action = '/products/' + id;
+    const returnUrlInput = document.getElementById('editReturnUrl');
+    if (returnUrlInput) {
+        returnUrlInput.value = window.location.href;
+    }
     document.getElementById('editSubtitle').textContent = 'Editing ' + name;
     document.getElementById('editName').value = name;
     document.getElementById('editCat').value = cat;
@@ -460,6 +478,8 @@ function confirmEditProduct() {
     const name = document.getElementById('editName').value;
     const cat = document.getElementById('editCat').value;
     const price = parseFloat(document.getElementById('editPrice').value) || 0;
+    const brand = document.getElementById('editBrand').value;
+    const size = document.getElementById('editSize').value;
 
     closeModal('modalEditProduct');
 
@@ -479,8 +499,95 @@ function confirmEditProduct() {
         },
         confirmText: '✏️ Yes, Update Product',
         confirmClass: 'btn-primary',
-        form: form
+        onConfirm: function() {
+            const formData = new FormData(form);
+            formData.set('return_url', window.location.href);
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error('HTTP ' + res.status);
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (data.success && data.product) {
+                    const p = data.product;
+                    const row = document.getElementById('product-row-' + p.id);
+                    if (row) {
+                        const nameEl = row.querySelector('.product-name');
+                        if (nameEl) nameEl.textContent = p.name;
+
+                        const catEl = row.querySelector('.product-cat');
+                        if (catEl) catEl.textContent = p.category;
+
+                        const brandSizeEl = row.querySelector('.product-brand-size');
+                        if (brandSizeEl) {
+                            brandSizeEl.textContent = (p.brand || 'Standard') + (p.size ? ' (' + p.size + ')' : '');
+                        }
+
+                        const priceEl = row.querySelector('.product-price');
+                        if (priceEl) priceEl.textContent = p.unitPriceFormatted;
+
+                        const editBtn = row.querySelector('.btn-edit-product');
+                        if (editBtn) {
+                            const esc = (s) => (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                            editBtn.setAttribute('onclick', `openEditModal('${p.id}', '${esc(p.name)}', '${esc(p.category)}', ${p.unitPrice}, '${esc(p.brand)}', '${esc(p.size)}')`);
+                        }
+
+                        // Smooth emerald highlight animation
+                        row.style.transition = 'all 0.4s ease';
+                        const origBg = row.style.backgroundColor;
+                        row.style.backgroundColor = 'rgba(34, 197, 94, 0.25)';
+                        setTimeout(() => {
+                            row.style.backgroundColor = origBg;
+                        }, 2000);
+                    }
+
+                    showCatalogToast(data.message || "✓ Product updated successfully!", 'success');
+                } else {
+                    showCatalogToast(data.message || "Error updating product.", 'error');
+                }
+            })
+            .catch(err => {
+                console.warn('AJAX update failed, falling back to standard submit:', err);
+                form.submit();
+            });
+        }
     });
+}
+
+function showCatalogToast(msg, type = 'success') {
+    let toast = document.getElementById('catalogToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'catalogToast';
+        toast.style.cssText = 'position: fixed; bottom: 2rem; right: 2rem; z-index: 99999; padding: 0.85rem 1.4rem; border-radius: 12px; font-weight: 700; font-size: 0.95rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 0.6rem; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); transform: translateY(100px); opacity: 0;';
+        document.body.appendChild(toast);
+    }
+    if (type === 'success') {
+        toast.style.background = '#15803d';
+        toast.style.color = '#ffffff';
+        toast.style.border = '1px solid #22c55e';
+    } else {
+        toast.style.background = '#b91c1c';
+        toast.style.color = '#ffffff';
+        toast.style.border = '1px solid #ef4444';
+    }
+    toast.innerHTML = (type === 'success' ? '<span>✓</span> ' : '<span>⚠️</span> ') + msg;
+    toast.style.transform = 'translateY(0)';
+    toast.style.opacity = '1';
+    setTimeout(() => {
+        toast.style.transform = 'translateY(100px)';
+        toast.style.opacity = '0';
+    }, 3500);
 }
 
 function confirmImportCsv() {
