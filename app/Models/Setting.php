@@ -9,6 +9,9 @@ class Setting extends Model
 {
     use BelongsToTenant;
 
+    public $incrementing = false;
+    protected $keyType = 'int';
+
     protected $fillable = [
         'id',
         'tenant_id',
@@ -29,4 +32,14 @@ class Setting extends Model
         'lowStockThreshold' => 'integer',
         'transactionEditLimitDays' => 'integer',
     ];
+
+    protected static function booted()
+    {
+        static::creating(function ($setting) {
+            if (empty($setting->id)) {
+                $maxId = (int) static::withoutGlobalScopes()->max('id');
+                $setting->id = max(1, $maxId + 1);
+            }
+        });
+    }
 }

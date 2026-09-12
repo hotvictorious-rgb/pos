@@ -11,6 +11,12 @@
         margin-bottom: 1.5rem;
     }
 
+    @media (max-width: 640px) {
+        .summary-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
     .summary-card {
         background: var(--card-bg);
         border: 1px solid var(--border);

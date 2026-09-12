@@ -77,10 +77,10 @@
         <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
                 <span style="font-size: 1.75rem;">⏳</span>
-                <h2 style="font-size: 1.5rem; font-weight: 800;">Goods Sold & Not Supplied (Pickup Queue)</h2>
+                <h2 style="font-size: 1.5rem; font-weight: 800;">Pending Orders (Awaiting Pickup & Delivery)</h2>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Items purchased and awaiting customer pickup in <strong style="color: #60a5fa;">{{ $activeWarehouse->name ?? 'Main Shop' }}</strong>. Hand them over when customer arrives!
+                Customer orders purchased and awaiting pickup or delivery in <strong style="color: #60a5fa;">{{ $activeWarehouse->name ?? 'Main Shop' }}</strong>. Hand them over when customer arrives!
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem;">
@@ -88,7 +88,7 @@
                 💰 Back to POS
             </a>
             <a href="{{ route('stock.index') }}" class="btn btn-secondary">
-                📦 Stock Hub
+                📥 Stock In
             </a>
         </div>
     </div>
@@ -96,11 +96,11 @@
     <!-- Summary KPI Cards -->
     <div class="summary-grid">
         <div class="summary-card">
-            <h4>Orders Awaiting Pickup</h4>
+            <h4>Total Pending Orders</h4>
             <div class="val" style="color: #fbbf24;">{{ number_format($totalUnsuppliedOrders) }} orders</div>
         </div>
         <div class="summary-card">
-            <h4>Total Reserved Value</h4>
+            <h4>Total Pending Order Value</h4>
             <div class="val" style="color: #4ade80;">₦{{ number_format($totalUnsuppliedValue, 0) }}</div>
         </div>
     </div>
@@ -215,9 +215,9 @@
         @empty
         <div style="text-align: center; padding: 4rem 1rem; background: var(--card-bg); border-radius: 20px;">
             <div style="font-size: 3.5rem; margin-bottom: 1rem;">🎉</div>
-            <h3 style="font-size: 1.3rem; font-weight: 800;">No Pending Pickup Orders!</h3>
+            <h3 style="font-size: 1.3rem; font-weight: 800;">No Pending Orders!</h3>
             <p style="color: var(--text-muted); margin-top: 0.35rem;">
-                There are currently zero Not Supplied customer orders matching your filters.
+                There are currently zero pending unsupplied customer orders matching your filters.
             </p>
         </div>
         @endforelse

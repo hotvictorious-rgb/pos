@@ -10,6 +10,7 @@ use App\Models\Transfer;
 use App\Models\Sale;
 use App\Models\Supplier;
 use App\Models\StockAdjustment;
+use App\Models\InventoryLog;
 use App\Models\User;
 use App\Services\StockService;
 use App\Services\IdempotencyService;
@@ -45,30 +46,16 @@ class StockController extends Controller
     }
 
     /**
-     * Helper to apply date filters to queries
+     * Helper to apply date filters to queries via centralized AccountingReportService.
      */
     protected function applyDateFilter($query, $dateColumn, $datePreset, $fromDate, $toDate)
     {
-        if ($fromDate && $toDate) {
-            $query->whereBetween($dateColumn, [
-                Carbon::parse($fromDate)->startOfDay()->toIso8601String(),
-                Carbon::parse($toDate)->endOfDay()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'TODAY') {
-            $query->whereDate($dateColumn, Carbon::today());
-        } elseif ($datePreset === 'YESTERDAY') {
-            $query->whereDate($dateColumn, Carbon::yesterday());
-        } elseif ($datePreset === 'THIS_WEEK') {
-            $query->whereBetween($dateColumn, [
-                Carbon::now()->startOfWeek()->toIso8601String(),
-                Carbon::now()->endOfWeek()->toIso8601String()
-            ]);
-        } elseif ($datePreset === 'THIS_MONTH') {
-            $query->whereBetween($dateColumn, [
-                Carbon::now()->startOfMonth()->toIso8601String(),
-                Carbon::now()->endOfMonth()->toIso8601String()
-            ]);
-        }
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $accountingService->applyDateFilterToQuery($query, $dateColumn, [
+            'date_preset' => $datePreset,
+            'from_date'   => $fromDate,
+            'to_date'     => $toDate,
+        ]);
     }
 
     /**
@@ -105,11 +92,34 @@ class StockController extends Controller
         session(['active_warehouse_id' => $activeWarehouse->id]);
 
         $search = trim($request->get('search', ''));
+        $datePreset = strtoupper($request->get('date_preset', 'ALL'));
+        $fromDate = $request->get('from_date');
+        $toDate = $request->get('to_date');
         $category = $request->get('category');
         $stockStatus = $request->get('stock_status');
 
-        $query = StockLevel::with('product')->where('warehouse_id', $activeWarehouse->id);
+        // Stock In Logs Query (Dedicated to Stock In Hub)
+        $logsQuery = InventoryLog::with(['product', 'warehouse'])
+            ->where('warehouse_id', $activeWarehouse->id)
+            ->where('type', 'STOCK_IN');
 
+        $this->applyDateFilter($logsQuery, 'created_at', $datePreset, $fromDate, $toDate);
+
+        if ($search) {
+            $logsQuery->where(function ($q) use ($search) {
+                $q->where('productName', 'like', "%{$search}%")
+                  ->orWhere('productCode', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhere('notes', 'like', "%{$search}%")
+                  ->orWhere('userName', 'like', "%{$search}%");
+            });
+        }
+
+        $stockInLogs = $logsQuery->orderBy('created_at', 'desc')->paginate(25)->withQueryString();
+        $totalStockInEvents = (clone $logsQuery)->count();
+        $totalUnitsReceived = (clone $logsQuery)->sum('quantity');
+
+        $query = StockLevel::with('product')->where('warehouse_id', $activeWarehouse->id);
         if ($search) {
             $query->whereHas('product', function ($pq) use ($search) {
                 $pq->where('name', 'like', "%{$search}%")
@@ -117,19 +127,17 @@ class StockController extends Controller
                    ->orWhere('category', 'like', "%{$search}%");
             });
         }
-
         if ($category) {
             $query->whereHas('product', function ($pq) use ($category) {
                 $pq->where('category', $category);
             });
         }
-
         if ($stockStatus === 'OUT') {
             $query->where('physical_stock', '<=', 0);
         } elseif ($stockStatus === 'LOW') {
-            $query->where('physical_stock', '>', 0)->where('physical_stock', '<=', 10);
+            $query->where('physical_stock', '>', 0)->where('physical_stock', '<=', 5);
         } elseif ($stockStatus === 'HEALTHY') {
-            $query->where('physical_stock', '>', 10);
+            $query->where('physical_stock', '>', 5);
         }
 
         $stockLevels = $query->get();
@@ -149,23 +157,30 @@ class StockController extends Controller
         // Pending incoming transfers for this shop
         $incomingTransfers = Transfer::with(['source', 'items'])
             ->where('destination_warehouse_id', $activeWarehouse->id)
-            ->where('status', 'DISPATCHED')
+            ->whereIn('status', ['DISPATCHED', 'IN_TRANSIT', 'PENDING'])
             ->get();
 
         // Count of unsupplied sales waiting in this shop
-        $unsuppliedCount = Sale::where('deliveryStatus', 'UNSUPPLIED')
+        $unsuppliedCount = Sale::whereIn('deliveryStatus', ['UNSUPPLIED', 'NOT_SUPPLIED', 'pending'])
+            ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
             ->where('warehouse_id', $activeWarehouse->id)
             ->count();
 
         // Stock Summary Metrics for this shop
         $totalItemsCount = $stockLevels->count();
         $totalPhysicalUnits = $stockLevels->sum('physical_stock');
-        $lowStockCount = $stockLevels->where('physical_stock', '>', 0)->where('physical_stock', '<=', 10)->count();
+        $lowStockCount = $stockLevels->where('physical_stock', '>', 0)->where('physical_stock', '<=', 5)->count();
         $outOfStockCount = $stockLevels->where('physical_stock', '<=', 0)->count();
 
         return view('stock.index', compact(
             'warehouses',
             'activeWarehouse',
+            'stockInLogs',
+            'totalStockInEvents',
+            'totalUnitsReceived',
+            'datePreset',
+            'fromDate',
+            'toDate',
             'stockLevels',
             'shopStockMap',
             'allProducts',
@@ -687,7 +702,13 @@ class StockController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('id', 'like', "%{$search}%")
                   ->orWhere('customerName', 'like', "%{$search}%")
-                  ->orWhere('customerPhone', 'like', "%{$search}%");
+                  ->orWhereHas('customer', function ($cq) use ($search) {
+                      $cq->where('phone', 'like', "%{$search}%");
+                  });
+
+                if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'customerPhone')) {
+                    $q->orWhere('customerPhone', 'like', "%{$search}%");
+                }
             });
         }
 
@@ -809,7 +830,17 @@ class StockController extends Controller
         $this->applyDateFilter($query, 'created_at', $datePreset, $fromDate, $toDate);
 
         if ($type) {
-            $query->where('type', $type);
+            if ($type === 'DAMAGE') {
+                $query->whereIn('type', ['DAMAGE', 'EXPIRED']);
+            } elseif ($type === 'INTERNAL_USE') {
+                $query->whereIn('type', ['INTERNAL_USE', 'SAMPLE']);
+            } elseif ($type === 'SHRINKAGE') {
+                $query->whereIn('type', ['SHRINKAGE', 'THEFT']);
+            } elseif ($type === 'CORRECTION') {
+                $query->whereIn('type', ['CORRECTION', 'OTHER', 'SUPPLIER_RETURN', 'CUSTOMER_GOODWILL']);
+            } else {
+                $query->where('type', $type);
+            }
         }
         if ($warehouseId) {
             $query->where('warehouse_id', $warehouseId);
@@ -859,7 +890,7 @@ class StockController extends Controller
     }
 
     /**
-     * Record Stock Out / Stock Adjustment (Damages, Expiry, Internal Use, Loss).
+     * Record Stock Out / Non-Sale Deduction (Damages, Expiry, Internal Use, Loss, Correction).
      */
     public function recordAdjustment(Request $request)
     {
@@ -887,18 +918,18 @@ class StockController extends Controller
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Storekeeper';
 
-        // Accommodating Reason: If user leaves reason blank, default to friendly type title
+        // Accommodating Reason: If user leaves reason blank, default to friendly category title
         $typeTitles = [
             'DAMAGE' => 'Physical Damage / Broken Goods',
             'EXPIRED' => 'Expired / Past Shelf Life',
             'INTERNAL_USE' => 'Internal Store Use / Staff Consumption',
             'SAMPLE' => 'Promotional Sample / Marketing Giveaway',
-            'SHRINKAGE' => 'Stock Shrinkage / Missing from Shelf',
+            'SHRINKAGE' => 'Stock Loss / Shrinkage',
             'THEFT' => 'Theft / Pilferage / Unaccounted Loss',
             'SUPPLIER_RETURN' => 'Return of Defective Batch to Supplier',
             'CORRECTION' => 'Downward Count Correction / Audit Reconciliation',
             'CUSTOMER_GOODWILL' => 'Customer Compensation / Goodwill Replacement',
-            'OTHER' => 'General Stock Out',
+            'OTHER' => 'General Stock Out / Deduction',
         ];
         $typeKey = strtoupper(trim($request->type));
         $reason = trim((string)$request->reason);
@@ -931,10 +962,10 @@ class StockController extends Controller
             );
 
             if ($request->expectsJson()) {
-                return response()->json(['success' => true, 'message' => '✓ Stock Out / Adjustment logged successfully! Audit trail updated.']);
+                return response()->json(['success' => true, 'message' => '✓ Stock Out / Deduction logged successfully! Audit trail updated.']);
             }
 
-            return redirect()->route('stock.adjustments')->with('success', '✓ Stock Out / Adjustment logged successfully! Audit trail updated.');
+            return redirect()->route('stock.adjustments')->with('success', '✓ Stock Out / Deduction logged successfully! Audit trail updated.');
         } catch (\App\Exceptions\InsufficientStockException $e) {
             $msg = "❌ Cannot record stock out: " . $e->getMessage();
             if ($request->expectsJson()) {

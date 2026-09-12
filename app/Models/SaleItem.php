@@ -32,6 +32,11 @@ class SaleItem extends Model
         return $this->belongsTo(Sale::class, 'saleId', 'id');
     }
 
+    public function product()
+    {
+        return $this->belongsTo(Product::class, 'productId', 'id');
+    }
+
     protected static function booted(): void
     {
         static::creating(function ($item) {

@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use App\Models\Activity;
 use App\Rules\PasswordPolicy;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class AuthController extends Controller
 {
@@ -543,4 +547,241 @@ class AuthController extends Controller
 
         return redirect()->route('account.password')->with('success', '✓ Your password has been changed successfully. Your new password is now active.');
     }
+
+    /**
+     * Display the tenant / user forgot password request interface.
+     */
+    public function showForgotPassword(Request $request)
+    {
+        if (session('user_id') || Auth::check()) {
+            return redirect()->route('dashboard');
+        }
+
+        return view('auth.forgot-password');
+    }
+
+    /**
+     * Handle sending a password reset link to the user/tenant email.
+     */
+    public function sendResetLinkEmail(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $email = strtolower(trim($request->input('email')));
+
+        // Dual-layer Rate Limiter (5 attempts per 15 minutes per email/IP)
+        $rateLimitKey = 'forgot-password|' . Str::transliterate($email . '|' . $request->ip());
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 5)) {
+            $retryAfter = RateLimiter::availableIn($rateLimitKey);
+            return back()->withInput()->with('error', "Too many password reset requests. Please try again in {$retryAfter} seconds.");
+        }
+        RateLimiter::hit($rateLimitKey, 900);
+
+        // Pre-auth user resolution (safely bypasses TenantScope)
+        $user = User::findForAuthentication($email);
+
+        if (!$user) {
+            return back()->withInput()->with('error', "No registered account found with the email address '{$email}'. Please check your spelling or contact support.");
+        }
+
+        if ($user->disabled) {
+            return back()->withInput()->with('error', 'This account has been deactivated. Please contact your store administrator.');
+        }
+
+        // 🔒 Invariant: Password reset recovery is strictly restricted to active business tenants
+        if ($user->tenant_id === 'default-tenant' || empty($user->tenant_id)) {
+            return back()->withInput()->with('error', 'Platform administrators cannot reset credentials via the tenant portal. Please contact server operations.');
+        }
+
+        // Validate that the user belongs to an active tenant
+        $tenant = Tenant::find($user->tenant_id);
+        if (!$tenant) {
+            return back()->withInput()->with('error', 'Your business account was not found. Please contact support.');
+        }
+
+        if (!$tenant->isActive()) {
+            return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
+        }
+
+        // Generate cryptographically secure reset token
+        $rawToken = Str::random(64);
+        $hashedToken = hash('sha256', $rawToken);
+
+        // Store in password_reset_tokens table (upsert)
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $email],
+            [
+                'token' => $hashedToken,
+                'created_at' => now(),
+            ]
+        );
+
+        $resetUrl = url(route('password.reset', ['token' => $rawToken, 'email' => $email]));
+
+        // Attempt sending email via configured mailer
+        $mailSent = false;
+        $mailError = null;
+
+        try {
+            Mail::raw("Hello {$user->name},\n\nYou have requested to reset your password for your account.\nClick the link below to set a new password:\n\n{$resetUrl}\n\nThis link will expire in 60 minutes.\nIf you did not request this, please disregard this email.", function ($message) use ($email, $user) {
+                $message->to($email, $user->name)
+                        ->subject('Password Reset Request - ' . config('app.name', 'Victorious POS'));
+            });
+            $mailSent = true;
+        } catch (\Throwable $e) {
+            $mailError = $e->getMessage();
+            Log::warning("Password reset email delivery failed for {$email}: " . $mailError);
+        }
+
+        // Secondary Transport: Attempt native PHP mail() if primary mailer did not dispatch
+        if (!$mailSent && function_exists('mail')) {
+            try {
+                $subject = 'Password Reset Request - ' . config('app.name', 'Victorious POS');
+                $fromEmail = config('mail.from.address') ?: 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'pos.victoriousmarket.com.ng');
+                $fromName = config('mail.from.name') ?: config('app.name', 'Victorious POS');
+                $headers = [
+                    'From: ' . $fromName . ' <' . $fromEmail . '>',
+                    'Reply-To: ' . $fromEmail,
+                    'X-Mailer: PHP/' . phpversion(),
+                    'MIME-Version: 1.0',
+                    'Content-Type: text/plain; charset=UTF-8',
+                ];
+                $body = "Hello {$user->name},\n\nYou have requested to reset your password for your account.\nClick the link below to set a new password:\n\n{$resetUrl}\n\nThis link will expire in 60 minutes.\nIf you did not request this, please disregard this email.";
+
+                if (@mail($email, $subject, $body, implode("\r\n", $headers))) {
+                    $mailSent = true;
+                    Log::info("Password reset email sent successfully via native PHP mail() to {$email}");
+                }
+            } catch (\Throwable $ex) {
+                Log::warning("Native PHP mail() fallback failed for {$email}: " . $ex->getMessage());
+            }
+        }
+
+        // High Security Audit Logging: Log event without exposing raw token URL
+        Log::info("Password reset token generated for [{$email}]. Delivery status: " . ($mailSent ? 'DISPATCHED' : 'FAILED'));
+
+        if ($mailSent) {
+            return back()->with('status', "✓ Password reset instructions have been sent to {$email}. Please check your email inbox and spam folder.");
+        }
+
+        return back()->with('error', "⚠️ We were unable to dispatch the password reset email. Please contact your system administrator or support.");
+    }
+
+    /**
+     * Display the reset password interface for a verified token.
+     */
+    public function showResetPassword(Request $request, string $token)
+    {
+        $email = strtolower(trim((string) $request->query('email', '')));
+        $hashedToken = hash('sha256', $token);
+
+        $tokenRecord = DB::table('password_reset_tokens')
+            ->where('email', $email)
+            ->first();
+
+        if (!$tokenRecord || !hash_equals($tokenRecord->token, $hashedToken)) {
+            // Also attempt fallback query by token directly if email param is omitted
+            $tokenRecord = DB::table('password_reset_tokens')
+                ->where('token', $hashedToken)
+                ->first();
+            if ($tokenRecord) {
+                $email = $tokenRecord->email;
+            }
+        }
+
+        if (!$tokenRecord || !hash_equals($tokenRecord->token, $hashedToken)) {
+            return redirect()->route('password.request')->with('error', 'The password reset token is invalid. Please request a new reset link.');
+        }
+
+        if (Carbon::parse($tokenRecord->created_at)->addMinutes(60)->isPast()) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            return redirect()->route('password.request')->with('error', 'This password reset link has expired. Please request a new one.');
+        }
+
+        return view('auth.reset-password', [
+            'token' => $token,
+            'email' => $email,
+        ]);
+    }
+
+    /**
+     * Process password reset and update the user's credentials.
+     */
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'token'    => 'required|string',
+            'email'    => 'required|email',
+            'password' => array_merge(['confirmed'], PasswordPolicy::rules(true)),
+        ], PasswordPolicy::messages());
+
+        $email = strtolower(trim($request->input('email')));
+        $token = (string) $request->input('token');
+        $hashedToken = hash('sha256', $token);
+
+        $tokenRecord = DB::table('password_reset_tokens')
+            ->where('email', $email)
+            ->first();
+
+        if (!$tokenRecord || !hash_equals($tokenRecord->token, $hashedToken)) {
+            return back()->withErrors(['email' => 'This password reset token is invalid or has already been used.'])->withInput();
+        }
+
+        if (Carbon::parse($tokenRecord->created_at)->addMinutes(60)->isPast()) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            return redirect()->route('password.request')->with('error', 'This password reset link has expired. Please request a new one.');
+        }
+
+        // Retrieve user via authentication lookup (safe pre-auth bypass of TenantScope)
+        $user = User::findForAuthentication($email);
+
+        if (!$user) {
+            return back()->withErrors(['email' => 'We could not find a user account matching this email address.'])->withInput();
+        }
+
+        if ($user->disabled) {
+            return back()->withErrors(['email' => 'This account is currently disabled. Please contact the store administrator.'])->withInput();
+        }
+
+        // 🔒 Invariant: Password reset recovery is strictly restricted to active business tenants
+        if ($user->tenant_id === 'default-tenant' || empty($user->tenant_id)) {
+            return back()->withErrors(['email' => 'Platform administrator credentials cannot be reset via the tenant portal.'])->withInput();
+        }
+
+        $tenant = Tenant::find($user->tenant_id);
+        if (!$tenant || !$tenant->isActive()) {
+            return back()->withErrors(['email' => 'Your business subscription has expired or been suspended.'])->withInput();
+        }
+
+        // Update password
+        $user->password = Hash::make($request->input('password'));
+        $user->save();
+
+        // Invalidate used reset token
+        DB::table('password_reset_tokens')->where('email', $email)->delete();
+
+        // Security Audit Log
+        $clientIp = $request->ip() ?? '127.0.0.1';
+        Activity::create([
+            'id'          => (string) Str::uuid(),
+            'tenant_id'   => $user->tenant_id,
+            'type'        => 'PASSWORD_RESET',
+            'description' => "User '{$user->name}' ({$user->email}) reset password via self-service email token recovery.",
+            'userId'      => $user->id,
+            'userName'    => $user->name,
+            'timestamp'   => now()->toIso8601String(),
+            'metadata'    => [
+                'ip'         => $clientIp,
+                'user_agent' => substr((string) $request->userAgent(), 0, 500),
+                'action'     => 'PASSWORD_RESET',
+                'tenant_id'  => $user->tenant_id,
+                'user_id'    => $user->id,
+            ],
+        ]);
+
+        return redirect()->route('portal.tenant.login')->with('success', '✓ Your password has been successfully reset! You can now log in with your new password.');
+    }
 }
+

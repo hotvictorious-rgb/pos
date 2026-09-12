@@ -28,6 +28,12 @@
     .role-badge-manager { background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.4); }
     .role-badge-storekeeper { background: rgba(217,119,6,0.2); color: #fbbf24; border: 1px solid rgba(217,119,6,0.4); }
     .role-badge-cashier { background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.4); }
+
+    @media (max-width: 640px) {
+        .user-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 @endpush
 
@@ -59,7 +65,7 @@
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.85rem; font-size: 0.88rem; color: #cbd5e1;">
             <div style="background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); padding: 0.85rem; border-radius: 12px;">
                 <strong style="color: #60a5fa;">🏢 1. Branch Manager:</strong><br>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Full shop operations: POS checkout, stock in/out, shop transfers, customer debts, returns, and branch reports.</span>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Full shop operations: POS checkout, stock in, shop transfers, pending orders, customer debts, returns, and branch reports.</span>
             </div>
             <div style="background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); padding: 0.85rem; border-radius: 12px;">
                 <strong style="color: #34d399;">💰 2. Cashier:</strong><br>
@@ -67,7 +73,7 @@
             </div>
             <div style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 0.85rem; border-radius: 12px;">
                 <strong style="color: #fbbf24;">📦 3. Storekeeper:</strong><br>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Inventory logistics: Stock in/out, inter-shop transfers, damaged goods write-off, and product catalog. No POS or cash handling.</span>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Inventory logistics: Stock in, inter-shop transfers, stock deductions, pending order handovers, and product catalog. No POS or cash handling.</span>
             </div>
             <div style="background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.3); padding: 0.85rem; border-radius: 12px;">
                 <strong style="color: #facc15;">👑 4. Executive Observer:</strong><br>

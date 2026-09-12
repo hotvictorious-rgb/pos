@@ -20,6 +20,7 @@ use App\Models\Transfer;
 // ─────────────────────────────────────────────────────────
 Route::get('/account/password',  [AuthController::class, 'showChangePassword'])->name('account.password');
 Route::post('/account/password', [AuthController::class, 'changePassword'])->name('account.password.update');
+Route::post('/branch/switch',    [\App\Http\Controllers\Web\BranchSwitchController::class, 'switchBranch'])->name('branch.switch');
 
 // ─────────────────────────────────────────────────────────
 // PUBLIC MARKETING & LANDING PAGE (Nigerian Retail, Supermarkets & Wholesalers)
@@ -34,6 +35,16 @@ Route::get('/welcome', [\App\Http\Controllers\Web\LandingController::class, 'ind
 Route::get('/login',  [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'webLogin'])->name('login.post');
 Route::match(['get', 'post'], '/logout', [AuthController::class, 'webLogout'])->name('logout');
+
+// ─────────────────────────────────────────────────────────
+// TENANT & USER PASSWORD RESET
+// ─────────────────────────────────────────────────────────
+Route::get('/forgot-password',           [AuthController::class, 'showForgotPassword'])->name('password.request');
+Route::post('/forgot-password',          [AuthController::class, 'sendResetLinkEmail'])->name('password.email');
+Route::get('/tenant/forgot-password',    [AuthController::class, 'showForgotPassword'])->name('portal.tenant.forgot_password');
+Route::post('/tenant/forgot-password',   [AuthController::class, 'sendResetLinkEmail'])->name('portal.tenant.forgot_password.post');
+Route::get('/reset-password/{token}',    [AuthController::class, 'showResetPassword'])->name('password.reset');
+Route::post('/reset-password',           [AuthController::class, 'resetPassword'])->name('password.update');
 
 // ─────────────────────────────────────────────────────────
 // FOUR PORTAL AUTHENTICATION

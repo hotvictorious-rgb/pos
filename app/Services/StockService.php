@@ -327,7 +327,7 @@ class StockService
             $deliveryStatus = $isSuppliedNow ? 'DELIVERED' : 'UNSUPPLIED';
             $saleType = $saleData['sale_type'] ?? 'RETAIL';
 
-            $sale = Sale::create([
+            $salePayload = [
                 'id' => $saleId,
                 'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : session('tenant_id'),
                 'warehouse_id' => $warehouseId,
@@ -349,7 +349,13 @@ class StockService
                 'userId' => $userId,
                 'userName' => $userName,
                 'createdAt' => now()->toIso8601String(),
-            ]);
+            ];
+
+            if (!empty($saleData['customerPhone']) && \Illuminate\Support\Facades\Schema::hasColumn('sales', 'customerPhone')) {
+                $salePayload['customerPhone'] = $saleData['customerPhone'];
+            }
+
+            $sale = Sale::create($salePayload);
 
             // Sort line items deterministically by product ID to guarantee monotonic lock acquisition and eliminate database deadlocks
             usort($validatedItems, function ($a, $b) {

@@ -21,79 +21,29 @@ use Carbon\Carbon;
 class TransactionController extends Controller
 {
     /**
-     * Helper to apply date filtering consistently across models.
+     * Helper to apply date filtering consistently across models via centralized AccountingReportService.
      */
     private function applyDateFilter($query, string $dateColumn, Request $request): void
     {
-        $datePreset = strtoupper($request->get('date_preset', 'ALL'));
-        $fromDate = $request->get('from_date');
-        $toDate = $request->get('to_date');
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $accountingService->applyDateFilterToQuery($query, $dateColumn, [
+            'date_preset' => $request->get('date_preset', 'ALL'),
+            'from_date'   => $request->get('from_date'),
+            'to_date'     => $request->get('to_date'),
+        ]);
+    }
 
-        if ($fromDate && $toDate) {
-            $start = Carbon::parse($fromDate)->startOfDay();
-            $end = Carbon::parse($toDate)->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
-        } elseif ($fromDate) {
-            $start = Carbon::parse($fromDate)->startOfDay();
-            $end = Carbon::now()->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
-        } elseif ($toDate) {
-            $start = Carbon::parse('2020-01-01')->startOfDay();
-            $end = Carbon::parse($toDate)->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
-        } elseif ($datePreset === 'TODAY') {
-            $start = Carbon::today()->startOfDay();
-            $end = Carbon::today()->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
-        } elseif ($datePreset === 'YESTERDAY') {
-            $start = Carbon::yesterday()->startOfDay();
-            $end = Carbon::yesterday()->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
-        } elseif ($datePreset === 'THIS_WEEK') {
-            $start = Carbon::now()->startOfWeek()->startOfDay();
-            $end = Carbon::now()->endOfWeek()->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
-        } elseif ($datePreset === 'THIS_MONTH') {
-            $start = Carbon::now()->startOfMonth()->startOfDay();
-            $end = Carbon::now()->endOfMonth()->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
-        } elseif ($datePreset === 'THIS_YEAR') {
-            $start = Carbon::now()->startOfYear()->startOfDay();
-            $end = Carbon::now()->endOfYear()->endOfDay();
-            if ($dateColumn === 'createdAt' || $dateColumn === 'timestamp') {
-                $query->whereBetween($dateColumn, [$start->toIso8601String(), $end->toIso8601String()]);
-            } else {
-                $query->whereBetween($dateColumn, [$start->toDateTimeString(), $end->toDateTimeString()]);
-            }
+    /**
+     * Resolve effective warehouse filter (request query parameter takes priority, falls back to active session).
+     */
+    private function getEffectiveWarehouseId(Request $request): ?string
+    {
+        if ($request->has('warehouse_id')) {
+            $val = $request->warehouse_id;
+            return ($val === 'ALL' || $val === '' || is_null($val)) ? null : (string) $val;
         }
+        $sessionWh = session('active_warehouse_id');
+        return ($sessionWh === 'ALL' || $sessionWh === '' || is_null($sessionWh)) ? null : (string) $sessionWh;
     }
 
     /**
@@ -104,6 +54,7 @@ class TransactionController extends Controller
         $query = Sale::with('items');
         $this->applyDateFilter($query, 'createdAt', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Role & Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -111,8 +62,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $query->where('warehouse_id', $effectiveWh);
         }
 
         if ($request->filled('payment_status')) {
@@ -158,7 +109,13 @@ class TransactionController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('id', 'like', "%{$search}%")
                   ->orWhere('customerName', 'like', "%{$search}%")
-                  ->orWhere('customerPhone', 'like', "%{$search}%");
+                  ->orWhereHas('customer', function ($cq) use ($search) {
+                      $cq->where('phone', 'like', "%{$search}%");
+                  });
+
+                if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'customerPhone')) {
+                    $q->orWhere('customerPhone', 'like', "%{$search}%");
+                }
             });
         }
 
@@ -170,6 +127,7 @@ class TransactionController extends Controller
         $query = InventoryLog::where('type', 'STOCK_IN');
         $this->applyDateFilter($query, 'timestamp', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Privacy Scoping: Branch staff see their shop
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -177,8 +135,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $query->where('warehouse_id', $effectiveWh);
         }
 
         if ($request->filled('inflow_category')) {
@@ -217,17 +175,20 @@ class TransactionController extends Controller
     {
         $query = InventoryLog::where(function ($q) {
             $q->whereIn('type', [
+                'SALE',
                 'DISPATCH_FULFILLED',
                 'STOCK_ADJUSTMENT_DAMAGE',
                 'STOCK_ADJUSTMENT_EXPIRED',
                 'STOCK_ADJUSTMENT_LOST',
-                'TRANSFER_OUT'
+                'TRANSFER_OUT',
+                'STOCK_OUT'
             ])->orWhere(function ($sub) {
-                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'SALES_RETURN']);
+                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
             });
         });
         $this->applyDateFilter($query, 'timestamp', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Privacy Scoping: Branch staff see their shop
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -235,8 +196,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $query->where('warehouse_id', $effectiveWh);
         }
 
         $outflowParam = $request->get('outflow_type') ?: $request->get('movement_type');
@@ -244,6 +205,8 @@ class TransactionController extends Controller
             $oType = strtoupper($outflowParam);
             if ($oType === 'CUSTOMER_PICKUP' || $oType === 'DISPATCH_FULFILLED') {
                 $query->where('type', 'DISPATCH_FULFILLED');
+            } elseif ($oType === 'SALE' || $oType === 'RETAIL_SALE') {
+                $query->where('type', 'SALE');
             } elseif ($oType === 'TRANSFER' || $oType === 'TRANSFER_OUT') {
                 $query->where('type', 'TRANSFER_OUT');
             } elseif (str_contains($oType, 'DAMAGE')) {
@@ -366,6 +329,7 @@ class TransactionController extends Controller
         $query = SalesReturn::query();
         $this->applyDateFilter($query, 'createdAt', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -373,9 +337,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $whId = (int) $request->warehouse_id;
-            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
+        } elseif (!empty($effectiveWh)) {
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $effectiveWh));
         }
 
         if ($request->filled('return_reason')) {
@@ -404,6 +367,7 @@ class TransactionController extends Controller
         $query = SalesReturn::where('refundAmount', '>', 0);
         $this->applyDateFilter($query, 'createdAt', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -411,9 +375,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('userId', $user->id);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $whId = (int) $request->warehouse_id;
-            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
+        } elseif (!empty($effectiveWh)) {
+            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $effectiveWh));
         }
 
         if ($request->filled('min_amount')) {
@@ -492,7 +455,7 @@ class TransactionController extends Controller
         $datePreset = $request->get('date_preset', 'ALL');
         $fromDate = $request->get('from_date');
         $toDate = $request->get('to_date');
-        $warehouseId = $request->get('warehouse_id');
+        $warehouseId = $this->getEffectiveWarehouseId($request);
         $search = trim($request->get('search', ''));
         $userName = $request->get('user_name');
 
@@ -589,7 +552,7 @@ class TransactionController extends Controller
         }
         $debtLedgers = (clone $debtsQuery)->orderBy('created_at', 'desc')->paginate(20, ['*'], 'debts_page')->withQueryString();
 
-        return view('transactions.index', compact(
+        $viewData = compact(
             'activeTab',
             'warehouses',
             'cashiers',
@@ -617,7 +580,27 @@ class TransactionController extends Controller
             'refundRecords', 'refundsCount', 'totalRefundAmount',
             // Tab 8: Debts
             'debtLedgers', 'debtsEntryCount', 'totalRepayments', 'totalDebtCreated', 'totalOpenDebt'
-        ));
+        );
+
+        if ($request->ajax() || $request->header('X-Partial-Update') || $request->has('_partial')) {
+            return response()->json([
+                'success'   => true,
+                'activeTab' => $activeTab,
+                'counts'    => [
+                    'sales'        => number_format($totalSalesCount),
+                    'stock_in'     => number_format($stockInBatches),
+                    'stock_out'    => number_format($stockOutCount),
+                    'in_transit'   => number_format($inTransitCount),
+                    'transfers_in' => number_format($incomingTotal),
+                    'returns'      => number_format($returnsCount),
+                    'refunds'      => number_format($refundsCount),
+                    'debts'        => number_format($debtsEntryCount),
+                ],
+                'panes_html' => view('transactions.partials.panes', $viewData)->render(),
+            ]);
+        }
+
+        return view('transactions.index', $viewData);
     }
 
     /**
@@ -626,12 +609,287 @@ class TransactionController extends Controller
     public function exportCsv(Request $request, string $tab)
     {
         $tab = strtolower($tab);
-        $fileName = "hysam_{$tab}_filtered_" . date('Y_m_d_His') . ".csv";
+        $fileName = ($tab === 'all')
+            ? "hysam_universal_ledgers_all_tabs_filtered_" . date('Y_m_d_His') . ".csv"
+            : "hysam_{$tab}_filtered_" . date('Y_m_d_His') . ".csv";
 
         return new StreamedResponse(function () use ($request, $tab) {
             $handle = fopen('php://output', 'w');
 
-            if ($tab === 'sales') {
+            if ($tab === 'all') {
+                $user = Auth::user();
+                $staffDesc = $user ? "{$user->name} (" . ucfirst($user->role ?? 'staff') . ")" : 'System Administrator';
+
+                $datePreset = $request->get('date_preset', 'ALL');
+                $fromDate = $request->get('from_date');
+                $toDate = $request->get('to_date');
+                if (!empty($fromDate) || !empty($toDate)) {
+                    $dateDesc = "Custom Range (" . ($fromDate ?: 'Earliest') . " to " . ($toDate ?: 'Latest') . ")";
+                } elseif ($datePreset && $datePreset !== 'ALL') {
+                    $dateDesc = "Preset: " . str_replace('_', ' ', strtoupper($datePreset));
+                } else {
+                    $dateDesc = "All Time (Unrestricted)";
+                }
+
+                $whId = $this->getEffectiveWarehouseId($request);
+                if ($whId) {
+                    $wh = Warehouse::find($whId);
+                    $whDesc = $wh ? "{$wh->name}" : "Warehouse #{$whId}";
+                } else {
+                    $whDesc = "All Warehouses & Branches (Consolidated)";
+                }
+
+                $searchVal = trim($request->get('search', ''));
+                $searchDesc = !empty($searchVal) ? "\"{$searchVal}\"" : "None (All Records)";
+
+                // ─────────────────────────────────────────────────────────────
+                // TOP CONSOLIDATED AUDIT HEADER & METADATA
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['====================================================================================================']);
+                fputcsv($handle, ['HYSAM UNIVERSAL HISTORY & LEDGERS HUB - MASTER AUDIT REPORT']);
+                fputcsv($handle, ['====================================================================================================']);
+                fputcsv($handle, ['Export Timestamp:', date('Y-m-d H:i:s T')]);
+                fputcsv($handle, ['Generated By:', $staffDesc]);
+                fputcsv($handle, ['Active Date Filter:', $dateDesc]);
+                fputcsv($handle, ['Branch / Warehouse Scope:', $whDesc]);
+                fputcsv($handle, ['Search Filter:', $searchDesc]);
+                fputcsv($handle, ['Included Modules (8):', 'Sales, Stock In, Stock Out, Transfers In-Transit, Transfers Received, Returns, Refunds, Debt Ledgers']);
+                fputcsv($handle, ['====================================================================================================']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 1: SALES TRANSACTIONS
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 1: SALES TRANSACTIONS']);
+                fputcsv($handle, ['Invoice ID', 'Date & Time', 'Customer Name', 'Customer Phone', 'Items Count', 'Gross Total (NGN)', 'Paid Amount (NGN)', 'Debt Balance (NGN)', 'Payment Status', 'Handover Status', 'Cashier Name']);
+                $salesQuery = $this->getSalesQuery($request)->orderBy('createdAt', 'desc');
+                $salesCount = 0;
+                $salesGross = 0;
+                $salesPaid = 0;
+                $salesDebt = 0;
+                foreach ($salesQuery->cursor() as $s) {
+                    $salesCount++;
+                    $debt = max(0, $s->totalAmount - $s->paidAmount);
+                    $salesGross += (float)$s->totalAmount;
+                    $salesPaid += (float)$s->paidAmount;
+                    $salesDebt += (float)$debt;
+                    $pStatus = ($s->paidAmount >= $s->totalAmount) ? 'PAID' : (($s->paidAmount > 0) ? 'PART_PAID' : 'NOT_PAID');
+                    fputcsv($handle, [
+                        $s->id,
+                        $s->createdAt,
+                        $s->customerName,
+                        $s->customerPhone ?? $s->customer?->phone ?? 'N/A',
+                        $s->items->count(),
+                        $s->totalAmount,
+                        $s->paidAmount,
+                        $debt,
+                        $pStatus,
+                        $s->deliveryStatus,
+                        $s->userName
+                    ]);
+                }
+                fputcsv($handle, ['[SALES SUMMARY]', "Total Invoices: {$salesCount}", '', '', '', "Gross: " . number_format($salesGross, 2), "Paid: " . number_format($salesPaid, 2), "Debt: " . number_format($salesDebt, 2), '', '', '']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 2: STOCK INFLOW & WAREHOUSE RECEIPTS
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 2: STOCK INFLOW & WAREHOUSE RECEIPTS']);
+                fputcsv($handle, ['Log ID', 'Date & Time', 'SKU / Barcode', 'Product Name', 'Inflow Type', 'Quantity (Units)', 'Received By Staff', 'Supplier & Notes']);
+                $stockInQuery = $this->getStockInQuery($request)->orderBy('timestamp', 'desc');
+                $inCount = 0;
+                $inUnits = 0;
+                foreach ($stockInQuery->cursor() as $l) {
+                    $inCount++;
+                    $inUnits += (float)$l->quantity;
+                    fputcsv($handle, [
+                        $l->id,
+                        $l->timestamp,
+                        $l->productCode,
+                        $l->productName,
+                        $l->type,
+                        $l->quantity,
+                        $l->userName,
+                        $l->description
+                    ]);
+                }
+                fputcsv($handle, ['[STOCK IN SUMMARY]', "Total Logs: {$inCount}", '', '', '', "Total Units Received: " . number_format($inUnits), '', '']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 3: STOCK OUTFLOW & INVENTORY DEDUCTIONS
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 3: STOCK OUTFLOW & INVENTORY DEDUCTIONS']);
+                fputcsv($handle, ['Log ID', 'Date & Time', 'SKU / Barcode', 'Product Name', 'Outflow Type', 'Quantity Deducted (Units)', 'Authorized Staff', 'Reason & Details']);
+                $stockOutQuery = $this->getStockOutQuery($request)->orderBy('timestamp', 'desc');
+                $outCount = 0;
+                $outUnits = 0;
+                foreach ($stockOutQuery->cursor() as $l) {
+                    $outCount++;
+                    $outUnits += abs((float)$l->quantity);
+                    fputcsv($handle, [
+                        $l->id,
+                        $l->timestamp,
+                        $l->productCode,
+                        $l->productName,
+                        $l->type,
+                        abs($l->quantity),
+                        $l->userName,
+                        $l->description
+                    ]);
+                }
+                fputcsv($handle, ['[STOCK OUT SUMMARY]', "Total Logs: {$outCount}", '', '', '', "Total Units Deducted: " . number_format($outUnits), '', '']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 4: SHOP TRANSFERS (IN TRANSIT)
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 4: SHOP TRANSFERS (IN TRANSIT)']);
+                fputcsv($handle, ['Transfer No', 'Dispatched Date', 'Source Branch', 'Destination Branch', 'Carrier Driver', 'Dispatched Units', 'Status', 'Dispatched By', 'Notes']);
+                $inTransitQuery = $this->getInTransitQuery($request)->orderBy('dispatched_at', 'desc');
+                $inTransitCount = 0;
+                $inTransitUnits = 0;
+                foreach ($inTransitQuery->cursor() as $t) {
+                    $inTransitCount++;
+                    $units = (float)$t->items->sum('dispatched_qty');
+                    $inTransitUnits += $units;
+                    fputcsv($handle, [
+                        $t->transfer_no,
+                        $t->dispatched_at ?? $t->created_at,
+                        $t->sourceWarehouse->name ?? 'Origin',
+                        $t->destinationWarehouse->name ?? 'Destination',
+                        $t->carrier_name,
+                        $units,
+                        $t->status,
+                        $t->dispatched_by,
+                        $t->notes ?? ''
+                    ]);
+                }
+                fputcsv($handle, ['[IN-TRANSIT SUMMARY]', "Total Transfers: {$inTransitCount}", '', '', '', "Units In Transit: " . number_format($inTransitUnits), '', '', '']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 5: SHOP TRANSFERS (RECEIVED & RECONCILED)
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 5: SHOP TRANSFERS (RECEIVED & RECONCILED)']);
+                fputcsv($handle, ['Transfer No', 'Date Created', 'Source Branch', 'Destination Branch', 'Carrier Driver', 'Dispatched Units', 'Received Units', 'Discrepancy Units', 'Status', 'Dispatched By', 'Received By']);
+                $incomingQuery = $this->getIncomingQuery($request)->orderBy('created_at', 'desc');
+                $recvCount = 0;
+                $recvDispUnits = 0;
+                $recvUnits = 0;
+                $recvDiscUnits = 0;
+                foreach ($incomingQuery->cursor() as $t) {
+                    $recvCount++;
+                    $dQty = (float)$t->items->sum('dispatched_qty');
+                    $rQty = (float)$t->items->sum('received_qty');
+                    $discQty = (float)$t->items->sum('discrepancy_qty');
+                    $recvDispUnits += $dQty;
+                    $recvUnits += $rQty;
+                    $recvDiscUnits += $discQty;
+                    fputcsv($handle, [
+                        $t->transfer_no,
+                        $t->created_at,
+                        $t->sourceWarehouse->name ?? 'Origin',
+                        $t->destinationWarehouse->name ?? 'Destination',
+                        $t->carrier_name,
+                        $dQty,
+                        $rQty,
+                        $discQty,
+                        $t->status,
+                        $t->dispatched_by,
+                        $t->received_by ?? 'Pending'
+                    ]);
+                }
+                fputcsv($handle, ['[RECEIVED TRANSFERS SUMMARY]', "Total Transfers: {$recvCount}", '', '', '', "Dispatched: " . number_format($recvDispUnits), "Received: " . number_format($recvUnits), "Discrepancy: " . number_format($recvDiscUnits), '', '', '']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 6: PRODUCT & SALES RETURNS
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 6: PRODUCT & SALES RETURNS']);
+                fputcsv($handle, ['Return ID', 'Date & Time', 'Original Sale ID', 'Customer Name', 'SKU', 'Product Name', 'Returned Qty', 'Refunded Amount (NGN)', 'Reason', 'Received By Staff']);
+                $returnsQuery = $this->getReturnsQuery($request)->orderBy('createdAt', 'desc');
+                $retCount = 0;
+                $retQty = 0;
+                $retRefund = 0;
+                foreach ($returnsQuery->cursor() as $r) {
+                    $retCount++;
+                    $retQty += (float)$r->quantity;
+                    $retRefund += (float)$r->refundAmount;
+                    fputcsv($handle, [
+                        $r->code ?? $r->id,
+                        $r->createdAt,
+                        $r->saleId,
+                        $r->customerName,
+                        $r->productCode,
+                        $r->productName,
+                        $r->quantity,
+                        $r->refundAmount,
+                        $r->reason,
+                        $r->userName
+                    ]);
+                }
+                fputcsv($handle, ['[RETURNS SUMMARY]', "Total Returns: {$retCount}", '', '', '', '', "Returned Units: " . number_format($retQty), "Refund Value: " . number_format($retRefund, 2), '', '']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 7: REFUNDS ISSUED
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 7: REFUNDS ISSUED']);
+                fputcsv($handle, ['Return/Refund ID', 'Date & Time', 'Original Sale ID', 'Customer Name', 'Product Name', 'Refund Amount (NGN)', 'Refund Mode / Reason', 'Processed By']);
+                $refundsQuery = $this->getRefundsQuery($request)->orderBy('createdAt', 'desc');
+                $refCount = 0;
+                $refTotal = 0;
+                foreach ($refundsQuery->cursor() as $r) {
+                    $refCount++;
+                    $refTotal += (float)$r->refundAmount;
+                    fputcsv($handle, [
+                        $r->code ?? $r->id,
+                        $r->createdAt,
+                        $r->saleId,
+                        $r->customerName,
+                        $r->productName,
+                        $r->refundAmount,
+                        $r->reason,
+                        $r->userName
+                    ]);
+                }
+                fputcsv($handle, ['[REFUNDS SUMMARY]', "Total Refunds: {$refCount}", '', '', '', "Total Outflow: " . number_format($refTotal, 2), '', '']);
+                fputcsv($handle, []);
+
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 8: CUSTOMER DEBT RECOVERIES & LEDGER
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 8: CUSTOMER DEBT RECOVERIES & LEDGER']);
+                fputcsv($handle, ['Ledger ID', 'Date & Time', 'Customer Name', 'Customer Phone', 'Transaction Type', 'Amount (NGN)', 'Balance After (NGN)', 'Payment Method', 'Reference No', 'Recorded By', 'Notes']);
+                $debtsQuery = $this->getDebtsQuery($request)->orderBy('created_at', 'desc');
+                $debtsCount = 0;
+                $debtsVolume = 0;
+                foreach ($debtsQuery->cursor() as $d) {
+                    $debtsCount++;
+                    $debtsVolume += (float)$d->amount;
+                    fputcsv($handle, [
+                        $d->id,
+                        $d->created_at,
+                        $d->customer->name ?? 'N/A',
+                        $d->customer->phone ?? 'N/A',
+                        $d->type,
+                        $d->amount,
+                        $d->balance_after,
+                        $d->payment_method ?? 'N/A',
+                        $d->reference_no ?? 'N/A',
+                        $d->recorded_by,
+                        $d->notes ?? ''
+                    ]);
+                }
+                fputcsv($handle, ['[DEBTS SUMMARY]', "Total Entries: {$debtsCount}", '', '', '', "Total Volume: " . number_format($debtsVolume, 2), '', '', '', '', '']);
+                fputcsv($handle, []);
+
+                fputcsv($handle, ['====================================================================================================']);
+                fputcsv($handle, ['END OF REPORT - HYSAM VMPOS UNIVERSAL LEDGERS MASTER AUDIT']);
+                fputcsv($handle, ['====================================================================================================']);
+
+            } elseif ($tab === 'sales') {
                 fputcsv($handle, ['Invoice ID', 'Date & Time', 'Customer Name', 'Customer Phone', 'Items Count', 'Gross Total (NGN)', 'Paid Amount (NGN)', 'Debt Balance (NGN)', 'Payment Status', 'Handover Status', 'Cashier Name']);
                 $query = $this->getSalesQuery($request)->orderBy('createdAt', 'desc');
                 foreach ($query->cursor() as $s) {
@@ -641,7 +899,7 @@ class TransactionController extends Controller
                         $s->id,
                         $s->createdAt,
                         $s->customerName,
-                        $s->customerPhone ?? 'N/A',
+                        $s->customerPhone ?? $s->customer?->phone ?? 'N/A',
                         $s->items->count(),
                         $s->totalAmount,
                         $s->paidAmount,
@@ -780,7 +1038,34 @@ class TransactionController extends Controller
     public function exportJson(Request $request, string $tab)
     {
         $tab = strtolower($tab);
-        $fileName = "hysam_{$tab}_filtered_" . date('Y_m_d_His') . ".json";
+        $fileName = ($tab === 'all')
+            ? "hysam_universal_ledgers_all_tabs_filtered_" . date('Y_m_d_His') . ".json"
+            : "hysam_{$tab}_filtered_" . date('Y_m_d_His') . ".json";
+
+        if ($tab === 'all') {
+            $data = [
+                'metadata' => [
+                    'tab' => 'all',
+                    'report' => 'Hysam Universal History & Ledgers Hub - Master Audit Report',
+                    'generated_at' => now()->toIso8601String(),
+                    'filters_applied' => $request->except(['tab']),
+                ],
+                'data' => [
+                    'sales' => $this->getSalesQuery($request)->orderBy('createdAt', 'desc')->get(),
+                    'stock_in' => $this->getStockInQuery($request)->orderBy('timestamp', 'desc')->get(),
+                    'stock_out' => $this->getStockOutQuery($request)->orderBy('timestamp', 'desc')->get(),
+                    'in_transit' => $this->getInTransitQuery($request)->orderBy('dispatched_at', 'desc')->get(),
+                    'incoming' => $this->getIncomingQuery($request)->orderBy('created_at', 'desc')->get(),
+                    'returns' => $this->getReturnsQuery($request)->orderBy('createdAt', 'desc')->get(),
+                    'refunds' => $this->getRefundsQuery($request)->orderBy('createdAt', 'desc')->get(),
+                    'debts' => $this->getDebtsQuery($request)->orderBy('created_at', 'desc')->get(),
+                ],
+            ];
+
+            return response()->json($data, 200, [
+                'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            ], JSON_PRETTY_PRINT);
+        }
 
         $records = match ($tab) {
             'sales' => $this->getSalesQuery($request)->orderBy('createdAt', 'desc')->get(),

@@ -75,16 +75,16 @@
         <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
                 <span style="font-size: 1.75rem;">📦</span>
-                <h2 style="font-size: 1.5rem; font-weight: 800;">Stock Out & Inventory Adjustments</h2>
+                <h2 style="font-size: 1.5rem; font-weight: 800;">Stock Out & Deductions</h2>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Officially record stock write-offs, damages, expiry, internal store usage, or count corrections to maintain 100% physical count accuracy.
+                Officially record non-sale stock deductions: damages, expiry, internal store usage, loss/shrinkage, or audit count corrections.
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
             @if(auth()->user()?->role !== 'viewer')
                 <button class="btn btn-danger" onclick="openModal('modalStockAdjustment')">
-                    📉 Record Stock Out / Adjustment
+                    📉 Record Stock Out
                 </button>
             @else
                 <span style="font-size: 0.82rem; font-weight: 800; color: #facc15; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); padding: 0.5rem 1rem; border-radius: 10px;">
@@ -92,7 +92,7 @@
                 </span>
             @endif
             <a href="{{ route('stock.index') }}" class="btn btn-secondary">
-                📦 Stock Hub
+                📥 Stock In
             </a>
         </div>
     </div>
@@ -100,11 +100,11 @@
     <!-- Summary KPI Cards -->
     <div class="summary-grid">
         <div class="summary-card">
-            <h4>Stock Out & Adjustment Events</h4>
+            <h4>Stock Out & Deduction Events</h4>
             <div class="val" style="color: #fbbf24;">{{ number_format($totalAdjustmentsCount) }}</div>
         </div>
         <div class="summary-card">
-            <h4>Total Physical Units Adjusted Out</h4>
+            <h4>Total Physical Units Deducted</h4>
             <div class="val" style="color: #f87171;">-{{ number_format($totalUnitsLost) }} units</div>
         </div>
     </div>
@@ -134,19 +134,13 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem;">Stock Out / Reason Type</label>
+                    <label style="font-size: 0.75rem;">Stock Out Category</label>
                     <select name="type">
-                        <option value="">-- All Stock Out Types --</option>
-                        <option value="DAMAGE" {{ request('type') === 'DAMAGE' ? 'selected' : '' }}>💥 Physical Damage / Breakage</option>
-                        <option value="EXPIRED" {{ request('type') === 'EXPIRED' ? 'selected' : '' }}>⏳ Expired / Past Shelf Life</option>
-                        <option value="INTERNAL_USE" {{ request('type') === 'INTERNAL_USE' ? 'selected' : '' }}>🏢 Internal Store Use</option>
-                        <option value="SAMPLE" {{ request('type') === 'SAMPLE' ? 'selected' : '' }}>🎁 Sample / Giveaway</option>
-                        <option value="SHRINKAGE" {{ request('type') === 'SHRINKAGE' ? 'selected' : '' }}>🔍 Stock Shrinkage / Missing</option>
-                        <option value="THEFT" {{ request('type') === 'THEFT' ? 'selected' : '' }}>🚨 Theft / Pilferage</option>
-                        <option value="SUPPLIER_RETURN" {{ request('type') === 'SUPPLIER_RETURN' ? 'selected' : '' }}>🔄 Return to Supplier</option>
-                        <option value="CORRECTION" {{ request('type') === 'CORRECTION' ? 'selected' : '' }}>⚖️ Downward Count Correction</option>
-                        <option value="CUSTOMER_GOODWILL" {{ request('type') === 'CUSTOMER_GOODWILL' ? 'selected' : '' }}>🤝 Customer Replacement</option>
-                        <option value="OTHER" {{ request('type') === 'OTHER' ? 'selected' : '' }}>📝 Other / General</option>
+                        <option value="">-- All Stock Out Categories --</option>
+                        <option value="DAMAGE" {{ request('type') === 'DAMAGE' ? 'selected' : '' }}>💥 Damage & Expiry</option>
+                        <option value="INTERNAL_USE" {{ request('type') === 'INTERNAL_USE' ? 'selected' : '' }}>🏢 Internal Store Use & Samples</option>
+                        <option value="SHRINKAGE" {{ request('type') === 'SHRINKAGE' ? 'selected' : '' }}>🔍 Loss & Shrinkage</option>
+                        <option value="CORRECTION" {{ request('type') === 'CORRECTION' ? 'selected' : '' }}>⚖️ Count Correction & Other</option>
                     </select>
                 </div>
 
@@ -181,7 +175,7 @@
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
             <h3 style="font-size: 1.25rem; font-weight: 800;">
-                Stock Out & Adjustments Audit Log
+                Stock Out & Deductions Audit Log
             </h3>
             <div style="width: 280px;">
                 <input type="text" placeholder="⚡ Live search table..." onkeyup="filterTableRows('adjustmentsTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
@@ -195,7 +189,7 @@
                         <th>Date & Time</th>
                         <th>Branch Shop</th>
                         <th>Product SKU</th>
-                        <th>Stock Out Type</th>
+                        <th>Stock Out Category</th>
                         <th style="color: #f87171;">Qty Deducted</th>
                         <th>Reason / Notes</th>
                         <th>Staff Name</th>
@@ -215,16 +209,16 @@
                             @php
                                 $typeKey = strtoupper($adj->type);
                                 $badgeConfig = match($typeKey) {
-                                    'DAMAGE' => ['class' => 'badge-danger', 'icon' => '💥', 'label' => 'Damage'],
+                                    'DAMAGE' => ['class' => 'badge-danger', 'icon' => '💥', 'label' => 'Damage & Expiry'],
                                     'EXPIRED' => ['class' => 'badge-warning', 'icon' => '⏳', 'label' => 'Expired'],
-                                    'INTERNAL_USE' => ['class' => 'badge-info', 'icon' => '🏢', 'label' => 'Internal Use'],
-                                    'SAMPLE' => ['class' => 'badge-primary', 'icon' => '🎁', 'label' => 'Sample'],
-                                    'SHRINKAGE' => ['class' => 'badge-warning', 'icon' => '🔍', 'label' => 'Shrinkage'],
+                                    'INTERNAL_USE' => ['class' => 'badge-info', 'icon' => '🏢', 'label' => 'Internal Store Use'],
+                                    'SAMPLE' => ['class' => 'badge-primary', 'icon' => '🎁', 'label' => 'Store Sample'],
+                                    'SHRINKAGE' => ['class' => 'badge-warning', 'icon' => '🔍', 'label' => 'Loss & Shrinkage'],
                                     'THEFT' => ['class' => 'badge-danger', 'icon' => '🚨', 'label' => 'Theft / Loss'],
                                     'SUPPLIER_RETURN' => ['class' => 'badge-secondary', 'icon' => '🔄', 'label' => 'Supplier Return'],
-                                    'CORRECTION' => ['class' => 'badge-info', 'icon' => '⚖️', 'label' => 'Correction'],
+                                    'CORRECTION' => ['class' => 'badge-info', 'icon' => '⚖️', 'label' => 'Count Correction'],
                                     'CUSTOMER_GOODWILL' => ['class' => 'badge-success', 'icon' => '🤝', 'label' => 'Replacement'],
-                                    default => ['class' => 'badge-secondary', 'icon' => '📉', 'label' => $adj->type],
+                                    default => ['class' => 'badge-secondary', 'icon' => '📝', 'label' => 'Deduction / Other'],
                                 };
                             @endphp
                             <span class="badge {{ $badgeConfig['class'] }}">
@@ -255,9 +249,9 @@
     <!-- Modal: Record Stock Out / Adjustment -->
     <div id="modalStockAdjustment" class="modal-backdrop" style="display: none;">
         <div class="modal">
-            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">📉 Record Stock Out / Stock Adjustment</h3>
+            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">📉 Record Stock Out</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-                Deduct items from physical inventory count due to damage, expiry, internal store usage, sample, loss, or count correction.
+                Deduct items from physical inventory count due to damage, expiry, internal store usage, loss, or count correction.
             </p>
 
             <form id="adjustmentForm" method="POST" action="{{ route('stock.adjustments.record') }}">
@@ -285,18 +279,12 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Reason / Stock Out Type</label>
+                    <label>Stock Out Category</label>
                     <select name="type" id="adjType" required>
-                        <option value="DAMAGE">💥 Physical Damage / Broken / Defective Goods</option>
-                        <option value="EXPIRED">⏳ Expired / Past Shelf Life</option>
-                        <option value="INTERNAL_USE">🏢 Internal Store Use / Staff Consumption</option>
-                        <option value="SAMPLE">🎁 Promotional Sample / Marketing Giveaway</option>
-                        <option value="SHRINKAGE">🔍 Stock Shrinkage / Missing from Shelf</option>
-                        <option value="THEFT">🚨 Theft / Pilferage / Unaccounted Loss</option>
-                        <option value="SUPPLIER_RETURN">🔄 Return of Defective Batch to Supplier</option>
-                        <option value="CORRECTION">⚖️ Downward Count Correction / Audit Reconciliation</option>
-                        <option value="CUSTOMER_GOODWILL">🤝 Customer Compensation / Goodwill Replacement</option>
-                        <option value="OTHER">📝 Other / General Stock Out (Custom Note)</option>
+                        <option value="DAMAGE">💥 Damage & Expiry (Broken, damaged, spoiled, or expired)</option>
+                        <option value="INTERNAL_USE">🏢 Internal Store Use & Samples (Staff consumption, cleaning, samples)</option>
+                        <option value="SHRINKAGE">🔍 Loss & Shrinkage (Missing shelf stock, theft, shortage)</option>
+                        <option value="CORRECTION">⚖️ Count Correction & Other (Audit reconciliation, supplier return, other)</option>
                     </select>
                 </div>
 
@@ -306,13 +294,13 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Reason Note / Additional Details <span style="font-size: 0.78rem; font-weight: 500; color: var(--text-muted);">(Optional — leave blank to use reason above)</span></label>
+                    <label>Reason Note / Additional Details <span style="font-size: 0.78rem; font-weight: 500; color: var(--text-muted);">(Optional — leave blank to use category above)</span></label>
                     <input type="text" name="reason" id="adjReason" placeholder="Optional: explain incident or leave blank">
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalStockAdjustment')">Cancel</button>
-                    <button type="button" class="btn btn-danger" style="flex: 1;" onclick="confirmAdjustment()">📉 Confirm Stock Out / Deduction</button>
+                    <button type="button" class="btn btn-danger" style="flex: 1;" onclick="confirmAdjustment()">📉 Confirm Stock Out</button>
                 </div>
             </form>
         </div>

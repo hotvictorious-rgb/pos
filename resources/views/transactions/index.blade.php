@@ -27,6 +27,9 @@
         color: var(--text-muted);
         background: transparent;
         border: 1px solid transparent;
+        cursor: pointer;
+        font-family: inherit;
+        outline: none;
         transition: all 0.15s ease-in-out;
     }
 
@@ -68,12 +71,37 @@
         color: var(--text-muted);
         text-decoration: none;
         cursor: pointer;
+        font-family: inherit;
+        outline: none;
         transition: all 0.15s;
     }
     .date-pill.active {
         background: var(--primary);
         color: #fff;
         border-color: var(--primary);
+    }
+
+    .tab-filter-section {
+        display: contents;
+    }
+
+    .ledger-tab-pane {
+        animation: fadeInPane 0.15s ease-in-out;
+    }
+
+    @keyframes fadeInPane {
+        from { opacity: 0; transform: translateY(2px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    #ledgerPanesContainer {
+        position: relative;
+        transition: opacity 0.15s ease;
+    }
+
+    #ledgerPanesContainer.is-loading {
+        opacity: 0.45;
+        pointer-events: none;
     }
 
     .summary-grid {
@@ -182,94 +210,123 @@
         </div>
     </div>
 
-    <!-- 8 Independent Tabs Navigation Bar -->
+    <!-- 8 Independent Tabs Navigation Bar (Instant Client-Side Zero-Reload) -->
     <div class="tab-nav-container">
         <!-- 1. Sales -->
-        <a href="{{ route('transactions.index', ['tab' => 'sales']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('sales')" 
+           id="tab-btn-sales"
            class="tab-btn {{ $activeTab === 'sales' ? 'active' : '' }}">
             <span>💰 Sales Invoices</span>
-            <span class="badge-pill">{{ number_format($totalSalesCount) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-sales">{{ number_format($totalSalesCount) }}</span>
+        </button>
 
         <!-- 2. Stock In -->
-        <a href="{{ route('transactions.index', ['tab' => 'stock_in']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('stock_in')" 
+           id="tab-btn-stock_in"
            class="tab-btn {{ $activeTab === 'stock_in' ? 'active' : '' }}">
             <span>📥 Stock In</span>
-            <span class="badge-pill">{{ number_format($stockInBatches) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-stock_in">{{ number_format($stockInBatches) }}</span>
+        </button>
 
         <!-- 3. Stock Out -->
-        <a href="{{ route('transactions.index', ['tab' => 'stock_out']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('stock_out')" 
+           id="tab-btn-stock_out"
            class="tab-btn {{ $activeTab === 'stock_out' ? 'active' : '' }}">
             <span>📤 Stock Out & Dispatches</span>
-            <span class="badge-pill">{{ number_format($stockOutCount) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-stock_out">{{ number_format($stockOutCount) }}</span>
+        </button>
 
         <!-- 4. In Transit -->
-        <a href="{{ route('transactions.index', ['tab' => 'in_transit']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('in_transit')" 
+           id="tab-btn-in_transit"
            class="tab-btn {{ $activeTab === 'in_transit' ? 'active' : '' }}">
             <span>🚚 In-Transit Buffer</span>
-            <span class="badge-pill">{{ number_format($inTransitCount) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-in_transit">{{ number_format($inTransitCount) }}</span>
+        </button>
 
         <!-- 5. Incoming Transfers -->
-        <a href="{{ route('transactions.index', ['tab' => 'transfers_in']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('transfers_in')" 
+           id="tab-btn-transfers_in"
            class="tab-btn {{ $activeTab === 'transfers_in' ? 'active' : '' }}">
             <span>🏢 Incoming Transfers</span>
-            <span class="badge-pill">{{ number_format($incomingTotal) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-transfers_in">{{ number_format($incomingTotal) }}</span>
+        </button>
 
         <!-- 6. Returns -->
-        <a href="{{ route('transactions.index', ['tab' => 'returns']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('returns')" 
+           id="tab-btn-returns"
            class="tab-btn {{ $activeTab === 'returns' ? 'active' : '' }}">
             <span>🔄 Returns</span>
-            <span class="badge-pill">{{ number_format($returnsCount) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-returns">{{ number_format($returnsCount) }}</span>
+        </button>
 
         <!-- 7. Refunds -->
-        <a href="{{ route('transactions.index', ['tab' => 'refunds']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('refunds')" 
+           id="tab-btn-refunds"
            class="tab-btn {{ $activeTab === 'refunds' ? 'active' : '' }}">
             <span>💸 Customer Refunds</span>
-            <span class="badge-pill">{{ number_format($refundsCount) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-refunds">{{ number_format($refundsCount) }}</span>
+        </button>
 
         <!-- 8. Debts -->
-        <a href="{{ route('transactions.index', ['tab' => 'debts']) }}" 
+        <button type="button" 
+           onclick="switchLedgerTab('debts')" 
+           id="tab-btn-debts"
            class="tab-btn {{ $activeTab === 'debts' ? 'active' : '' }}">
             <span>💳 Debts Ledger</span>
-            <span class="badge-pill">{{ number_format($debtsEntryCount) }}</span>
-        </a>
+            <span class="badge-pill" id="badge-debts">{{ number_format($debtsEntryCount) }}</span>
+        </button>
     </div>
 
     <!-- Multi-Criteria Filter Bar (Adaptive per active tab) -->
     <div class="filter-card">
-        <form method="GET" action="{{ route('transactions.index') }}" id="filterForm">
-            <input type="hidden" name="tab" value="{{ $activeTab }}">
+        <form method="GET" action="{{ route('transactions.index') }}" id="filterForm" onsubmit="handleFilterFormSubmit(event)">
+            <input type="hidden" name="tab" id="activeTabInput" value="{{ $activeTab }}">
+            <input type="hidden" name="date_preset" id="datePresetInput" value="{{ $datePreset }}">
 
-            <!-- Quick Date Pills -->
+            <!-- Quick Date Pills (Zero-Reload AJAX) -->
             <div style="display: flex; gap: 0.4rem; margin-bottom: 0.85rem; flex-wrap: wrap; align-items: center;">
                 <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Quick Dates:</span>
-                <a href="{{ route('transactions.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['tab' => $activeTab, 'date_preset' => 'ALL'])) }}" class="date-pill {{ $datePreset === 'ALL' && !request('from_date') ? 'active' : '' }}">All Time</a>
-                <a href="{{ route('transactions.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['tab' => $activeTab, 'date_preset' => 'TODAY'])) }}" class="date-pill {{ $datePreset === 'TODAY' ? 'active' : '' }}">Today</a>
-                <a href="{{ route('transactions.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['tab' => $activeTab, 'date_preset' => 'YESTERDAY'])) }}" class="date-pill {{ $datePreset === 'YESTERDAY' ? 'active' : '' }}">Yesterday</a>
-                <a href="{{ route('transactions.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['tab' => $activeTab, 'date_preset' => 'THIS_WEEK'])) }}" class="date-pill {{ $datePreset === 'THIS_WEEK' ? 'active' : '' }}">This Week</a>
-                <a href="{{ route('transactions.index', array_merge(request()->except('date_preset', 'from_date', 'to_date'), ['tab' => $activeTab, 'date_preset' => 'THIS_MONTH'])) }}" class="date-pill {{ $datePreset === 'THIS_MONTH' ? 'active' : '' }}">This Month</a>
+                <button type="button" onclick="setQuickDate('ALL', this)" class="date-pill {{ $datePreset === 'ALL' && !request('from_date') ? 'active' : '' }}">All Time</button>
+                <button type="button" onclick="setQuickDate('TODAY', this)" class="date-pill {{ $datePreset === 'TODAY' ? 'active' : '' }}">Today</button>
+                <button type="button" onclick="setQuickDate('YESTERDAY', this)" class="date-pill {{ $datePreset === 'YESTERDAY' ? 'active' : '' }}">Yesterday</button>
+                <button type="button" onclick="setQuickDate('THIS_WEEK', this)" class="date-pill {{ $datePreset === 'THIS_WEEK' ? 'active' : '' }}">This Week</button>
+                <button type="button" onclick="setQuickDate('THIS_MONTH', this)" class="date-pill {{ $datePreset === 'THIS_MONTH' ? 'active' : '' }}">This Month</button>
             </div>
 
             <!-- Filter Inputs Grid -->
             <div class="grid-4" style="gap: 0.75rem;">
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 0.75rem;">From Date</label>
-                    <input type="date" name="from_date" value="{{ request('from_date') }}">
+                    <input type="date" name="from_date" id="inputFromDate" value="{{ request('from_date') }}" onchange="handleCustomDateChange()">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 0.75rem;">To Date</label>
-                    <input type="date" name="to_date" value="{{ request('to_date') }}">
+                    <input type="date" name="to_date" id="inputToDate" value="{{ request('to_date') }}" onchange="handleCustomDateChange()">
                 </div>
 
-                <!-- Tab-Specific Filters -->
-                @if($activeTab === 'sales')
+                @if($warehouses->count() > 1 && (!Auth::user() || !Auth::user()->isBranchScoped()))
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Branch / Warehouse</label>
+                    <select name="warehouse_id">
+                        <option value="ALL">-- All Branches (Consolidated) --</option>
+                        @foreach($warehouses as $wh)
+                            <option value="{{ $wh->id }}" {{ (string)$warehouseId === (string)$wh->id ? 'selected' : '' }}>{{ $wh->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+
+                <!-- TAB 1: SALES FILTERS -->
+                <div id="tab-filters-sales" class="tab-filter-section" style="{{ $activeTab === 'sales' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Payment Status</label>
                         <select name="payment_status">
@@ -288,7 +345,10 @@
                             <option value="UNSUPPLIED" {{ request('delivery_status') === 'UNSUPPLIED' ? 'selected' : '' }}>⏳ Not Supplied (Awaiting Pickup)</option>
                         </select>
                     </div>
-                @elseif($activeTab === 'stock_in')
+                </div>
+
+                <!-- TAB 2: STOCK IN FILTERS -->
+                <div id="tab-filters-stock_in" class="tab-filter-section" style="{{ $activeTab === 'stock_in' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Product SKU</label>
                         <select name="product_id">
@@ -308,7 +368,10 @@
                             @endforeach
                         </select>
                     </div>
-                @elseif($activeTab === 'stock_out')
+                </div>
+
+                <!-- TAB 3: STOCK OUT FILTERS -->
+                <div id="tab-filters-stock_out" class="tab-filter-section" style="{{ $activeTab === 'stock_out' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Outflow Event Type</label>
                         <select name="movement_type">
@@ -330,7 +393,10 @@
                             @endforeach
                         </select>
                     </div>
-                @elseif($activeTab === 'in_transit')
+                </div>
+
+                <!-- TAB 4: IN TRANSIT FILTERS -->
+                <div id="tab-filters-in_transit" class="tab-filter-section" style="{{ $activeTab === 'in_transit' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Carrier / Driver</label>
                         <select name="carrier_name">
@@ -350,7 +416,10 @@
                             @endforeach
                         </select>
                     </div>
-                @elseif($activeTab === 'transfers_in')
+                </div>
+
+                <!-- TAB 5: INCOMING TRANSFERS FILTERS -->
+                <div id="tab-filters-transfers_in" class="tab-filter-section" style="{{ $activeTab === 'transfers_in' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Transfer Status</label>
                         <select name="transfer_status">
@@ -370,7 +439,10 @@
                             @endforeach
                         </select>
                     </div>
-                @elseif($activeTab === 'returns')
+                </div>
+
+                <!-- TAB 6: RETURNS FILTERS -->
+                <div id="tab-filters-returns" class="tab-filter-section" style="{{ $activeTab === 'returns' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Return Reason</label>
                         <select name="return_reason">
@@ -391,7 +463,10 @@
                             @endforeach
                         </select>
                     </div>
-                @elseif($activeTab === 'refunds')
+                </div>
+
+                <!-- TAB 7: REFUNDS FILTERS -->
+                <div id="tab-filters-refunds" class="tab-filter-section" style="{{ $activeTab === 'refunds' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Min Refund (₦)</label>
                         <input type="number" name="min_amount" value="{{ request('min_amount') }}" placeholder="e.g. 5000">
@@ -406,7 +481,10 @@
                             @endforeach
                         </select>
                     </div>
-                @elseif($activeTab === 'debts')
+                </div>
+
+                <!-- TAB 8: DEBTS FILTERS -->
+                <div id="tab-filters-debts" class="tab-filter-section" style="{{ $activeTab === 'debts' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Ledger Entry Type</label>
                         <select name="ledger_type">
@@ -425,27 +503,31 @@
                             <option value="POS" {{ request('payment_method') === 'POS' ? 'selected' : '' }}>POS Terminal</option>
                         </select>
                     </div>
-                @endif
+                </div>
             </div>
 
+            <!-- Bottom Action Row -->
             <div style="display: flex; gap: 0.75rem; margin-top: 0.85rem; flex-wrap: wrap; align-items: center;">
                 <div style="flex: 1; min-width: 250px;">
-                    <input type="text" name="search" value="{{ request('search') }}" placeholder="🔍 Search references, customer names, SKUs, drivers across database...">
+                    <input type="text" name="search" id="inputMainSearch" value="{{ request('search') }}" placeholder="🔍 Search references, customer names, SKUs, drivers across database...">
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="padding: 0.65rem 1.25rem; font-weight: 700;">
                     🔍 Apply Filters
                 </button>
 
-                <a href="{{ route('transactions.index', ['tab' => $activeTab]) }}" class="btn btn-secondary" style="padding: 0.65rem 1rem;">
+                <button type="button" onclick="resetLedgerFilters()" class="btn btn-secondary" style="padding: 0.65rem 1rem;">
                     Reset
-                </a>
+                </button>
 
                 <div style="display: flex; gap: 0.5rem; margin-left: auto; flex-wrap: wrap;">
-                    <a href="{{ route('transactions.export.csv', array_merge(request()->all(), ['tab' => $activeTab])) }}" class="btn btn-success" style="padding: 0.65rem 1.15rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.35rem; box-shadow: 0 4px 12px rgba(22,163,74,0.35);">
+                    <a id="btnExportAllCsv" href="{{ route('transactions.export.csv', array_merge(request()->all(), ['tab' => 'all'])) }}" class="btn btn-primary" style="padding: 0.65rem 1.15rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); border: 1px solid #4338ca; box-shadow: 0 4px 12px rgba(79,70,229,0.35); text-decoration: none;" title="Export all 8 tabs consolidated into one Master CSV with current filters">
+                        <span>📦</span> Export All Tabs (Master CSV)
+                    </a>
+                    <a id="btnExportCsv" href="{{ route('transactions.export.csv', array_merge(request()->all(), ['tab' => $activeTab])) }}" class="btn btn-success" style="padding: 0.65rem 1.15rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.35rem; box-shadow: 0 4px 12px rgba(22,163,74,0.35);">
                         <span>📥</span> Export Filtered CSV
                     </a>
-                    <a href="{{ route('transactions.export.json', array_merge(request()->all(), ['tab' => $activeTab])) }}" class="btn btn-secondary" style="padding: 0.65rem 1.15rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <a id="btnExportJson" href="{{ route('transactions.export.json', array_merge(request()->all(), ['tab' => $activeTab])) }}" class="btn btn-secondary" style="padding: 0.65rem 1.15rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.35rem;">
                         <span>📄</span> Export JSON
                     </a>
                 </div>
@@ -454,766 +536,11 @@
     </div>
 
     <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 1: SALES INVOICES HISTORY -->
+    <!-- ALL 8 TAB PANES CONTAINER (Pre-rendered for Instant Switching) -->
     <!-- ───────────────────────────────────────────────────────────── -->
-    @if($activeTab === 'sales')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Total Invoices</h4>
-                <div class="val" style="color: #60a5fa;">{{ number_format($totalSalesCount) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Total Gross Sales</h4>
-                <div class="val" style="color: #f8fafc;">₦{{ number_format($totalRevenue, 0) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Cash / POS Collected</h4>
-                <div class="val" style="color: #4ade80;">₦{{ number_format($totalPaid, 0) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Outstanding Debt Created</h4>
-                <div class="val" style="color: #f87171;">₦{{ number_format($totalDebt, 0) }}</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" id="liveSearchSales" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('salesTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
-                        📥 Export CSV
-                    </a>
-                    <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
-                        📊 Export JSON
-                    </a>
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="salesTable">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Invoice Ref</th>
-                            <th>Customer</th>
-                            <th>Items Count</th>
-                            <th>Total Bill</th>
-                            <th>Paid Amount</th>
-                            <th>Payment Status</th>
-                            <th>Handover Status</th>
-                            <th>Cashier</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($sales as $sale)
-                        @php
-                            $balance = max(0, $sale->totalAmount - $sale->paidAmount);
-                            $isSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
-                        @endphp
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($sale->createdAt)) }}
-                            </td>
-                            <td>
-                                <strong style="color: #93c5fd;">#{{ substr($sale->id, 0, 8) }}</strong>
-                            </td>
-                            <td>
-                                <strong>{{ $sale->customerName ?: 'Walk-in Customer' }}</strong>
-                                @if($sale->customerPhone)
-                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $sale->customerPhone }}</div>
-                                @endif
-                            </td>
-                            <td><span class="badge badge-info">{{ count($sale->items ?? []) }} items</span></td>
-                            <td style="font-weight: 800; font-size: 1rem; color: #f8fafc;">
-                                ₦{{ number_format($sale->totalAmount, 0) }}
-                            </td>
-                            <td style="font-weight: 700; color: #4ade80;">
-                                ₦{{ number_format($sale->paidAmount, 0) }}
-                            </td>
-                            <td>
-                                @if($sale->paidAmount >= $sale->totalAmount)
-                                    <span class="badge badge-success">✓ Paid</span>
-                                @elseif($sale->paidAmount > 0)
-                                    <span class="badge badge-warning">💳 Part-Paid (Owes ₦{{ number_format($balance, 0) }})</span>
-                                @else
-                                    <span class="badge badge-danger">🔴 Unpaid (Owes ₦{{ number_format($balance, 0) }})</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if($isSupplied)
-                                    <span class="badge badge-success">🟢 Supplied</span>
-                                @else
-                                    <span class="badge badge-warning">⏳ Awaiting Pickup</span>
-                                @endif
-                            </td>
-                            <td style="font-size: 0.85rem; color: #cbd5e1;">{{ $sale->userName ?: 'Cashier' }}</td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <a href="{{ route('pos.receipt', $sale->id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" target="_blank">
-                                        🧾 Receipt
-                                    </a>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewSaleDetails({{ json_encode($sale) }})">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="10" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No sales invoices found matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $sales->links() }}
-            </div>
-        </div>
-
-    <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 2: STOCK IN HISTORY -->
-    <!-- ───────────────────────────────────────────────────────────── -->
-    @elseif($activeTab === 'stock_in')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Stock In Batches</h4>
-                <div class="val" style="color: #4ade80;">{{ number_format($stockInBatches) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Total Physical Units Added</h4>
-                <div class="val" style="color: #4ade80;">+{{ number_format($stockInUnits) }} units</div>
-            </div>
-            <div class="summary-card">
-                <h4>Distinct SKUs Stocked</h4>
-                <div class="val" style="color: #60a5fa;">{{ number_format($stockInProducts) }} items</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('stockInTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'stock'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
-                        📥 Export CSV
-                    </a>
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="stockInTable">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Product SKU</th>
-                            <th>Quantity Added</th>
-                            <th>Description / Supplier</th>
-                            <th>Received By</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($stockInLogs as $log)
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($log->timestamp)) }}
-                            </td>
-                            <td><strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $log->productCode ?: $log->productName }}</strong></td>
-                            <td style="font-weight: 800; font-size: 1.05rem; color: #4ade80;">
-                                +{{ number_format($log->quantity) }} units
-                            </td>
-                            <td style="color: #cbd5e1;">{{ $log->description ?: 'Supplier Arrival / Purchase' }}</td>
-                            <td><strong>{{ $log->userName ?: 'Storekeeper' }}</strong></td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('GOODS RECEIVED NOTE (GRN)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Source', '{{ addslashes($log->description ?: 'Official Supplier') }}', 'STOCK INFLOW', '#22c55e', [{name: '{{ addslashes($log->productCode ?: $log->productName) }}', qty: '{{ $log->quantity }} units', note: 'Added directly to physical shelf count'}], 'Total Units: +{{ $log->quantity }} units', '{{ addslashes($log->userName ?: 'Storekeeper') }}', 'Physical stock verified and added to shelf balance.')">
-                                        📄 Print GRN
-                                    </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Goods Received Entry (Stock In)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Description', '{{ addslashes($log->description ?: 'Supplier Arrival') }}', 'Stock Inflow', '#22c55e', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Quantity Added', val: '+{{ $log->quantity }} units', color: '#4ade80'}, {label: 'Officer', val: '{{ addslashes($log->userName ?: 'Storekeeper') }}'}], 'Physical inventory count increased by {{ $log->quantity }} units.')">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="6" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No stock in entries found matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $stockInLogs->links() }}
-            </div>
-        </div>
-
-    <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 3: STOCK OUT & DISPATCHES HISTORY -->
-    <!-- ───────────────────────────────────────────────────────────── -->
-    @elseif($activeTab === 'stock_out')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Total Outflow Events</h4>
-                <div class="val" style="color: #f87171;">{{ number_format($stockOutCount) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Total Physical Units Out</h4>
-                <div class="val" style="color: #f87171;">-{{ number_format($stockOutUnits) }} units</div>
-            </div>
-            <div class="summary-card">
-                <h4>Pickup Deliveries</h4>
-                <div class="val" style="color: #4ade80;">{{ number_format($stockOutFulfilled) }} orders</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('stockOutTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'stock'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
-                        📥 Export CSV
-                    </a>
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="stockOutTable">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Event Type</th>
-                            <th>Product SKU</th>
-                            <th>Units Out</th>
-                            <th>Description</th>
-                            <th>Authorized Officer</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($stockOutLogs as $log)
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($log->timestamp)) }}
-                            </td>
-                            <td>
-                                @if(str_contains($log->type, 'DISPATCH_FULFILLED'))
-                                    <span class="badge badge-success">📦 Customer Pickup</span>
-                                @elseif(str_contains($log->type, 'TRANSFER_OUT'))
-                                    <span class="badge badge-info">🚚 Transfer Dispatch</span>
-                                @elseif(str_contains($log->type, 'DAMAGE'))
-                                    <span class="badge badge-danger">📉 Damage Write-off</span>
-                                @elseif(str_contains($log->type, 'EXPIRED'))
-                                    <span class="badge badge-warning">⏰ Expired Stock</span>
-                                @elseif(str_contains($log->type, 'LOST'))
-                                    <span class="badge badge-secondary">🔍 Lost / Audit</span>
-                                @else
-                                    <span class="badge badge-secondary">{{ $log->type }}</span>
-                                @endif
-                            </td>
-                            <td><strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $log->productCode ?: $log->productName }}</strong></td>
-                            <td style="font-weight: 800; font-size: 1.05rem; color: #f87171;">
-                                {{ number_format($log->quantity) }} units
-                            </td>
-                            <td style="color: #cbd5e1;">{{ $log->description }}</td>
-                            <td><strong>{{ $log->userName }}</strong></td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('STOCK DISPATCH & OUTFLOW SLIP', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Outflow Type', '{{ addslashes($log->type) }}', 'PHYSICAL OUTFLOW', '#ef4444', [{name: '{{ addslashes($log->productCode ?: $log->productName) }}', qty: '-{{ $log->quantity }} units', note: '{{ addslashes($log->description) }}'}], 'Total Outflow: -{{ $log->quantity }} units', '{{ addslashes($log->userName) }}', 'Goods officially dispatched from physical shelf inventory.')">
-                                        📄 Print Slip
-                                    </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Stock Outflow Record', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Event Type', '{{ addslashes($log->type) }}', 'Stock Outflow', '#ef4444', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Deducted Units', val: '-{{ $log->quantity }} units', color: '#f87171'}, {label: 'Description', val: '{{ addslashes($log->description) }}'}, {label: 'Authorized By', val: '{{ addslashes($log->userName) }}'}], 'Physical count reduced by {{ $log->quantity }} units.')">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No stock outflow records found matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $stockOutLogs->links() }}
-            </div>
-        </div>
-
-    <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 4: IN-TRANSIT BUFFER (ON VEHICLES) -->
-    <!-- ───────────────────────────────────────────────────────────── -->
-    @elseif($activeTab === 'in_transit')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Active In-Transit Shipments</h4>
-                <div class="val" style="color: #fbbf24;">{{ number_format($inTransitCount) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Units on Vehicles Moving Between Shops</h4>
-                <div class="val" style="color: #fbbf24;">{{ number_format($inTransitUnits) }} units</div>
-            </div>
-            <div class="summary-card">
-                <h4>Assigned Drivers / Carriers</h4>
-                <div class="val" style="color: #60a5fa;">{{ number_format($inTransitCarriers) }}</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('inTransitTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
-                        📥 Export CSV
-                    </a>
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="inTransitTable">
-                    <thead>
-                        <tr>
-                            <th>Dispatched Date</th>
-                            <th>Waybill Ref</th>
-                            <th>Source Branch (Origin)</th>
-                            <th>Destination Branch</th>
-                            <th>Driver / Carrier</th>
-                            <th>Items Count</th>
-                            <th>Dispatched Units</th>
-                            <th>Dispatched By</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($inTransitTransfers as $trf)
-                        @php
-                            $totalUnits = $trf->items->sum('dispatched_qty');
-                        @endphp
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($trf->created_at)) }}
-                            </td>
-                            <td><strong style="color: #93c5fd;">{{ $trf->transfer_no }}</strong></td>
-                            <td>🏢 {{ $trf->source->name ?? 'Origin Branch' }}</td>
-                            <td>🏪 <strong>{{ $trf->destination->name ?? 'Destination' }}</strong></td>
-                            <td>{{ $trf->carrier_name }}</td>
-                            <td><span class="badge badge-info">{{ count($trf->items) }} SKUs</span></td>
-                            <td style="font-weight: 800; color: #fbbf24; font-size: 1.05rem;">
-                                {{ number_format($totalUnits) }} units
-                            </td>
-                            <td>{{ $trf->dispatched_by }}</td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <a href="{{ route('stock.waybill', $trf->id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" target="_blank">
-                                        📄 Waybill
-                                    </a>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewTransferDetails({{ json_encode($trf) }})">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="9" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No shipments currently in-transit matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $inTransitTransfers->links() }}
-            </div>
-        </div>
-
-    <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 5: INCOMING TRANSFERS & COUNT VERIFICATIONS HISTORY -->
-    <!-- ───────────────────────────────────────────────────────────── -->
-    @elseif($activeTab === 'transfers_in')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Total Transfers Received</h4>
-                <div class="val" style="color: #4ade80;">{{ number_format($incomingReceived) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Total Units Verified & Added</h4>
-                <div class="val" style="color: #4ade80;">+{{ number_format($incomingUnits) }} units</div>
-            </div>
-            <div class="summary-card">
-                <h4>Discrepancy Alerts</h4>
-                <div class="val" style="color: #f87171;">{{ number_format($incomingDiscrepancies) }}</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('incomingTransfersTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
-                        📥 Export CSV
-                    </a>
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="incomingTransfersTable">
-                    <thead>
-                        <tr>
-                            <th>Date Dispatched</th>
-                            <th>Transfer Waybill</th>
-                            <th>Origin Branch</th>
-                            <th>Receiving Branch</th>
-                            <th>Carrier Name</th>
-                            <th>Status</th>
-                            <th>Dispatched</th>
-                            <th>Counted</th>
-                            <th>Missing Variance</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($incomingTransfers as $trf)
-                        @php
-                            $dispUnits = $trf->items->sum('dispatched_qty');
-                            $recvUnits = $trf->items->sum('received_qty');
-                            $discUnits = $trf->items->sum('discrepancy_qty');
-                        @endphp
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($trf->dispatched_at ?: $trf->created_at)) }}
-                            </td>
-                            <td><strong style="color: #93c5fd;">{{ $trf->transfer_no }}</strong></td>
-                            <td>🏢 {{ $trf->source->name ?? 'Shop A' }}</td>
-                            <td>🏪 {{ $trf->destination->name ?? 'Shop B' }}</td>
-                            <td>{{ $trf->carrier_name }}</td>
-                            <td>
-                                @if($trf->status === 'RECEIVED')
-                                    <span class="badge badge-success">✓ Received & Verified</span>
-                                @elseif($trf->status === 'DISCREPANCY')
-                                    <span class="badge badge-danger">🚨 Variance / Missing</span>
-                                @else
-                                    <span class="badge badge-warning">🚚 In-Transit / Pending Count</span>
-                                @endif
-                            </td>
-                            <td style="font-weight: 700;">{{ number_format($dispUnits) }}</td>
-                            <td style="font-weight: 700; color: #4ade80;">{{ $trf->status === 'DISPATCHED' ? '-' : number_format($recvUnits) }}</td>
-                            <td>
-                                @if($discUnits > 0)
-                                    <strong style="color: #f87171;">{{ number_format($discUnits) }} units MISSING</strong>
-                                @else
-                                    <span style="color: #4ade80;">0 Variance</span>
-                                @endif
-                            </td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <a href="{{ route('stock.waybill', $trf->id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" target="_blank">
-                                        📄 Waybill
-                                    </a>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewTransferDetails({{ json_encode($trf) }})">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="10" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No incoming transfer records found matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $incomingTransfers->links() }}
-            </div>
-        </div>
-
-    <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 6: RETURNS & SHELF RESTITUTIONS HISTORY -->
-    <!-- ───────────────────────────────────────────────────────────── -->
-    @elseif($activeTab === 'returns')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Total Return Cases</h4>
-                <div class="val" style="color: #fbbf24;">{{ number_format($returnsCount) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Units Restocked to Shelves</h4>
-                <div class="val" style="color: #4ade80;">+{{ number_format($returnedUnits) }} units</div>
-            </div>
-            <div class="summary-card">
-                <h4>Total Restituted Value</h4>
-                <div class="val" style="color: #f8fafc;">₦{{ number_format($returnedValue, 0) }}</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('returnsTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="returnsTable">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Return Ref</th>
-                            <th>Sale Invoice #</th>
-                            <th>Customer</th>
-                            <th>Restocked Items</th>
-                            <th>Refund Amount</th>
-                            <th>Reason for Return</th>
-                            <th>Processed By</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($salesReturns as $ret)
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($ret->createdAt)) }}
-                            </td>
-                            <td><strong style="color: #fbbf24;">{{ $ret->code }}</strong></td>
-                            <td><strong style="color: #93c5fd;">#{{ substr($ret->saleId, 0, 8) }}</strong></td>
-                            <td><strong>{{ $ret->customerName ?: 'Walk-in Customer' }}</strong></td>
-                            <td><span class="badge badge-info">{{ $ret->productName }} ({{ $ret->quantity }} units)</span></td>
-                            <td style="font-weight: 800; font-size: 1rem; color: #4ade80;">
-                                ₦{{ number_format($ret->refundAmount, 0) }}
-                            </td>
-                            <td style="color: #cbd5e1;">{{ $ret->reason }}</td>
-                            <td>{{ $ret->userName }}</td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('SALES RETURN & RESTOCK SLIP', '{{ $ret->code }}', '{{ date('d M Y, h:i A', strtotime($ret->createdAt)) }}', 'Customer', '{{ addslashes($ret->customerName ?: 'Walk-in') }}', 'RESTOCK & REFUND', '#f59e0b', [{name: '{{ addslashes($ret->productName) }}', qty: '{{ $ret->quantity }} units', note: 'Restocked to shelf. Ref Original Sale #{{ substr($ret->saleId, 0, 8) }}'}], 'Refund Total: ₦{{ number_format($ret->refundAmount, 0) }}', '{{ addslashes($ret->userName) }}', 'Reason: {{ addslashes($ret->reason) }}')">
-                                        📄 Print Slip
-                                    </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Sales Return Record', '{{ $ret->code }}', '{{ date('d M Y, h:i A', strtotime($ret->createdAt)) }}', 'Customer', '{{ addslashes($ret->customerName ?: 'Customer') }}', 'Return & Restock', '#f59e0b', [{label: 'Original Sale Invoice', val: '#{{ substr($ret->saleId, 0, 8) }}'}, {label: 'Product Restocked', val: '{{ addslashes($ret->productName) }}'}, {label: 'Restocked Units', val: '+{{ $ret->quantity }} units', color: '#4ade80'}, {label: 'Refund Amount', val: '₦{{ number_format($ret->refundAmount, 0) }}', color: '#fbbf24'}, {label: 'Reason', val: '{{ addslashes($ret->reason) }}'}, {label: 'Officer', val: '{{ addslashes($ret->userName) }}'}], 'Items verified and physically restored to inventory.')">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="9" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No sales return records found matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $salesReturns->links() }}
-            </div>
-        </div>
-
-    <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 7: REFUNDS & FINANCIAL REVERSALS HISTORY -->
-    <!-- ───────────────────────────────────────────────────────────── -->
-    @elseif($activeTab === 'refunds')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Total Refunds Processed</h4>
-                <div class="val" style="color: #f87171;">{{ number_format($refundsCount) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Total Financial Refund Sum</h4>
-                <div class="val" style="color: #f87171;">₦{{ number_format($totalRefundAmount, 0) }}</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('refundsTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="refundsTable">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Return Ref</th>
-                            <th>Original Invoice</th>
-                            <th>Customer Name</th>
-                            <th>Refund Amount</th>
-                            <th>Reason / Description</th>
-                            <th>Authorized Officer</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($refundRecords as $ref)
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($ref->createdAt)) }}
-                            </td>
-                            <td><strong style="color: #fbbf24;">{{ $ref->code }}</strong></td>
-                            <td><strong style="color: #93c5fd;">#{{ substr($ref->saleId, 0, 8) }}</strong></td>
-                            <td><strong>{{ $ref->customerName ?: 'Customer' }}</strong></td>
-                            <td style="font-weight: 800; font-size: 1.05rem; color: #f87171;">
-                                ₦{{ number_format($ref->refundAmount, 0) }}
-                            </td>
-                            <td style="color: #cbd5e1;">{{ $ref->reason }}</td>
-                            <td><strong>{{ $ref->userName }}</strong></td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('OFFICIAL REFUND VOUCHER', 'REF-{{ substr(md5($ref->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($ref->createdAt)) }}', 'Beneficiary (Customer)', '{{ addslashes($ref->customerName ?: 'Customer') }}', 'CASH REFUND', '#ef4444', [{name: 'Refund Payout for Invoice #{{ substr($ref->saleId, 0, 8) }}', qty: '1 event', note: '{{ addslashes($ref->reason) }}'}], 'Total Refunded: ₦{{ number_format($ref->refundAmount, 0) }}', '{{ addslashes($ref->userName) }}', 'Paid out in full from cash drawer.')">
-                                        📄 Print Voucher
-                                    </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Financial Refund Record', 'REF-{{ substr(md5($ref->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($ref->createdAt)) }}', 'Beneficiary', '{{ addslashes($ref->customerName ?: 'Customer') }}', 'Cash Refund', '#ef4444', [{label: 'Original Sale Invoice', val: '#{{ substr($ref->saleId, 0, 8) }}'}, {label: 'Refund Amount', val: '₦{{ number_format($ref->refundAmount, 0) }}', color: '#f87171'}, {label: 'Reason', val: '{{ addslashes($ref->reason) }}'}, {label: 'Authorized Officer', val: '{{ addslashes($ref->userName) }}'}], 'Financial payout logged to cash reconciliation register.')">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No customer refunds recorded matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $refundRecords->links() }}
-            </div>
-        </div>
-
-    <!-- ───────────────────────────────────────────────────────────── -->
-    <!-- TAB 8: CUSTOMER DEBTS & REPAYMENT LEDGER HISTORY -->
-    <!-- ───────────────────────────────────────────────────────────── -->
-    @elseif($activeTab === 'debts')
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h4>Total Repayments Collected</h4>
-                <div class="val" style="color: #4ade80;">₦{{ number_format($totalRepayments, 0) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Credit / Debt Incurred</h4>
-                <div class="val" style="color: #fbbf24;">₦{{ number_format($totalDebtCreated, 0) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Current Total Open Debt</h4>
-                <div class="val" style="color: #f87171;">₦{{ number_format($totalOpenDebt, 0) }}</div>
-            </div>
-            <div class="summary-card">
-                <h4>Ledger Entries</h4>
-                <div class="val" style="color: #60a5fa;">{{ number_format($debtsEntryCount) }}</div>
-            </div>
-        </div>
-
-        <div class="table-card">
-            <div class="table-top-bar">
-                <div style="flex: 1; max-width: 320px;">
-                    <input type="text" placeholder="⚡ Live filter rows on this page..." onkeyup="filterTableRows('debtsTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
-                        📥 Export CSV
-                    </a>
-                </div>
-            </div>
-
-            <div class="table-wrap">
-                <table id="debtsTable">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Customer Name</th>
-                            <th>Transaction Type</th>
-                            <th>Amount</th>
-                            <th>Balance Remaining After</th>
-                            <th>Payment Method / Ref</th>
-                            <th>Recorded By</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($debtLedgers as $entry)
-                        <tr>
-                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
-                                {{ date('d M Y, h:i A', strtotime($entry->created_at)) }}
-                            </td>
-                            <td>
-                                <strong>{{ $entry->customer->name ?? 'Customer' }}</strong>
-                                @if($entry->customer && $entry->customer->phone)
-                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $entry->customer->phone }}</div>
-                                @endif
-                            </td>
-                            <td>
-                                @if($entry->type === 'PAYMENT')
-                                    <span class="badge badge-success">💵 Part Payment</span>
-                                @elseif($entry->type === 'INVOICE')
-                                    <span class="badge badge-danger">💳 Debt Incurred</span>
-                                @elseif($entry->type === 'RETURN_CREDIT')
-                                    <span class="badge badge-info">🔄 Return Offset</span>
-                                @else
-                                    <span class="badge badge-secondary">{{ $entry->type }}</span>
-                                @endif
-                            </td>
-                            <td style="font-weight: 800; font-size: 1rem; color: {{ $entry->type === 'PAYMENT' ? '#4ade80' : '#f87171' }};">
-                                {{ $entry->type === 'PAYMENT' ? '-' : '+' }}₦{{ number_format($entry->amount, 0) }}
-                            </td>
-                            <td style="font-weight: 700; color: {{ $entry->balance_after > 0 ? '#f87171' : '#4ade80' }};">
-                                ₦{{ number_format($entry->balance_after, 0) }}
-                            </td>
-                            <td><span class="badge badge-info">{{ $entry->payment_method ?: 'N/A' }}</span></td>
-                            <td>{{ $entry->recorded_by }}</td>
-                            <td>
-                                <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('CUSTOMER PAYMENT RECEIPT', 'REC-{{ substr(md5($entry->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($entry->created_at)) }}', 'Customer', '{{ addslashes($entry->customer->name ?? 'Customer') }}', '{{ $entry->type }}', '#22c55e', [{name: 'Payment via {{ $entry->payment_method ?: 'CASH' }} (Ref: {{ $entry->reference_no ?: 'Standard' }})', qty: '1 entry', note: 'New Balance Owed: ₦{{ number_format($entry->balance_after, 0) }}'}], 'Amount Paid: ₦{{ number_format($entry->amount, 0) }}', '{{ addslashes($entry->recorded_by) }}', 'Customer ledger balance updated.')">
-                                        📄 Print Receipt
-                                    </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Customer Debtor Statement Entry', 'REC-{{ substr(md5($entry->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($entry->created_at)) }}', 'Customer Name', '{{ addslashes($entry->customer->name ?? 'Customer') }}', '{{ $entry->type }}', '#22c55e', [{label: 'Transaction Type', val: '{{ $entry->type }}'}, {label: 'Amount Paid', val: '₦{{ number_format($entry->amount, 0) }}', color: '{{ $entry->type === 'PAYMENT' ? '#4ade80' : '#f87171' }}'}, {label: 'Balance Remaining After', val: '₦{{ number_format($entry->balance_after, 0) }}', color: '#fbbf24'}, {label: 'Payment Method', val: '{{ $entry->payment_method ?: 'N/A' }}'}, {label: 'Cashier / Officer', val: '{{ addslashes($entry->recorded_by) }}'}, {label: 'Notes', val: '{{ addslashes($entry->notes ?: 'None') }}'}], 'Ledger balance recalculated automatically.')">
-                                        🔍 Details
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                                No debt ledger records found matching filters.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top: 1.25rem;">
-                {{ $debtLedgers->links() }}
-            </div>
-        </div>
-    @endif
+    <div id="ledgerPanesContainer">
+        @include('transactions.partials.panes')
+    </div>
 
     <!-- ───────────────────────────────────────────────────────────── -->
     <!-- MODALS: SALES DETAILS & UNIVERSAL RECORD DETAILS -->
@@ -1304,6 +631,242 @@
 
 @push('scripts')
 <script>
+let currentAbortController = null;
+
+/**
+ * Instant Client-Side Zero-Reload Tab Switching (0ms)
+ */
+function switchLedgerTab(tabId) {
+    // 1. Update Tab Navigation Buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.getElementById('tab-btn-' + tabId);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    // 2. Switch Tab Panes in DOM
+    document.querySelectorAll('.ledger-tab-pane').forEach(p => p.style.display = 'none');
+    const activePane = document.getElementById('pane-' + tabId);
+    if (activePane) activePane.style.display = 'block';
+
+    // 3. Switch Tab-Specific Filter Dropdowns
+    document.querySelectorAll('.tab-filter-section').forEach(f => f.style.display = 'none');
+    const activeFilter = document.getElementById('tab-filters-' + tabId);
+    if (activeFilter) activeFilter.style.display = 'contents';
+
+    // 4. Update hidden input for active tab
+    const tabInput = document.getElementById('activeTabInput');
+    if (tabInput) tabInput.value = tabId;
+
+    // 5. Update browser address bar seamlessly without reload
+    const url = new URL(window.location);
+    url.searchParams.set('tab', tabId);
+    window.history.replaceState({ tab: tabId }, '', url);
+
+    // 6. Update Export CSV and JSON URLs
+    updateExportUrls(tabId);
+}
+
+/**
+ * Handle Quick Date Preset Selection with Smooth Background Fetch
+ */
+function setQuickDate(preset, btn) {
+    document.querySelectorAll('.date-pill').forEach(p => p.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    const fromInput = document.getElementById('inputFromDate');
+    const toInput = document.getElementById('inputToDate');
+    if (fromInput) fromInput.value = '';
+    if (toInput) toInput.value = '';
+
+    const presetInput = document.getElementById('datePresetInput');
+    if (presetInput) presetInput.value = preset;
+
+    fetchLedgerData();
+}
+
+/**
+ * When operator manually edits custom date inputs, reset date pills
+ */
+function handleCustomDateChange() {
+    document.querySelectorAll('.date-pill').forEach(p => p.classList.remove('active'));
+    const presetInput = document.getElementById('datePresetInput');
+    if (presetInput) presetInput.value = '';
+}
+
+/**
+ * Intercept standard form submission for smooth AJAX filtering
+ */
+function handleFilterFormSubmit(e) {
+    e.preventDefault();
+    fetchLedgerData();
+}
+
+/**
+ * Reset filters without losing the current tab
+ */
+function resetLedgerFilters() {
+    const activeTab = document.getElementById('activeTabInput').value || 'sales';
+    const form = document.getElementById('filterForm');
+    form.reset();
+
+    document.getElementById('activeTabInput').value = activeTab;
+    document.getElementById('datePresetInput').value = 'ALL';
+
+    document.querySelectorAll('.date-pill').forEach(p => p.classList.remove('active'));
+    const allPill = document.querySelector('.date-pill');
+    if (allPill) allPill.classList.add('active');
+
+    fetchLedgerData();
+}
+
+/**
+ * Asynchronous Background Fetch Engine (Zero Reload & Race Condition Safe)
+ */
+function fetchLedgerData(customParams = null) {
+    const form = document.getElementById('filterForm');
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+        if (value !== '' && value !== null) {
+            params.set(key, value);
+        }
+    }
+
+    if (customParams) {
+        for (const [key, value] of Object.entries(customParams)) {
+            if (value !== '' && value !== null) {
+                params.set(key, value);
+            } else {
+                params.delete(key);
+            }
+        }
+    }
+
+    const currentTab = document.getElementById('activeTabInput').value || 'sales';
+    params.set('tab', currentTab);
+
+    // Abort pending in-flight request if user rapidly clicks
+    if (currentAbortController) {
+        currentAbortController.abort();
+    }
+    currentAbortController = new AbortController();
+
+    const targetUrl = '{{ route("transactions.index") }}?' + params.toString();
+    const panesContainer = document.getElementById('ledgerPanesContainer');
+
+    if (panesContainer) {
+        panesContainer.classList.add('is-loading');
+    }
+
+    fetch(targetUrl, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-Partial-Update': 'true'
+        },
+        signal: currentAbortController.signal
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Network error: ' + response.status);
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            // 1. Update tab count badge pills
+            if (data.counts) {
+                for (const [tKey, tCount] of Object.entries(data.counts)) {
+                    const badge = document.getElementById('badge-' + tKey);
+                    if (badge) badge.textContent = tCount;
+                }
+            }
+
+            // 2. Replace tab panes HTML container
+            if (data.panes_html && panesContainer) {
+                panesContainer.innerHTML = data.panes_html;
+            }
+
+            // 3. Keep current active tab visible
+            switchLedgerTab(currentTab);
+
+            // 4. Update address bar URL seamlessly
+            window.history.replaceState({ tab: currentTab }, '', targetUrl);
+
+            // 5. Synchronize Export CSV and JSON buttons
+            updateExportUrls(currentTab);
+        }
+    })
+    .catch(err => {
+        if (err.name === 'AbortError') return; // Cancelled intentionally
+        console.error('Asynchronous filter error:', err);
+        // Graceful fallback to standard form submit
+        form.submit();
+    })
+    .finally(() => {
+        if (panesContainer) {
+            panesContainer.classList.remove('is-loading');
+        }
+    });
+}
+
+/**
+ * Keep CSV and JSON Export URLs synchronized with active tab and filters
+ */
+function updateExportUrls(tabId) {
+    const form = document.getElementById('filterForm');
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+        if (value !== '' && value !== null) {
+            params.set(key, value);
+        }
+    }
+    params.set('tab', tabId);
+
+    const btnAllCsv = document.getElementById('btnExportAllCsv');
+    const btnCsv = document.getElementById('btnExportCsv');
+    const btnJson = document.getElementById('btnExportJson');
+
+    if (btnAllCsv) {
+        const allParams = new URLSearchParams(params);
+        allParams.set('tab', 'all');
+        btnAllCsv.href = '/transactions/export-csv/all?' + allParams.toString();
+    }
+    if (btnCsv) {
+        btnCsv.href = '/transactions/export-csv/' + encodeURIComponent(tabId) + '?' + params.toString();
+    }
+    if (btnJson) {
+        btnJson.href = '/transactions/export-json/' + encodeURIComponent(tabId) + '?' + params.toString();
+    }
+}
+
+/**
+ * Handle in-page table pagination clicks asynchronously
+ */
+document.addEventListener('click', function(e) {
+    const pageLink = e.target.closest('.pagination a');
+    if (pageLink && pageLink.href && pageLink.closest('#ledgerPanesContainer')) {
+        e.preventDefault();
+        const linkUrl = new URL(pageLink.href);
+        const customParams = {};
+        for (const [key, val] of linkUrl.searchParams.entries()) {
+            customParams[key] = val;
+        }
+        fetchLedgerData(customParams);
+    }
+});
+
+/**
+ * Support browser Back / Forward history without full reload
+ */
+window.addEventListener('popstate', function(e) {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') || 'sales';
+    switchLedgerTab(tab);
+});
+
+/**
+ * In-Page Client-Side Row Quick Filtering
+ */
 function filterTableRows(tableId, query) {
     const q = query.toLowerCase().trim();
     const table = document.getElementById(tableId);
@@ -1315,6 +878,9 @@ function filterTableRows(tableId, query) {
     });
 }
 
+/**
+ * Modal Handling
+ */
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 

@@ -49,6 +49,17 @@
 
         .alert-success { background: #065f46; color: #34d399; padding: 14px; border-radius: 10px; margin-bottom: 20px; font-size: 14px; font-weight: 600; }
         .alert-error { background: #7f1d1d; color: #fca5a5; padding: 14px; border-radius: 10px; margin-bottom: 20px; font-size: 14px; font-weight: 600; }
+        .password-field-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
+        .password-field-wrapper input { padding-right: 44px; }
+        .password-toggle-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 18px; padding: 4px 6px; line-height: 1; border-radius: 6px; transition: color 0.15s; user-select: none; }
+        .password-toggle-btn:hover { color: #f8fafc; }
+
+        @media (max-width: 768px) {
+            body { padding: 14px; }
+            .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .card-section { padding: 16px; }
+            .form-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -374,7 +385,10 @@
                         </div>
                         <div class="form-group">
                             <label>Paystack Secret Key</label>
-                            <input type="password" name="paystack_secret_key" value="" placeholder="{{ !empty($settings['paystack_secret_configured']) ? '•••••••• (Configured — leave blank to keep unchanged)' : 'sk_test_...' }}" autocomplete="new-password">
+                            <div class="password-field-wrapper">
+                                <input type="password" id="paystack_secret_key" name="paystack_secret_key" value="" placeholder="{{ !empty($settings['paystack_secret_configured']) ? '•••••••• (Configured — leave blank to keep unchanged)' : 'sk_test_...' }}" autocomplete="new-password">
+                                <button type="button" class="password-toggle-btn" onclick="toggleSaasPassword('paystack_secret_key', this)" aria-label="Toggle password visibility">👁️</button>
+                            </div>
                             @if(!empty($settings['paystack_secret_configured']))
                                 <span style="font-size: 11px; color: #34d399; display: block; margin-top: 4px;">✓ Secret Key is securely stored server-side.</span>
                             @endif
@@ -404,36 +418,79 @@
             </form>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Filename</th>
-                    <th>Created Date</th>
-                    <th>File Size</th>
-                    <th>Origin / Creator</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($backups as $b)
-                <tr>
-                    <td><strong>{{ $b->filename }}</strong></td>
-                    <td>{{ date('d M Y, h:i A', strtotime($b->created_at)) }}</td>
-                    <td>{{ number_format(($b->size ?? 1024) / 1024, 1) }} KB</td>
-                    <td><span style="color: #38bdf8;">{{ $b->created_by }}</span></td>
-                    <td>
-                        <a href="/api/backups/{{ $b->id }}/download" class="btn btn-secondary btn-sm">⬇️ Download</a>
-                    </td>
-                </tr>
-                @empty
-                <tr>
-                    <td colspan="5" style="text-align: center; color: #94a3b8; padding: 24px;">No database snapshots found. Click "Create Instant Backup" above to generate one.</td>
-                </tr>
-                @endforelse
-            </tbody>
-        </table>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Created Date</th>
+                        <th>File Size</th>
+                        <th>Origin / Creator</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($backups as $b)
+                    <tr>
+                        <td><strong>{{ $b->filename }}</strong></td>
+                        <td>{{ date('d M Y, h:i A', strtotime($b->created_at)) }}</td>
+                        <td>{{ number_format(($b->size ?? 1024) / 1024, 1) }} KB</td>
+                        <td><span style="color: #38bdf8;">{{ $b->created_by }}</span></td>
+                        <td>
+                            <a href="/api/backups/{{ $b->id }}/download" class="btn btn-secondary btn-sm">⬇️ Download</a>
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: #94a3b8; padding: 24px;">No database snapshots found. Click "Create Instant Backup" above to generate one.</td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
     </div>
     @endif
 
+    <script>
+        function toggleSaasPassword(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🙈';
+                btn.setAttribute('aria-label', 'Hide password');
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁️';
+                btn.setAttribute('aria-label', 'Show password');
+            }
+        }
+
+        // Universal Enter-key field advancement for SaaS Admin
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter' || e.shiftKey) return;
+            const target = e.target;
+            if (!target || !target.form) return;
+            if (target.tagName === 'TEXTAREA') return;
+
+            const form = target.form;
+            if (e.ctrlKey || e.metaKey) {
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else form.submit();
+                return;
+            }
+
+            const focusables = Array.from(form.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([disabled]):not([readonly]), select:not([disabled])'));
+            const idx = focusables.indexOf(target);
+            if (idx >= 0 && idx < focusables.length - 1) {
+                e.preventDefault();
+                const next = focusables[idx + 1];
+                next.focus();
+                if (typeof next.select === 'function') {
+                    try { next.select(); } catch (_) {}
+                }
+            }
+        });
+    </script>
 </body>
 </html>
