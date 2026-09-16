@@ -41,6 +41,7 @@ $files = [
     'tests/Feature/TransactionVoidAndReturnEnhancementTest.php',
     'tests/Feature/UnsuppliedReturnAndSearchableInvoiceTest.php',
     'tests/Feature/TransactionVoidIntegrityGuardTest.php',
+    'tests/Feature/NigerianMarket100ScenariosStressTest.php',
 ];
 
 foreach ($files as $file) {
