@@ -139,8 +139,117 @@ class PosController extends Controller
     }
 
     /**
+     * Search and lookup past sales by Receipt Reference / Invoice ID or Customer Phone.
+     * Returns authentic sold items and prices for accurate exchange returns.
+     */
+    public function lookupSale(Request $request)
+    {
+        $term = trim($request->get('term', $request->get('query', '')));
+        if (empty($term)) {
+            return response()->json(['success' => false, 'error' => 'Please enter an Invoice, Receipt Slip Number, or Phone Number.'], 422);
+        }
+
+        $user = Auth::user();
+        $warehouseId = $user && $user->isBranchScoped() ? $user->warehouse_id : ($request->warehouse_id ?: session('active_warehouse_id'));
+
+        // Query sale by ID prefix / exact ID, customerPhone, customerName, or receipt ref in note
+        $cleanTerm = ltrim($term, '#');
+        $query = Sale::with(['items.product'])->orderBy('createdAt', 'desc');
+
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+
+        $sale = (clone $query)->where(function ($q) use ($cleanTerm) {
+            $q->where('id', 'like', "{$cleanTerm}%")
+              ->orWhere('customerPhone', 'like', "%{$cleanTerm}%")
+              ->orWhere('customerName', 'like', "%{$cleanTerm}%")
+              ->orWhere('note', 'like', "%{$cleanTerm}%");
+        })->first();
+
+        if (!$sale) {
+            return response()->json(['success' => false, 'error' => "No sale found matching '{$term}' at this branch."], 404);
+        }
+
+        $isSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
+
+        // Fetch up to 15 matching sales to support quick selection if multiple sales match
+        $allMatches = (clone $query)->where(function ($q) use ($cleanTerm) {
+            $q->where('id', 'like', "{$cleanTerm}%")
+              ->orWhere('customerPhone', 'like', "%{$cleanTerm}%")
+              ->orWhere('customerName', 'like', "%{$cleanTerm}%")
+              ->orWhere('note', 'like', "%{$cleanTerm}%");
+        })->take(15)->get();
+
+        $matchesSummary = $allMatches->map(function ($mSale) {
+            $mSupplied = in_array(strtoupper($mSale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
+            $mReceiptRef = null;
+            if (preg_match('/\[RECEIPT REF:\s*#?([^\]]+)\]/i', $mSale->note ?? '', $mMatches)) {
+                $mReceiptRef = trim($mMatches[1]);
+            }
+            return [
+                'id' => $mSale->id,
+                'ref' => '#' . substr($mSale->id, 0, 8),
+                'paperReceiptRef' => $mReceiptRef,
+                'customerName' => $mSale->customerName ?: 'Walk-in Customer',
+                'customerPhone' => $mSale->customerPhone,
+                'totalAmount' => (float) $mSale->totalAmount,
+                'paidAmount' => (float) $mSale->paidAmount,
+                'date' => date('d M Y, h:i A', strtotime($mSale->createdAt)),
+                'deliveryStatus' => $mSale->deliveryStatus,
+                'isSupplied' => $mSupplied,
+                'note' => $mSale->note,
+            ];
+        });
+
+        $paperReceiptRef = null;
+        if (preg_match('/\[RECEIPT REF:\s*#?([^\]]+)\]/i', $sale->note ?? '', $pMatches)) {
+            $paperReceiptRef = trim($pMatches[1]);
+        }
+
+        // Map items with already returned count
+        $items = $sale->items->map(function ($item) use ($sale, $isSupplied) {
+            $alreadyReturned = (int) \App\Models\SalesReturn::where('saleId', $sale->id)
+                ->where('productId', $item->productId)
+                ->sum('quantity');
+            $eligibleQty = max(0, (int)$item->quantity - $alreadyReturned);
+
+            return [
+                'productId' => $item->productId,
+                'productName' => $item->product?->name ?? $item->productName,
+                'productCode' => $item->product?->code ?? $item->productCode ?? 'SKU',
+                'soldQty' => (int) $item->quantity,
+                'alreadyReturnedQty' => $alreadyReturned,
+                'eligibleQty' => $eligibleQty,
+                'unitPrice' => (float) $item->unitPrice,
+                'totalPrice' => (float) $item->totalPrice,
+                'isSupplied' => $isSupplied,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'sale' => [
+                'id' => $sale->id,
+                'ref' => '#' . substr($sale->id, 0, 8),
+                'paperReceiptRef' => $paperReceiptRef,
+                'customerName' => $sale->customerName ?: 'Walk-in Customer',
+                'customerPhone' => $sale->customerPhone,
+                'totalAmount' => (float) $sale->totalAmount,
+                'paidAmount' => (float) $sale->paidAmount,
+                'date' => date('d M Y, h:i A', strtotime($sale->createdAt)),
+                'deliveryStatus' => $sale->deliveryStatus,
+                'isSupplied' => $isSupplied,
+                'note' => $sale->note,
+                'items' => $items,
+            ],
+            'matches' => $matchesSummary,
+        ]);
+    }
+
+    /**
      * Process POS Checkout (Full or Part-Payment, Supplied vs. Unsupplied).
-     * Strictly enforces Zero-Bypass of Customer Phone & Name for Credit / Part-Payment and Delayed Pickup.
+     * Strictly enforces Zero-Bypass: accepts Customer Phone OR Physical Receipt Ref for Walk-in identification.
      */
     public function checkout(Request $request)
     {
@@ -159,17 +268,75 @@ class PosController extends Controller
                 'posAmount' => 'nullable|numeric|min:0',
                 'paidAmount' => 'nullable|numeric|min:0',
                 'is_supplied' => 'required', // 'yes' or 'no'
+                'receipt_ref' => 'nullable|string|max:100',
             ]);
 
             $cashAmount = max(0.0, (float) ($request->cashAmount ?? 0));
             $posAmount = max(0.0, (float) ($request->posAmount ?? 0));
             $transferAmount = 0.0; // Strictly retired
 
-            $declaredPaid = (float) ($request->paidAmount ?? 0);
-            if ($declaredPaid > 0 && ($cashAmount + $posAmount) < $declaredPaid) {
-                $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$declaredPaid}).";
-                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
-                return back()->withErrors(['error' => $errorMsg])->withInput();
+            // 🔒 Process & Validate Multi-SKU Exchange Returns (Server-Authoritative Price & Qty Checks)
+            $rawExchangeReturns = $request->exchange_returns;
+            if (is_string($rawExchangeReturns)) {
+                $rawExchangeReturns = json_decode($rawExchangeReturns, true);
+            }
+            if (!is_array($rawExchangeReturns)) {
+                $rawExchangeReturns = [];
+            }
+
+            $validatedExchangeReturns = [];
+            $totalExchangeCredit = 0.0;
+            $exchangeRefList = [];
+
+            foreach ($rawExchangeReturns as $ex) {
+                $origSaleId = $ex['saleId'] ?? null;
+                $productId = $ex['productId'] ?? null;
+                $retQty = (int) ($ex['quantity'] ?? 0);
+                if (!$origSaleId || !$productId || $retQty <= 0) continue;
+
+                $origSale = Sale::with('items')->find($origSaleId);
+                if (!$origSale) {
+                    $errorMsg = "Original sale #{$origSaleId} for exchange could not be found.";
+                    if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+
+                $origItem = $origSale->items->firstWhere('productId', $productId);
+                if (!$origItem) {
+                    $errorMsg = "Product was not found on original sale #{$origSaleId}.";
+                    if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+
+                $alreadyReturned = (int) \App\Models\SalesReturn::where('saleId', $origSale->id)
+                    ->where('productId', $productId)
+                    ->sum('quantity');
+                $eligibleQty = max(0, (int)$origItem->quantity - $alreadyReturned);
+
+                if ($retQty > $eligibleQty) {
+                    $errorMsg = "Cannot return {$retQty} units of '{$origItem->productName}'. Only {$eligibleQty} units eligible for return.";
+                    if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
+
+                $unitPrice = (float) $origItem->unitPrice;
+                $lineCredit = round($retQty * $unitPrice, 2);
+                $totalExchangeCredit += $lineCredit;
+                $refStr = '#' . substr($origSale->id, 0, 8);
+                if (!in_array($refStr, $exchangeRefList)) {
+                    $exchangeRefList[] = $refStr;
+                }
+
+                $validatedExchangeReturns[] = [
+                    'saleId' => $origSale->id,
+                    'origSaleRef' => $refStr,
+                    'productId' => $productId,
+                    'productCode' => $origItem->productCode ?? $origItem->product?->code ?? 'SKU',
+                    'productName' => $origItem->productName ?? $origItem->product?->name ?? 'Returned Item',
+                    'quantity' => $retQty,
+                    'unitPrice' => $unitPrice,
+                    'creditAmount' => $lineCredit,
+                ];
             }
 
             // 🔒 Server-Authoritative Financial Evaluation: Calculate catalog pricing & tender FIRST
@@ -179,6 +346,7 @@ class PosController extends Controller
                 [
                     'cashAmount' => $cashAmount,
                     'posAmount' => $posAmount,
+                    'exchange_credit' => $totalExchangeCredit,
                 ],
                 'RETAIL'
             );
@@ -187,6 +355,14 @@ class PosController extends Controller
             $paidAmount = $calc['paidAmount'];
             $outstandingDebt = $calc['outstandingDebt'];
             $hasDebt = ($outstandingDebt > 0.01);
+
+            $declaredPaid = (float) ($request->paidAmount ?? 0);
+            $netRequiredTender = max(0.0, round($grossTotal - $totalExchangeCredit, 2));
+            if ($declaredPaid > 0 && ($cashAmount + $posAmount) < $declaredPaid) {
+                $errorMsg = "Payment mismatch: Total tender (Cash ₦{$cashAmount} + POS ₦{$posAmount}) must be equal to or greater than the recorded paid amount (₦{$declaredPaid}).";
+                if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                return back()->withErrors(['error' => $errorMsg])->withInput();
+            }
 
             $authUser = Auth::user();
             if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
@@ -213,6 +389,11 @@ class PosController extends Controller
             $isNotSupplied = !$isSuppliedNow;
 
             $customerId = $request->customerId ? (int) $request->customerId : null;
+            $receiptRef = trim($request->receipt_ref ?? $request->receiptRef ?? '');
+            if (empty($receiptRef) && !empty($exchangeRefList)) {
+                $receiptRef = implode(', ', $exchangeRefList);
+            }
+
             $customerPhone = preg_replace('/[\s\-\(\)\+]/', '', trim($request->customerPhone ?? ''));
             if (str_starts_with($customerPhone, '234') && strlen($customerPhone) === 13) {
                 $customerPhone = '0' . substr($customerPhone, 3);
@@ -227,12 +408,13 @@ class PosController extends Controller
 
             $customerName = trim($request->customerName ?? '');
 
-            // 🔒 ZERO BYPASS RULE FOR DEBT & PICKUP ORDERS (Evaluated using authoritative server debt)
+            // 🔒 ZERO BYPASS RULE FOR DEBT & PICKUP ORDERS: Accepts Phone Number OR Physical Receipt Ref
             if ($hasDebt || $isNotSupplied) {
                 $reason = $hasDebt ? 'Credit / Part-Payment' : 'Delayed Pickup (Not Supplied)';
+                $hasValidIdentifier = (!empty($customerPhone) && preg_match('/^0\d{10}$/', $customerPhone)) || !empty($receiptRef) || !empty($customerId);
 
-                if ((empty($customerPhone) || !preg_match('/^0\d{10}$/', $customerPhone)) && empty($customerId)) {
-                    $errorMsg = "🔒 Exactly 11-digit Phone Number (e.g. 08031234567) & Registered Customer required for {$reason}! Walk-in Customer cannot take credit or delayed pickup.";
+                if (!$hasValidIdentifier) {
+                    $errorMsg = "🔒 11-digit Phone Number (e.g. 08031234567) OR Physical Receipt Number required for {$reason}! Walk-in Customer cannot take credit or delayed pickup without identification.";
                     if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
                     return back()->withErrors(['error' => $errorMsg])->withInput();
                 }
@@ -243,13 +425,17 @@ class PosController extends Controller
                         if ($existing) {
                             $customerName = $existing->name;
                             $customerId = $existing->id;
+                        } elseif (!empty($receiptRef)) {
+                            $customerName = "Customer (Ref #{$receiptRef})";
                         } else {
-                            $errorMsg = "🔒 Customer Name and Phone Number are required for {$reason}.";
+                            $errorMsg = "🔒 Customer Name and Phone Number (or Receipt Ref) are required for {$reason}.";
                             if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
                             return back()->withErrors(['error' => $errorMsg])->withInput();
                         }
+                    } elseif (!empty($receiptRef)) {
+                        $customerName = "Customer (Receipt #{$receiptRef})";
                     } else {
-                        $errorMsg = "🔒 Customer Name and Phone Number are required for {$reason}.";
+                        $errorMsg = "🔒 Customer Name and Phone Number or Receipt Number are required for {$reason}.";
                         if ($request->wantsJson()) return response()->json(['success' => false, 'error' => $errorMsg], 422);
                         return back()->withErrors(['error' => $errorMsg])->withInput();
                     }
@@ -272,9 +458,11 @@ class PosController extends Controller
                 'paidAmount' => $calc['paidAmount'],
                 'cashAmount' => $calc['retainedCash'],
                 'posAmount' => $calc['retainedPos'],
+                'exchangeCredit' => $calc['retainedExchange'],
                 'transferAmount' => 0.0,
                 'customerId' => $customerId,
                 'customerPhone' => $customerPhone,
+                'receiptRef' => $receiptRef,
                 'is_supplied' => $isSuppliedNow,
             ];
 
@@ -285,7 +473,7 @@ class PosController extends Controller
                 (string) $tenantId,
                 (string) $userId,
                 $idempotencyPayload,
-                function () use ($customerId, $customerPhone, $customerName, $grossTotal, $paidAmount, $cashAmount, $posAmount, $request, $warehouseId, $isSuppliedNow, $userId, $userName) {
+                function () use ($customerId, $customerPhone, $customerName, $grossTotal, $paidAmount, $calc, $request, $warehouseId, $isSuppliedNow, $userId, $userName, $validatedExchangeReturns, $totalExchangeCredit, $receiptRef, $cashAmount, $posAmount) {
                     // Resolve or create customer record strictly INSIDE transactional idempotency boundary
                     $resolvedCustomerId = $customerId;
                     $resolvedCustomerName = $customerName;
@@ -313,17 +501,37 @@ class PosController extends Controller
                         $resolvedCustomerPhone = $customer->phone;
                     }
 
+                    // Build audit note incorporating exchange details and physical receipt reference
+                    $finalNote = trim($request->note ?? '');
+                    if (!empty($receiptRef)) {
+                        $refAudit = "[RECEIPT REF: #{$receiptRef}]";
+                        if (!str_contains($finalNote, $refAudit)) {
+                            $finalNote = $finalNote ? ($refAudit . " " . $finalNote) : $refAudit;
+                        }
+                    }
+                    if (!empty($validatedExchangeReturns)) {
+                        $exNotes = [];
+                        foreach ($validatedExchangeReturns as $vEx) {
+                            $exNotes[] = "{$vEx['productName']} x{$vEx['quantity']} (@₦" . number_format($vEx['unitPrice'], 0) . " from Ref {$vEx['origSaleRef']})";
+                        }
+                        $exchangeAudit = "[EXCHANGE RETURN: " . implode('; ', $exNotes) . " | Total Credit: ₦" . number_format($totalExchangeCredit, 2) . "]";
+                        $finalNote = $finalNote ? ($finalNote . " " . $exchangeAudit) : $exchangeAudit;
+                    }
+
                     $saleData = [
                         'totalAmount' => $grossTotal,
                         'paidAmount' => $paidAmount,
                         'cashAmount' => $cashAmount,
                         'posAmount' => $posAmount,
+                        'tenderedAmount' => ($cashAmount + $posAmount),
                         'transferAmount' => 0.0,
                         'customerName' => $resolvedCustomerName ?: 'Walk-in Customer',
                         'customerPhone' => $resolvedCustomerPhone ?: null,
                         'customerId' => $resolvedCustomerId,
                         'sale_type' => 'RETAIL', // Strictly forced: Client cannot select privileged wholesale mode at retail checkout
-                        'note' => $request->note,
+                        'note' => $finalNote,
+                        'exchange_returns' => $validatedExchangeReturns,
+                        'exchange_credit' => $totalExchangeCredit,
                     ];
 
                     return $this->stockService->recordSale($saleData, $request->items, $warehouseId, $isSuppliedNow, $userId, $userName);
@@ -460,7 +668,7 @@ class PosController extends Controller
             'sale_id' => 'required',
             'warehouse_id' => 'required',
             'items' => 'required|array|min:1',
-            'refund_method' => 'required|string|in:CASH_REFUND,DEBT_REDUCTION',
+            'refund_method' => 'required|string|in:CASH_REFUND,POS_TRANSFER_REFUND,DEBT_REDUCTION,STORE_CREDIT',
             'reason' => 'required|string',
         ]);
 

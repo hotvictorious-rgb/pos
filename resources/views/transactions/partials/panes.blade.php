@@ -101,6 +101,20 @@
                                     <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewSaleDetails({{ json_encode($sale) }})">
                                         🔍 Details
                                     </button>
+                                    @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
+                                        @php
+                                            $hasProcessedReturns = ($sale->returns && $sale->returns->isNotEmpty()) || (($sale->returns_count ?? 0) > 0);
+                                        @endphp
+                                        @if($hasProcessedReturns)
+                                            <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #334155; border-color: #475569; color: #94a3b8; cursor: not-allowed;" title="🔒 Voiding blocked: This invoice already has processed returns. Use Returns & Refunds screen." onclick="alert('🔒 Cannot void this Sale:\n\nThis invoice already has processed Return & Refund records. Voiding is blocked to protect inventory counts and financial ledgers from corruption.\n\nPlease process any remaining items on the Returns & Refunds screen.')">
+                                                🔒 Has Returns
+                                            </button>
+                                        @else
+                                            <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.sale', $sale->id) }}', 'Sale #{{ substr($sale->id, 0, 8) }} (₦{{ number_format($sale->totalAmount, 0) }})')">
+                                                🗑️ Delete / Void
+                                            </button>
+                                        @endif
+                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -181,6 +195,11 @@
                                     <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Goods Received Entry (Stock In)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Description', '{{ addslashes($log->description ?: 'Supplier Arrival') }}', 'Stock Inflow', '#22c55e', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Quantity Added', val: '+{{ $log->quantity }} units', color: '#4ade80'}, {label: 'Officer', val: '{{ addslashes($log->userName ?: 'Storekeeper') }}'}], 'Physical inventory count increased by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
+                                    @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
+                                        <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.stock-in', $log->id) }}', 'Stock In: {{ addslashes($log->productName) }} (+{{ $log->quantity }} units)')">
+                                            🗑️ Delete / Void
+                                        </button>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -277,6 +296,11 @@
                                     <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Stock Outflow Record', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Event Type', '{{ addslashes($log->type) }}', 'Stock Outflow', '#ef4444', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Deducted Units', val: '-{{ $log->quantity }} units', color: '#f87171'}, {label: 'Description', val: '{{ addslashes($log->description) }}'}, {label: 'Authorized By', val: '{{ addslashes($log->userName) }}'}], 'Physical count reduced by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
+                                    @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
+                                        <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.stock-out', $log->id) }}', 'Stock Out: {{ addslashes($log->productCode ?: $log->productName) }} (-{{ $log->quantity }} units)')">
+                                            🗑️ Delete / Void
+                                        </button>
+                                    @endif
                                 </div>
                             </td>
                         </tr>

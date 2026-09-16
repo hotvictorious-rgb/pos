@@ -20,7 +20,7 @@ use App\Models\Transfer;
 // ─────────────────────────────────────────────────────────
 Route::get('/account/password',  [AuthController::class, 'showChangePassword'])->name('account.password');
 Route::post('/account/password', [AuthController::class, 'changePassword'])->name('account.password.update');
-Route::post('/branch/switch',    [\App\Http\Controllers\Web\BranchSwitchController::class, 'switchBranch'])->name('branch.switch');
+Route::post('/branch/switch',    [\App\Http\Controllers\Web\DashboardController::class, 'switchBranch'])->name('branch.switch');
 
 // ─────────────────────────────────────────────────────────
 // PUBLIC MARKETING & LANDING PAGE (Nigerian Retail, Supermarkets & Wholesalers)
@@ -122,6 +122,8 @@ Route::prefix('pos')->name('pos.')->group(function () {
     Route::get('/',                     [PosController::class, 'index'])->middleware('capability:pos.view')->name('index');
     Route::post('/checkout',            [PosController::class, 'checkout'])->middleware('capability:pos.checkout')->name('checkout');
     Route::post('/customer/quick-register', [PosController::class, 'quickRegisterCustomer'])->middleware('capability:customer.write,pos.checkout')->name('customer.quick_register');
+    Route::get('/lookup-sale',          [PosController::class, 'lookupSale'])->middleware('capability:pos.view')->name('lookup_sale');
+    Route::get('/lookup',               [PosController::class, 'lookupSale'])->middleware('capability:pos.view')->name('lookup');
     Route::get('/receipt/{id}',         [PosController::class, 'receipt'])->middleware('capability:pos.view')->name('receipt');
     Route::get('/returns',              [PosController::class, 'returns'])->middleware('capability:returns.view')->name('returns');
     Route::post('/returns',             [PosController::class, 'processReturn'])->middleware('capability:returns.process')->name('returns.process');
@@ -179,6 +181,11 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
     Route::get('/',                  [\App\Http\Controllers\Web\TransactionController::class, 'index'])->middleware('capability:transactions.view')->name('index');
     Route::get('/export-csv/{tab}',  [\App\Http\Controllers\Web\TransactionController::class, 'exportCsv'])->middleware('capability:transactions.export')->name('export.csv');
     Route::get('/export-json/{tab}', [\App\Http\Controllers\Web\TransactionController::class, 'exportJson'])->middleware('capability:transactions.export')->name('export.json');
+    
+    // Admin Transaction Voiding & Rollback
+    Route::post('/void-sale/{saleId}', [\App\Http\Controllers\Web\TransactionController::class, 'voidSale'])->name('void.sale');
+    Route::post('/void-stock-in/{logId}', [\App\Http\Controllers\Web\TransactionController::class, 'voidStockIn'])->name('void.stock-in');
+    Route::post('/void-stock-out/{id}', [\App\Http\Controllers\Web\TransactionController::class, 'voidStockOutOrAdjustment'])->name('void.stock-out');
 });
 
 // 8. Workers & Role Permissions Hub

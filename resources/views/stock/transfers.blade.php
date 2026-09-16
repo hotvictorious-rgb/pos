@@ -325,8 +325,14 @@
                         📄 Waybill
                     </a>
                     @if(auth()->user()?->role !== 'viewer')
-                        <form method="POST" action="{{ route('stock.transfer.recall', $trf->id) }}" style="flex: 2; margin: 0;" onsubmit="return confirm('Recall this transfer back to your shop? Deducted goods will be restored immediately.')">
+                        <form method="POST" action="{{ route('stock.transfer.recall', $trf->id) }}" 
+                              data-confirm-title="Confirm Transfer Recall" 
+                              data-confirm-subtitle="Recall goods back to your shop:" 
+                              data-confirm-button="↩ Yes, Recall Transfer" 
+                              data-confirm-type="danger" 
+                              style="flex: 2; margin: 0;">
                             @csrf
+                            <input type="hidden" name="transfer_ref_preview" value="Transfer #{{ $trf->transfer_no ?? $trf->id }}">
                             <button type="submit" class="btn btn-danger btn-block" style="font-size: 0.85rem; padding: 0.55rem;">
                                 ↩ Recall / Cancel
                             </button>
@@ -403,8 +409,14 @@
                                     @endif
 
                                     @if($canRecall && !$canReceive)
-                                        <form method="POST" action="{{ route('stock.transfer.recall', $cTrf->id) }}" style="display: inline;" onsubmit="return confirm('Recall this transfer back to {{ $cTrf->source->name ?? 'Origin' }}? Deducted goods will be restored immediately to your shop shelf count.')">
+                                        <form method="POST" action="{{ route('stock.transfer.recall', $cTrf->id) }}" 
+                                              data-confirm-title="Confirm Transfer Recall" 
+                                              data-confirm-subtitle="Recall goods back to {{ $cTrf->source->name ?? 'Origin' }}:" 
+                                              data-confirm-button="↩ Yes, Recall Transfer" 
+                                              data-confirm-type="danger" 
+                                              style="display: inline;">
                                             @csrf
+                                            <input type="hidden" name="transfer_ref_preview" value="Transfer #{{ $cTrf->transfer_no ?? $cTrf->id }}">
                                             <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">
                                                 ↩ Recall / Cancel
                                             </button>

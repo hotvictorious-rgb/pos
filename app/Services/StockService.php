@@ -458,6 +458,95 @@ class StockService
                 }
             }
 
+            // Optional: Process Exchange Returned Items (Restock returned items to physical shelf & record SalesReturn)
+            if (!empty($saleData['exchange_returns']) && is_array($saleData['exchange_returns'])) {
+                foreach ($saleData['exchange_returns'] as $exRet) {
+                    $retProductId = $exRet['productId'] ?? $exRet['product_id'] ?? null;
+                    $retQty = (int) ($exRet['quantity'] ?? $exRet['qty'] ?? 0);
+                    $retUnitPrice = (float) ($exRet['unitPrice'] ?? 0);
+                    $retCredit = (float) ($exRet['creditAmount'] ?? ($retQty * $retUnitPrice));
+                    $origSaleId = $exRet['saleId'] ?? null;
+
+                    if ($retProductId && $retQty > 0) {
+                        $retProduct = Product::find($retProductId);
+                        $retStock = $this->ensureStockLevelForAuthorizedMutation($retProductId, $warehouseId, true);
+
+                        // Enforce Unsupplied Return Invariant:
+                        // If the original sale was unsupplied/delayed pickup, customer never took physical goods.
+                        // Goods are already sitting on the shop shelf! DO NOT increment physical_stock!
+                        $origSale = $origSaleId ? Sale::find($origSaleId) : null;
+                        $origWasDelivered = $origSale ? in_array(strtoupper($origSale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']) : true;
+
+                        $unitsRestoredToShelf = 0;
+                        if ($origWasDelivered) {
+                            $retStock->physical_stock += $retQty;
+                            $unitsRestoredToShelf = $retQty;
+                        } else {
+                            $retStock->allocated_stock = max(0, $retStock->allocated_stock - $retQty);
+
+                            $origRes = \App\Models\StockReservation::where('sale_id', $origSaleId)
+                                ->where('product_id', $retProductId)
+                                ->first();
+                            if ($origRes) {
+                                $origRes->cancelled_qty += $retQty;
+                                if ($origRes->outstanding_qty <= 0) {
+                                    $origRes->status = 'CANCELLED';
+                                }
+                                $origRes->save();
+                            }
+                        }
+                        $retStock->save();
+
+                        if ($retProduct) {
+                            $retProduct->currentStock = StockLevel::where('product_id', $retProductId)->sum('physical_stock');
+                            $retProduct->save();
+                        }
+
+                        $logDesc = $origWasDelivered
+                            ? "Exchange return restock for Sale #{$saleId} (Ref: " . ($exRet['origSaleRef'] ?? 'Prior Sale') . "). +{$retQty} units returned to shelf."
+                            : "Exchange cancellation for unsupplied Sale #{$saleId} (Ref: " . ($exRet['origSaleRef'] ?? 'Prior Sale') . "). Released {$retQty} units from reservation buffer. Zero physical stock added.";
+
+                        InventoryLog::create([
+                            'id' => (string) Str::uuid(),
+                            'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                            'productId' => $retProductId,
+                            'warehouse_id' => $warehouseId,
+                            'type' => 'SALES_RETURN',
+                            'quantity' => $unitsRestoredToShelf,
+                            'userId' => $userId,
+                            'userName' => $userName,
+                            'productCode' => $retProduct?->code ?? 'EXCHANGE',
+                            'productName' => $retProduct?->name ?? 'Exchanged Item',
+                            'description' => $logDesc,
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+
+                        // Authoritative SalesReturn record to prevent duplicate future returns of the original sale line item
+                        if ($origSaleId) {
+                            \App\Models\SalesReturn::create([
+                                'id' => (string) Str::uuid(),
+                                'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                                'saleId' => $origSaleId,
+                                'customerName' => $sale->customerName,
+                                'code' => $retProduct?->code ?? 'EXCHANGE',
+                                'productId' => $retProductId,
+                                'productName' => $retProduct?->name ?? 'Exchanged Item',
+                                'quantity' => $retQty,
+                                'refundAmount' => $retCredit,
+                                'reason' => "Exchanged for new purchase in Sale #{$saleId} (Ref: #" . substr($saleId, 0, 8) . ")",
+                                'createdAt' => now()->toIso8601String(),
+                                'userId' => $userId,
+                                'userName' => $userName,
+                                'timestamp' => now()->toIso8601String(),
+                                'productCode' => $retProduct?->code ?? 'EXCHANGE',
+                                'wasDelivered' => true,
+                                'deliveryStatus' => 'DELIVERED',
+                            ]);
+                        }
+                    }
+                }
+            }
+
             // Record granular Payment records for each tender method used in mixed/split payments
             $tenantId = session('tenant_id') ?? $sale->tenant_id ?? null;
 
@@ -483,6 +572,21 @@ class StockService
                     'saleId' => $saleId,
                     'amount' => $posAmount,
                     'method' => 'POS',
+                    'timestamp' => now()->toIso8601String(),
+                    'recordedBy' => $userName,
+                    'createdAt' => now()->toIso8601String(),
+                ]);
+            }
+
+            // 3. Authorized Exchange Credit
+            $retainedExchange = (float) ($calc['retainedExchange'] ?? ($saleData['exchange_credit'] ?? 0));
+            if ($retainedExchange > 0) {
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'saleId' => $saleId,
+                    'amount' => $retainedExchange,
+                    'method' => 'EXCHANGE_CREDIT',
                     'timestamp' => now()->toIso8601String(),
                     'recordedBy' => $userName,
                     'createdAt' => now()->toIso8601String(),
@@ -1296,8 +1400,8 @@ class StockService
         $this->assertUserCapability('returns.process', $userId);
         $this->assertUserWarehouseAuthority($warehouseId);
 
-        if (!in_array($refundMethod, ['CASH_REFUND', 'DEBT_REDUCTION'], true)) {
-            throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: CASH_REFUND, DEBT_REDUCTION.");
+        if (!in_array($refundMethod, ['CASH_REFUND', 'POS_TRANSFER_REFUND', 'DEBT_REDUCTION', 'STORE_CREDIT'], true)) {
+            throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: CASH_REFUND, POS_TRANSFER_REFUND, DEBT_REDUCTION, STORE_CREDIT.");
         }
 
         return DB::transaction(function () use ($saleId, $returnItems, $warehouseId, $refundMethod, $reason, $userId, $userName) {
@@ -1389,10 +1493,29 @@ class StockService
                     ->lockForUpdate()
                     ->first();
 
+                $isSaleSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
+
                 $physicalUnitsRestored = 0;
                 $allocatedUnitsReleased = 0;
 
-                if ($reservation) {
+                if (!$isSaleSupplied) {
+                    // HARD INVARIANT: The sale was unsupplied / not delivered!
+                    // The goods NEVER left the shop shelves. DO NOT return qty to physical_stock!
+                    // Only release the reservation allocation and refund the money.
+                    $physicalUnitsRestored = 0;
+                    $allocatedUnitsReleased = $qty;
+
+                    $stock->allocated_stock = max(0, $stock->allocated_stock - $allocatedUnitsReleased);
+                    $stock->save();
+
+                    if ($reservation) {
+                        $reservation->cancelled_qty += $allocatedUnitsReleased;
+                        if ($reservation->outstanding_qty <= 0) {
+                            $reservation->status = 'CANCELLED';
+                        }
+                        $reservation->save();
+                    }
+                } elseif ($reservation) {
                     $heldUnits = $reservation->held_by_customer_qty;
                     $outstandingUnits = $reservation->outstanding_qty;
 
@@ -1437,9 +1560,20 @@ class StockService
                     } else {
                         $reservation->status = ($reservation->fulfilled_qty > 0) ? 'PARTIALLY_FULFILLED' : 'ACTIVE';
                     }
-                    $reservation->save();
+                    try {
+                        $reservation->save();
+                    } catch (\Throwable $e) {
+                        // Fallback: If live database is still running legacy strict ENUM before migration execution, fallback to 'CANCELLED'
+                        if ($reservation->status === 'RETURNED') {
+                            $reservation->status = 'CANCELLED';
+                            $reservation->save();
+                        } else {
+                            throw $e;
+                        }
+                    }
                 } else {
                     $physicalUnitsRestored = $qty;
+                    $allocatedUnitsReleased = 0;
                     $stock->physical_stock += $qty;
                     $stock->save();
                 }
@@ -1494,19 +1628,44 @@ class StockService
 
             $wasDelivered = ($sale->deliveryStatus === 'DELIVERED');
 
-            // Financial integrity: Cash refund cannot exceed actual money customer paid!
-            if ($refundMethod === 'CASH_REFUND') {
-                $cashPaid = (float) Payment::where('saleId', $saleId)->where('method', 'CASH')->where('amount', '>', 0)->sum('amount');
-                if ($cashPaid <= 0 && (float) ($sale->cashAmount ?? 0) > 0) {
-                    $cashPaid = (float) $sale->cashAmount;
-                }
-                $priorCashRefunds = abs((float) Payment::where('saleId', $saleId)->where('method', 'REFUND_CASH')->sum('amount'));
-                $maxCashRefundable = max(0.0, round($cashPaid - $priorCashRefunds, 2));
+            // Financial integrity: Cash or Electronic (POS/Transfer) Refund
+            if ($refundMethod === 'CASH_REFUND' || $refundMethod === 'POS_TRANSFER_REFUND') {
+                $isCash = ($refundMethod === 'CASH_REFUND');
+                
+                // For cash, check physical cash paid; allow admin override if authorized
+                if ($isCash) {
+                    $cashPaid = (float) Payment::where('saleId', $saleId)->where('method', 'CASH')->where('amount', '>', 0)->sum('amount');
+                    if ($cashPaid <= 0 && (float) ($sale->cashAmount ?? 0) > 0) {
+                        $cashPaid = (float) $sale->cashAmount;
+                    }
+                    $priorCashRefunds = abs((float) Payment::where('saleId', $saleId)->where('method', 'REFUND_CASH')->sum('amount'));
+                    $maxCashRefundable = max(0.0, round($cashPaid - $priorCashRefunds, 2));
 
-                if ($totalRefundAmount > $maxCashRefundable) {
-                    throw new \InvalidArgumentException(
-                        "Cannot issue cash refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable cash for Sale #{$saleId} based on actual payments made is ₦" . number_format($maxCashRefundable, 2) . ". Use DEBT_REDUCTION for unpaid/credit balance."
-                    );
+                    $isAdminActor = Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin());
+                    $totalActualPaid = (float) Payment::where('saleId', $saleId)->where('amount', '>', 0)->sum('amount');
+                    if ($totalActualPaid <= 0) {
+                        $totalActualPaid = (float) ($sale->paidAmount ?? 0);
+                    }
+
+                    if ($totalRefundAmount > $maxCashRefundable && !($isAdminActor && $totalRefundAmount <= $totalActualPaid)) {
+                        throw new \InvalidArgumentException(
+                            "Cannot issue cash refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable cash for Sale #{$saleId} based on cash payments made is ₦" . number_format($maxCashRefundable, 2) . ". For POS/Card payments, select 'POS / Bank Transfer Reversal' or 'Customer Store Credit'."
+                        );
+                    }
+                } else {
+                    // POS/Transfer refund: Check against total actual money paid for this sale
+                    $totalPaid = (float) Payment::where('saleId', $saleId)->where('amount', '>', 0)->sum('amount');
+                    if ($totalPaid <= 0) {
+                        $totalPaid = (float) ($sale->paidAmount ?? 0);
+                    }
+                    $priorRefunds = abs((float) Payment::where('saleId', $saleId)->whereIn('method', ['REFUND_CASH', 'REFUND_POS', 'REFUND_TRANSFER'])->sum('amount'));
+                    $maxRefundable = max(0.0, round($totalPaid - $priorRefunds, 2));
+
+                    if ($totalRefundAmount > $maxRefundable) {
+                        throw new \InvalidArgumentException(
+                            "Cannot issue electronic refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable amount for Sale #{$saleId} based on total payments made is ₦" . number_format($maxRefundable, 2) . "."
+                        );
+                    }
                 }
 
                 // Balance financial ledger: reduce sale paidAmount and create negative payment record
@@ -1516,16 +1675,49 @@ class StockService
                 }
                 $sale->save();
 
+                $refundPaymentMethod = $isCash ? 'REFUND_CASH' : 'REFUND_POS';
                 Payment::create([
                     'id' => (string) Str::uuid(),
                     'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'saleId' => $saleId,
                     'amount' => -$totalRefundAmount,
-                    'method' => 'REFUND_CASH',
+                    'method' => $refundPaymentMethod,
                     'timestamp' => now()->toIso8601String(),
                     'recordedBy' => $userName,
                     'createdAt' => now()->toIso8601String(),
                 ]);
+            }
+
+            // Customer Store Credit: increases customer balance or reduces debt
+            if ($refundMethod === 'STORE_CREDIT') {
+                if (!$customer) {
+                    $cId = $sale->customerId ?? $sale->customer_id ?? null;
+                    $customer = $cId ? Customer::find($cId) : null;
+                    if (!$customer && $sale->customerName && $sale->customerName !== 'Walk-in Customer') {
+                        $customer = Customer::where('name', $sale->customerName)->first();
+                    }
+                }
+
+                if ($customer) {
+                    $currentDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                    $refundKobo = \App\Services\Accounting\AccountingReportService::toKobo($totalRefundAmount);
+                    $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira(max(0, $currentDebtKobo - $refundKobo));
+                    $customer->save();
+
+                    CustomerLedger::create([
+                        'tenant_id' => $sale->tenant_id,
+                        'customer_id' => $customer->id,
+                        'sale_id' => $saleId,
+                        'warehouse_id' => $sale->warehouse_id,
+                        'type' => 'STORE_CREDIT',
+                        'amount' => $totalRefundAmount,
+                        'balance_after' => $customer->total_debt,
+                        'payment_method' => 'STORE_CREDIT',
+                        'reference_no' => 'CRD-' . strtoupper(Str::random(6)),
+                        'recorded_by' => $userName,
+                        'notes' => "Store credit of ₦" . number_format($totalRefundAmount, 2) . " granted for Return on Sale #{$saleId}",
+                    ]);
+                }
             }
 
             // Financial integrity: Debt reduction applies against outstanding invoice debt and customer debt balance.

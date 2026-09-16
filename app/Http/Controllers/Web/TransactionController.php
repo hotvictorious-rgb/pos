@@ -51,7 +51,7 @@ class TransactionController extends Controller
      */
     public function getSalesQuery(Request $request)
     {
-        $query = Sale::with('items');
+        $query = Sale::with(['items', 'returns']);
         $this->applyDateFilter($query, 'createdAt', $request);
 
         $effectiveWh = $this->getEffectiveWarehouseId($request);
@@ -1092,5 +1092,86 @@ class TransactionController extends Controller
         return response()->json($data, 200, [
             'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
         ], JSON_PRETTY_PRINT);
+    }
+
+    /**
+     * Void Sale and rollback inventory, reservations, debts.
+     */
+    public function voidSale(Request $request, string $saleId, \App\Services\TransactionVoidService $voidService)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        $actor = Auth::user();
+        try {
+            $result = $voidService->voidSale($saleId, $request->reason, $actor);
+
+            if ($request->wantsJson()) {
+                return response()->json($result);
+            }
+
+            return back()->with('success', "✓ " . $result['message']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 403);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 422);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Void Stock In entry and reverse stock count.
+     */
+    public function voidStockIn(Request $request, string $logId, \App\Services\TransactionVoidService $voidService)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        $actor = Auth::user();
+        try {
+            $result = $voidService->voidStockIn($logId, $request->reason, $actor);
+
+            if ($request->wantsJson()) {
+                return response()->json($result);
+            }
+
+            return back()->with('success', "✓ " . $result['message']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 403);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 422);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Void Stock Out or Adjustment entry and restore stock count.
+     */
+    public function voidStockOutOrAdjustment(Request $request, string $id, \App\Services\TransactionVoidService $voidService)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        $actor = Auth::user();
+        try {
+            $result = $voidService->voidStockOutOrAdjustment($id, $request->reason, $actor);
+
+            if ($request->wantsJson()) {
+                return response()->json($result);
+            }
+
+            return back()->with('success', "✓ " . $result['message']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 403);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 422);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
     }
 }

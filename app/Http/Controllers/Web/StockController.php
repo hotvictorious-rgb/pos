@@ -702,6 +702,7 @@ class StockController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('id', 'like', "%{$search}%")
                   ->orWhere('customerName', 'like', "%{$search}%")
+                  ->orWhere('note', 'like', "%{$search}%")
                   ->orWhereHas('customer', function ($cq) use ($search) {
                       $cq->where('phone', 'like', "%{$search}%");
                   });

@@ -181,22 +181,23 @@ class AccountingReportService
             ];
         }
 
-        // 3. Tender Math: Strictly CASH and POS calculated in pure integer kobo
-        $cashTenderedKobo = max(0, self::toKobo($tender['cashAmount'] ?? 0));
-        $posTenderedKobo  = max(0, self::toKobo($tender['posAmount'] ?? 0));
+        // 3. Tender Math: CASH, POS, and authorized EXCHANGE_CREDIT calculated in pure integer kobo
+        $cashTenderedKobo     = max(0, self::toKobo($tender['cashAmount'] ?? 0));
+        $posTenderedKobo      = max(0, self::toKobo($tender['posAmount'] ?? 0));
+        $exchangeCreditKobo   = max(0, self::toKobo($tender['exchange_credit'] ?? $tender['exchangeCredit'] ?? 0));
 
-        // Invariant: Electronic overpayment rejected! POS cannot exceed gross total
-        if ($posTenderedKobo > $grossTotalKobo) {
-            $posNaira = self::toNaira($posTenderedKobo);
+        // Invariant: Non-cash tender (POS + Exchange Credit) cannot exceed gross total
+        if (($posTenderedKobo + $exchangeCreditKobo) > $grossTotalKobo) {
+            $nonCashNaira = self::toNaira($posTenderedKobo + $exchangeCreditKobo);
             $grossNaira = self::toNaira($grossTotalKobo);
             throw new \InvalidArgumentException(
-                "Electronic payments (POS tender: ₦" . number_format($posNaira, 2) . 
+                "Non-cash payments (POS + Exchange Credit: ₦" . number_format($nonCashNaira, 2) . 
                 ") cannot exceed sale total amount of ₦" . number_format($grossNaira, 2) . 
-                ". Cash change cannot be disbursed from card/transfer overpayment."
+                ". Cash change cannot be disbursed from card or exchange credit."
             );
         }
 
-        $totalTenderedKobo = $cashTenderedKobo + $posTenderedKobo;
+        $totalTenderedKobo = $cashTenderedKobo + $posTenderedKobo + $exchangeCreditKobo;
 
         // Invariant: Change calculation and cash source boundary
         $changeAmountKobo = 0;
@@ -215,13 +216,14 @@ class AccountingReportService
         // Net paid amount applied to the invoice: Paid = Total Tendered - Change
         $paidAmountKobo = min($grossTotalKobo, max(0, $totalTenderedKobo - $changeAmountKobo));
 
-        // Retained Cash in drawer: Cash Tendered - Change
-        $retainedCashKobo = max(0, $cashTenderedKobo - $changeAmountKobo);
-        $retainedPosKobo  = $posTenderedKobo;
+        // Retained tenders
+        $retainedCashKobo     = max(0, $cashTenderedKobo - $changeAmountKobo);
+        $retainedPosKobo      = $posTenderedKobo;
+        $retainedExchangeKobo = $exchangeCreditKobo;
 
         // Authoritative integer kobo precision check (strictly prevents IEEE 754 floating point inaccuracies)
-        if (($retainedCashKobo + $retainedPosKobo) !== $paidAmountKobo) {
-            throw new \InvalidArgumentException("Accounting ledger error: Retained cash and POS do not sum to net paid amount.");
+        if (($retainedCashKobo + $retainedPosKobo + $retainedExchangeKobo) !== $paidAmountKobo) {
+            throw new \InvalidArgumentException("Accounting ledger error: Retained cash, POS, and exchange credit do not sum to net paid amount.");
         }
 
         $outstandingDebtKobo = max(0, $grossTotalKobo - $paidAmountKobo);
@@ -236,21 +238,25 @@ class AccountingReportService
             'validatedItems'      => $validatedItems,
             'cashTendered'        => self::toNaira($cashTenderedKobo),
             'posTendered'         => self::toNaira($posTenderedKobo),
+            'exchangeCredit'      => self::toNaira($exchangeCreditKobo),
             'totalTendered'       => self::toNaira($totalTenderedKobo),
             'changeAmount'        => self::toNaira($changeAmountKobo),
             'paidAmount'          => self::toNaira($paidAmountKobo),
             'retainedCash'        => self::toNaira($retainedCashKobo),
             'retainedPos'         => self::toNaira($retainedPosKobo),
+            'retainedExchange'    => self::toNaira($retainedExchangeKobo),
             'outstandingDebt'     => self::toNaira($outstandingDebtKobo),
             'status'              => $status,
             'grossTotalKobo'      => $grossTotalKobo,
             'cashTenderedKobo'    => $cashTenderedKobo,
             'posTenderedKobo'     => $posTenderedKobo,
+            'exchangeCreditKobo'  => $exchangeCreditKobo,
             'totalTenderedKobo'   => $totalTenderedKobo,
             'changeAmountKobo'    => $changeAmountKobo,
             'paidAmountKobo'      => $paidAmountKobo,
             'retainedCashKobo'    => $retainedCashKobo,
             'retainedPosKobo'     => $retainedPosKobo,
+            'retainedExchangeKobo'=> $retainedExchangeKobo,
             'outstandingDebtKobo' => $outstandingDebtKobo,
         ];
     }
@@ -659,8 +665,8 @@ class AccountingReportService
         $transferOutUnits   = (int) abs($stockOutLogs->filter(fn($l) => $l->type === 'TRANSFER_OUT')->sum('quantity'));
         $damageLossUnits    = max(0, $totalStockOutUnits - $salesDispatchUnits - $transferOutUnits);
 
-        // 2. Stock In Analysis (Supplier Restocks, Transfers In, Customer Returns)
-        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+        // 2. Stock In Analysis (Supplier Restocks, Transfers In, Customer Returns, Void Restorations)
+        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'SALE_VOIDED', 'STOCK_ADJUSTMENT_VOIDED']);
         $this->applyDateFilterToQuery($stockInQuery, 'timestamp', $filters);
         if ($scopedWh) {
             $stockInQuery->where('warehouse_id', $scopedWh);
@@ -670,7 +676,7 @@ class AccountingReportService
 
         $supplierRestockUnits = (int) $stockInLogs->filter(fn($l) => $l->type === 'STOCK_IN')->sum('quantity');
         $transferInUnits      = (int) $stockInLogs->filter(fn($l) => $l->type === 'TRANSFER_IN')->sum('quantity');
-        $returnedRestockUnits = (int) $stockInLogs->filter(fn($l) => in_array($l->type, ['RETURN', 'SALES_RETURN']))->sum('quantity');
+        $returnedRestockUnits = (int) $stockInLogs->filter(fn($l) => in_array($l->type, ['RETURN', 'SALES_RETURN', 'SALE_VOIDED', 'STOCK_ADJUSTMENT_VOIDED']))->sum('quantity');
 
         // Net Inventory Movement
         $netInventoryMovementUnits = $totalStockInUnits - $totalStockOutUnits;
@@ -1243,9 +1249,9 @@ class AccountingReportService
 
         // 4. Debt & Credit Exposure
         $newDebtCreated = 0.0;
+        $periodSaleBalances = $this->calculateInvoiceBalancesForSales($sales);
         foreach ($sales as $s) {
-            $invBalance = $this->calculateInvoiceBalance($s);
-            $newDebtCreated += $invBalance;
+            $newDebtCreated += ($periodSaleBalances[$s->id] ?? 0.0);
         }
 
         $user = Auth::user();
@@ -1302,11 +1308,8 @@ class AccountingReportService
             $openSalesBranch = Sale::where('warehouse_id', $scopedWarehouseId)
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->get();
-            $branchOutstanding = 0.0;
-            foreach ($openSalesBranch as $os) {
-                $branchOutstanding += $this->calculateInvoiceBalance($os);
-            }
-            $currentOutstanding = round($branchOutstanding, 2);
+            $openBalances = $this->calculateInvoiceBalancesForSales($openSalesBranch);
+            $currentOutstanding = round(array_sum($openBalances), 2);
         } else {
             $currentOutstanding = (float) Customer::sum('total_debt');
         }
@@ -1325,6 +1328,7 @@ class AccountingReportService
         $totalAvailableUnits = max(0, $totalPhysicalUnits - $totalAllocatedUnits);
 
         $retailInventoryValue = 0.0;
+        $costInventoryValue = 0.0;
 
         foreach ($stockLevels as $sl) {
             $p = $sl->product;
@@ -1332,7 +1336,9 @@ class AccountingReportService
                 // Clamped so negative physical stock never decreases inventory valuation
                 $units = max(0, (int) $sl->physical_stock);
                 $retailPrice = (float) ($p->unitPrice ?? 0);
+                $costPrice = (float) ($p->costPrice ?? $p->purchasePrice ?? $p->cost_price ?? $p->unitPrice ?? 0);
                 $retailInventoryValue += ($units * $retailPrice);
+                $costInventoryValue += ($units * $costPrice);
             }
         }
 
@@ -1375,6 +1381,8 @@ class AccountingReportService
             'totalAvailableUnits'        => $totalAvailableUnits,
             'retailInventoryValue'       => round($retailInventoryValue, 2),
             'inventory_retail_valuation' => round($retailInventoryValue, 2),
+            'costInventoryValue'         => round($costInventoryValue, 2),
+            'inventory_cost_valuation'   => round($costInventoryValue, 2),
             'expectedCashInDrawer'       => $expectedCash,
         ];
     }

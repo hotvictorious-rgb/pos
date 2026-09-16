@@ -627,11 +627,61 @@
         </div>
     </div>
 
+    <!-- Modal 3: Admin Transaction Void & Rollback Modal -->
+    <div id="modalVoidTransaction" class="modal-backdrop" style="display: none;">
+        <div class="modal" style="max-width: 520px; border-color: #ef4444;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.5rem;">⚠️</span>
+                    <h3 style="font-size: 1.25rem; font-weight: 800; color: #f87171;">Void Transaction & Reversal</h3>
+                </div>
+                <button type="button" onclick="closeModal('modalVoidTransaction')" style="background: none; border: none; color: #9ca3af; font-size: 1.25rem; cursor: pointer;">✕</button>
+            </div>
+
+            <p style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 1rem;">
+                You are about to <strong style="color: #f87171;">permanently void</strong> <span id="voidTargetName" style="font-weight: 700; color: #fff;"></span>.
+            </p>
+
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 10px; padding: 0.85rem; font-size: 0.8rem; color: #fca5a5; margin-bottom: 1.25rem;">
+                🛡️ <strong>Immutable Audit Guarantee:</strong> All stock items will be automatically rolled back to their respective branch shelves, debt ledgers will be reversed, and an indelible security event will be logged with your identity.
+            </div>
+
+            <form id="voidTransactionForm" method="POST" action=""
+                  data-confirm-title="Confirm Permanent Void & Reversal"
+                  data-confirm-subtitle="Review irreversible audit reversal details:"
+                  data-confirm-button="🗑️ Yes, Void Transaction"
+                  data-confirm-type="danger">
+                @csrf
+                <div class="form-group">
+                    <label style="color: #f87171; font-weight: 700; font-size: 0.8rem; text-transform: uppercase;">
+                        Mandatory Audit Reason for Voiding:
+                    </label>
+                    <input type="text" name="reason" id="voidReasonInput" required minlength="3" placeholder="e.g. Mistaken entry by cashier, customer product exchange, test entry..." style="width: 100%; border-color: rgba(239, 68, 68, 0.5);">
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalVoidTransaction')">Cancel</button>
+                    <button type="submit" class="btn btn-danger" style="flex: 1; background: #dc2626; border-color: #b91c1c;">✓ Confirm & Void</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 @endsection
 
 @push('scripts')
 <script>
 let currentAbortController = null;
+
+function openVoidModal(actionUrl, targetName) {
+    const form = document.getElementById('voidTransactionForm');
+    const nameSpan = document.getElementById('voidTargetName');
+    const reasonInput = document.getElementById('voidReasonInput');
+    if (form) form.action = actionUrl;
+    if (nameSpan) nameSpan.textContent = targetName;
+    if (reasonInput) reasonInput.value = '';
+    openModal('modalVoidTransaction');
+}
 
 /**
  * Instant Client-Side Zero-Reload Tab Switching (0ms)

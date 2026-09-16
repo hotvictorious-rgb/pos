@@ -179,6 +179,7 @@
                         <th>Original Sale</th>
                         <th>Customer</th>
                         <th>Product Returned</th>
+                        <th>Restock Action</th>
                         <th style="color: #f87171;">Refund Amount</th>
                         <th>Reason</th>
                         <th>Staff Officer</th>
@@ -194,6 +195,17 @@
                         <td><strong style="color: #93c5fd;">#{{ substr($ret->saleId, 0, 8) }}</strong></td>
                         <td><strong>{{ $ret->customerName ?? 'Walk-in Customer' }}</strong></td>
                         <td><span class="badge badge-info">{{ $ret->productName }} ({{ $ret->quantity }} units)</span></td>
+                        <td>
+                            @if(isset($ret->wasDelivered) && !$ret->wasDelivered)
+                                <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #facc15; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 0.75rem;">
+                                    ⏳ 0 Restocked (Unsupplied Buffer Released)
+                                </span>
+                            @else
+                                <span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-size: 0.75rem;">
+                                    📦 +{{ $ret->quantity }} Shelf Restocked
+                                </span>
+                            @endif
+                        </td>
                         <td style="font-weight: 800; color: #4ade80; font-size: 1.05rem;">
                             ₦{{ number_format($ret->refundAmount, 0) }}
                         </td>
@@ -202,7 +214,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                        <td colspan="9" style="text-align: center; padding: 3rem; color: var(--text-muted);">
                             No sales returns matching your filters.
                         </td>
                     </tr>
@@ -215,54 +227,99 @@
         </div>
     </div>
 
-    <!-- Modal: Process Return -->
+    <!-- Modal: Process Return (Searchable & Isolated) -->
     <div id="modalProcessReturn" class="modal-backdrop" style="display: none;">
-        <div class="modal" style="max-width: 620px;">
-            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">🔄 Process Customer Return</h3>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-                Select the past sale invoice and specify items returned.
+        <div class="modal" style="max-width: 680px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.5rem;">🔄</span>
+                    <h3 style="font-size: 1.3rem; font-weight: 800; margin: 0;">Process Customer Return & Refund</h3>
+                </div>
+                <button type="button" onclick="closeModal('modalProcessReturn')" style="background: none; border: none; color: #9ca3af; font-size: 1.25rem; cursor: pointer;">✕</button>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                Search any invoice by <strong>Physical Slip #</strong>, <strong>Invoice ID</strong>, or <strong>Phone</strong>. Unsupplied goods will cancel reservations without adding fake inventory to shelves.
             </p>
+
+            <!-- 1. Searchable Invoice Finder Box -->
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1.5px solid #3b82f6; border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem;">
+                <label style="font-size: 0.8rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;">
+                    🔍 Step 1: Search Invoice at this Branch
+                </label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="text" id="returnSearchQuery" placeholder="e.g. 4082 (Slip #), 08012345678, #4eae6d29, or Customer..." style="flex: 1; padding: 0.65rem; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: #fff;" onkeydown="if(event.key === 'Enter'){ event.preventDefault(); executeReturnInvoiceLookup(); }">
+                    <button type="button" class="btn btn-primary" onclick="executeReturnInvoiceLookup()" style="padding: 0.65rem 1.2rem; font-weight: 700; white-space: nowrap;">
+                        🔍 Find Invoice
+                    </button>
+                </div>
+                <div id="returnLookupFeedback" style="font-size: 0.78rem; margin-top: 0.4rem; display: none;"></div>
+
+                <!-- Multi-match list if multiple sales match -->
+                <div id="returnMultiMatchBox" style="display: none; margin-top: 0.65rem; max-height: 140px; overflow-y: auto; border-top: 1px dashed rgba(255,255,255,0.15); padding-top: 0.5rem;">
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.35rem; font-weight: 700;">Multiple Invoices Found — Click to select:</div>
+                    <div id="returnMultiMatchItems" style="display: flex; flex-direction: column; gap: 0.35rem;"></div>
+                </div>
+            </div>
 
             <form id="returnForm" method="POST" action="{{ route('pos.returns.process') }}">
                 @csrf
                 <input type="hidden" name="idempotency_key" id="returnIdempotencyKey" value="">
+                <input type="hidden" name="sale_id" id="returnSaleIdInput" value="">
 
-                <div class="form-group">
-                    <label>Select Original Sale Invoice</label>
-                    <select name="sale_id" id="returnSaleSelect" required onchange="loadSaleItems(this)">
-                        <option value="">-- Choose Sale Invoice --</option>
-                        @foreach($sales as $s)
-                            <option value="{{ $s->id }}" data-items="{{ json_encode($s->items) }}" data-customer="{{ $s->customerName }}">
-                                Sale #{{ substr($s->id, 0, 8) }} — {{ $s->customerName }} (₦{{ number_format($s->totalAmount, 0) }}) on {{ date('d/m/Y', strtotime($s->createdAt)) }}
-                            </option>
-                        @endforeach
-                    </select>
+                <!-- 2. Selected Invoice Preview Banner -->
+                <div id="returnSelectedSaleCard" style="display: none; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <strong style="color: #60a5fa; font-size: 1rem;" id="cardSaleRef">Sale #--------</strong>
+                            <div style="font-size: 0.8rem; color: #cbd5e1;" id="cardSaleCustomer">Customer: --</div>
+                            <div style="font-size: 0.75rem; color: #94a3b8;" id="cardSaleDate">Date: --</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div id="cardDeliveryStatusBadge" style="margin-bottom: 0.25rem;"></div>
+                            <div style="font-weight: 800; color: #4ade80;" id="cardSaleTotal">Total: ₦0</div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label>Receiving Branch Shop</label>
-                    <select name="warehouse_id" id="returnWarehouse" required>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Receiving Branch Shop</label>
+                    <select name="warehouse_id" id="returnWarehouse" required style="width: 100%; padding: 0.6rem; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
                         @foreach($warehouses as $wh)
                             <option value="{{ $wh->id }}">{{ $wh->name }}</option>
                         @endforeach
                     </select>
                 </div>
 
+                <!-- 3. Dynamic Items Selection Box -->
                 <div id="returnItemsContainer" style="margin-bottom: 1rem;">
-                    <!-- Items dynamically populated here -->
+                    <div style="padding: 1.5rem; text-align: center; color: var(--text-muted); background: rgba(15,23,42,0.4); border: 1px dashed var(--border); border-radius: 12px;">
+                        Please search and select an invoice above to view and return items.
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label>Refund Action</label>
-                    <select name="refund_method" id="returnRefundMethod" required>
-                        <option value="CASH_REFUND">💵 Cash Refund to Customer</option>
-                        <option value="DEBT_REDUCTION">💳 Reduce Customer Debt Balance</option>
+                <!-- Live Refund Calculation Summary -->
+                <div id="returnRefundPreviewBox" style="display: none; background: rgba(15, 23, 42, 0.9); border: 1px solid #10b981; border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                        <span style="font-size: 0.85rem; color: #94a3b8;">Total Restitution / Refund Due:</span>
+                        <strong style="font-size: 1.25rem; color: #4ade80;" id="returnTotalRefundPreview">₦0</strong>
+                    </div>
+                    <div id="returnInventoryImpactNote" style="font-size: 0.8rem; color: #cbd5e1;"></div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Refund Action / Restitution Method</label>
+                    <select name="refund_method" id="returnRefundMethod" required style="width: 100%; padding: 0.6rem; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
+                        <option value="CASH_REFUND">💵 Cash Refund (Disbursed from Cash Drawer)</option>
+                        <option value="POS_TRANSFER_REFUND">💳 POS / Bank Transfer Reversal (Electronic Refund)</option>
+                        <option value="DEBT_REDUCTION">📉 Reduce Customer Debt / Invoice Balance</option>
+                        <option value="STORE_CREDIT">🪙 Customer Store Credit / Exchange Balance</option>
                     </select>
                 </div>
 
-                <div class="form-group">
-                    <label>Reason for Return</label>
-                    <select name="reason" id="returnReason" required>
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Audit Reason for Return</label>
+                    <select name="reason" id="returnReason" required style="width: 100%; padding: 0.6rem; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
+                        <option value="Customer cancelled unsupplied order (Buffer refund)">Customer cancelled unsupplied order (Buffer refund)</option>
                         <option value="Defective or Damaged packaging">Defective or Damaged packaging</option>
                         <option value="Wrong product delivered">Wrong product delivered</option>
                         <option value="Customer changed mind / Exchange">Customer changed mind / Exchange</option>
@@ -270,9 +327,9 @@
                     </select>
                 </div>
 
-                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <div style="display: flex; gap: 0.75rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalProcessReturn')">Cancel</button>
-                    <button type="button" class="btn btn-warning" style="flex: 1;" onclick="confirmProcessReturn()">✓ Process Return & Restock</button>
+                    <button type="button" class="btn btn-warning" id="btnSubmitReturn" style="flex: 1; font-weight: 800;" onclick="confirmProcessReturn()" disabled>✓ Process Return & Restitution</button>
                 </div>
             </form>
         </div>
@@ -282,34 +339,16 @@
 
 @push('scripts')
 <script>
-function filterTableRows(tableId, query) {
-    const q = query.toLowerCase().trim();
-    const table = document.getElementById(tableId);
-    if (!table) return;
-    const rows = table.querySelectorAll('tbody tr');
-    rows.forEach(r => {
-        const text = r.textContent.toLowerCase();
-        r.style.display = text.includes(q) ? '' : 'none';
-    });
-}
-
 let currentReturnIdempotencyKey = null;
+let currentLoadedSale = null;
 
 function getOrCreateReturnIdempotencyKey() {
     if (!currentReturnIdempotencyKey) {
         currentReturnIdempotencyKey = 'ret-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).substring(2)));
     }
     const input = document.getElementById('returnIdempotencyKey');
-    if (input) {
-        input.value = currentReturnIdempotencyKey;
-    }
+    if (input) input.value = currentReturnIdempotencyKey;
     return currentReturnIdempotencyKey;
-}
-
-function resetReturnIdempotencyKey() {
-    currentReturnIdempotencyKey = null;
-    const input = document.getElementById('returnIdempotencyKey');
-    if (input) input.value = '';
 }
 
 function openModal(id) { 
@@ -323,121 +362,242 @@ function closeModal(id) {
     document.getElementById(id).style.display = 'none'; 
 }
 
-function loadSaleItems(select) {
-    const container = document.getElementById('returnItemsContainer');
-    const selectedOption = select.options[select.selectedIndex];
-    const itemsJson = selectedOption.getAttribute('data-items');
+/**
+ * Live Search Invoice for Return
+ */
+async function executeReturnInvoiceLookup() {
+    const input = document.getElementById('returnSearchQuery');
+    const feedback = document.getElementById('returnLookupFeedback');
+    const multiBox = document.getElementById('returnMultiMatchBox');
+    const multiItems = document.getElementById('returnMultiMatchItems');
+    const term = input.value.trim();
 
-    if (!itemsJson) {
-        container.innerHTML = '';
+    if (!term) {
+        feedback.style.display = 'block';
+        feedback.style.color = '#f87171';
+        feedback.textContent = 'Please enter an invoice ID, Paper Slip #, Phone, or Customer Name.';
         return;
     }
 
-    const items = JSON.parse(itemsJson);
-    let html = '<label style="font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.4rem;display:block;">Select Items to Return:</label>';
+    feedback.style.display = 'block';
+    feedback.style.color = '#93c5fd';
+    feedback.textContent = 'Searching branch invoices...';
+    multiBox.style.display = 'none';
 
-    items.forEach((item, index) => {
-        html += `
-        <div style="background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:12px;padding:0.75rem;margin-bottom:0.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;">
-            <div>
-                <input type="hidden" name="items[${index}][productId]" value="${item.productId}">
-                <input type="hidden" name="items[${index}][unitPrice]" value="${item.unitPrice}">
-                <strong>${item.productName}</strong>
-                <div style="font-size:0.75rem;color:#9ca3af;">Bought ${item.quantity} units @ ₦${Math.round(item.unitPrice).toLocaleString()}</div>
+    try {
+        const res = await fetch(`{{ route('pos.lookup_sale') }}?term=${encodeURIComponent(term)}`);
+        const data = await res.json();
+
+        if (!data.success || !data.sale) {
+            feedback.style.color = '#f87171';
+            feedback.textContent = data.error || 'No matching sale found at this branch.';
+            return;
+        }
+
+        feedback.style.color = '#4ade80';
+        feedback.textContent = `✓ Found invoice ${data.sale.ref}!`;
+
+        // If multiple matches were returned, offer quick switcher
+        if (data.matches && data.matches.length > 1) {
+            multiBox.style.display = 'block';
+            multiItems.innerHTML = data.matches.map(m => `
+                <button type="button" class="btn" style="text-align: left; padding: 0.4rem 0.6rem; font-size: 0.78rem; background: rgba(30,41,59,0.9); border: 1px solid #475569; display: flex; justify-content: space-between; align-items: center;" onclick="selectSpecificSale('${m.id}')">
+                    <span><strong>${m.ref}</strong> · ${m.customerName || 'Walk-in'} (₦${Math.round(m.totalAmount).toLocaleString()})</span>
+                    <span style="font-size: 0.7rem; color: ${m.isSupplied ? '#86efac' : '#facc15'};">${m.isSupplied ? '✓ Supplied' : '⏳ Unsupplied'}</span>
+                </button>
+            `).join('');
+        }
+
+        populateReturnSale(data.sale);
+
+    } catch (e) {
+        feedback.style.color = '#f87171';
+        feedback.textContent = 'Error connecting to server to search invoice.';
+    }
+}
+
+async function selectSpecificSale(saleId) {
+    try {
+        const res = await fetch(`{{ route('pos.lookup_sale') }}?term=${encodeURIComponent(saleId)}`);
+        const data = await res.json();
+        if (data.success && data.sale) {
+            populateReturnSale(data.sale);
+        }
+    } catch (e) {
+        alert('Could not load selected invoice.');
+    }
+}
+
+function populateReturnSale(sale) {
+    currentLoadedSale = sale;
+    document.getElementById('returnSaleIdInput').value = sale.id;
+
+    // Show Card
+    const card = document.getElementById('returnSelectedSaleCard');
+    card.style.display = 'block';
+    document.getElementById('cardSaleRef').textContent = `Sale ${sale.ref}`;
+    document.getElementById('cardSaleCustomer').textContent = `Customer: ${sale.customerName || 'Walk-in Customer'} ${sale.customerPhone ? '· ' + sale.customerPhone : ''}`;
+    document.getElementById('cardSaleDate').textContent = `Date: ${sale.date}`;
+    document.getElementById('cardSaleTotal').textContent = `Total Bill: ₦${Math.round(sale.totalAmount).toLocaleString()}`;
+
+    // Delivery Status Badge
+    const badgeEl = document.getElementById('cardDeliveryStatusBadge');
+    if (sale.isSupplied) {
+        badgeEl.innerHTML = `<span class="badge badge-success" style="background:#166534; color:#86efac; border:1px solid #22c55e;">✓ DELIVERED GOODS (Physical restock will occur)</span>`;
+    } else {
+        badgeEl.innerHTML = `<span class="badge badge-warning" style="background:#854d0e; color:#fef08a; border:1px solid #eab308;">⏳ UNSUPPLIED ORDER (Reservation released, 0 physical stock added, money refunded only)</span>`;
+    }
+
+    // Render Items
+    const container = document.getElementById('returnItemsContainer');
+    if (!sale.items || sale.items.length === 0) {
+        container.innerHTML = `<div style="padding: 1rem; color: #f87171; text-align: center;">No items found on this invoice.</div>`;
+        document.getElementById('btnSubmitReturn').disabled = true;
+        return;
+    }
+
+    let itemsHtml = `
+        <label style="font-size:0.8rem; font-weight:800; color:#93c5fd; text-transform:uppercase; margin-bottom:0.5rem; display:block;">
+            Step 2: Check Items & Enter Quantity to Return:
+        </label>
+    `;
+
+    sale.items.forEach((item, index) => {
+        const isEligible = item.eligibleQty > 0;
+        itemsHtml += `
+        <div style="background: rgba(15,23,42,0.8); border: 1px solid ${isEligible ? 'var(--border)' : '#475569'}; border-radius: 12px; padding: 0.75rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; opacity: ${isEligible ? '1' : '0.6'};">
+            <div style="display: flex; align-items: center; gap: 0.6rem; flex: 1;">
+                <input type="checkbox" id="chk_ret_${index}" onchange="recalculateReturnRefundTotals()" ${isEligible ? 'checked' : 'disabled'} style="width: 18px; height: 18px; cursor: pointer;">
+                <div>
+                    <input type="hidden" name="items[${index}][productId]" value="${item.productId}">
+                    <input type="hidden" name="items[${index}][unitPrice]" value="${item.unitPrice}">
+                    <input type="hidden" name="items[${index}][was_delivered]" value="${sale.isSupplied ? '1' : '0'}">
+                    <strong style="color: #f8fafc; font-size: 0.92rem;">${item.productName}</strong>
+                    <div style="font-size: 0.75rem; color: #94a3b8;">
+                        SKU: ${item.productCode} · Sold: ${item.soldQty} | Already Returned: ${item.alreadyReturnedQty} | 
+                        <span style="color: #4ade80; font-weight: 700;">Eligible: ${item.eligibleQty}</span>
+                    </div>
+                </div>
             </div>
-            <div style="max-width:120px;">
-                <label style="font-size:0.7rem;">Return Qty:</label>
-                <input type="number" name="items[${index}][quantity]" value="${item.quantity}" min="1" max="${item.quantity}" required>
+            <div style="max-width: 110px; text-align: right;">
+                <div style="font-size: 0.7rem; color: #94a3b8;">Return Qty:</div>
+                <input type="number" id="qty_ret_${index}" name="items[${index}][quantity]" value="${item.eligibleQty}" min="1" max="${item.eligibleQty}" ${isEligible ? '' : 'disabled'} oninput="recalculateReturnRefundTotals()" style="width: 70px; padding: 0.35rem; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; text-align: center; font-weight: 700;">
             </div>
         </div>
         `;
     });
 
-    container.innerHTML = html;
+    container.innerHTML = itemsHtml;
+    document.getElementById('btnSubmitReturn').disabled = false;
+    document.getElementById('returnRefundPreviewBox').style.display = 'block';
+    recalculateReturnRefundTotals();
+}
+
+function recalculateReturnRefundTotals() {
+    if (!currentLoadedSale || !currentLoadedSale.items) return;
+
+    let totalRefund = 0;
+    let totalPhysicalRestock = 0;
+    let totalBufferReleased = 0;
+
+    currentLoadedSale.items.forEach((item, index) => {
+        const chk = document.getElementById(`chk_ret_${index}`);
+        const qtyInp = document.getElementById(`qty_ret_${index}`);
+        if (chk && chk.checked && item.eligibleQty > 0) {
+            let q = parseInt(qtyInp.value) || 0;
+            if (q < 1) q = 1;
+            if (q > item.eligibleQty) q = item.eligibleQty;
+            qtyInp.value = q;
+
+            totalRefund += (q * item.unitPrice);
+            if (currentLoadedSale.isSupplied) {
+                totalPhysicalRestock += q;
+            } else {
+                totalBufferReleased += q;
+            }
+        }
+    });
+
+    document.getElementById('returnTotalRefundPreview').textContent = '₦' + Math.round(totalRefund).toLocaleString();
+
+    const noteEl = document.getElementById('returnInventoryImpactNote');
+    if (currentLoadedSale.isSupplied) {
+        noteEl.innerHTML = `📦 <strong>Physical Inventory:</strong> +${totalPhysicalRestock} units will be returned to shelf stock.`;
+        noteEl.style.color = '#86efac';
+    } else {
+        noteEl.innerHTML = `⏳ <strong>Unsupplied Buffer:</strong> <strong>0 units</strong> added to physical shelf (goods never left store). ${totalBufferReleased} units reservation buffer released.`;
+        noteEl.style.color = '#fde047';
+    }
 }
 
 function confirmProcessReturn() {
     const form = document.getElementById('returnForm');
-    const saleSelect = document.getElementById('returnSaleSelect');
+    const saleId = document.getElementById('returnSaleIdInput').value;
     const errors = [];
 
-    if (!saleSelect || !saleSelect.value) {
+    if (!saleId || !currentLoadedSale) {
         errors.push({
-            title: 'No Sale Invoice Selected',
-            desc: 'Please choose the original sale invoice to process a return against.',
-            focus: 'returnSaleSelect'
+            title: 'No Invoice Selected',
+            desc: 'Please search and select the original sale invoice first.',
+            focus: 'returnSearchQuery'
         });
     }
 
-    const returnItems = form.querySelectorAll('input[name*="[quantity]"]');
-    if (returnItems.length === 0) {
-        errors.push({
-            title: 'No Items Available',
-            desc: 'This invoice has no items available to return.',
-            focus: 'returnSaleSelect'
+    let selectedCount = 0;
+    if (currentLoadedSale && currentLoadedSale.items) {
+        currentLoadedSale.items.forEach((item, index) => {
+            const chk = document.getElementById(`chk_ret_${index}`);
+            if (chk && chk.checked) selectedCount++;
         });
     }
 
-    let hasNonZero = false;
-    returnItems.forEach(input => {
-        const qty = parseInt(input.value) || 0;
-        const max = parseInt(input.getAttribute('max')) || 0;
-        if (qty > 0) hasNonZero = true;
-        if (qty > max) {
-            errors.push({
-                title: 'Quantity Exceeds Original Sale',
-                desc: `Return quantity (${qty}) cannot be greater than original quantity purchased (${max}).`,
-                focus: input
-            });
-        }
-    });
-
-    if (!hasNonZero) {
+    if (selectedCount === 0) {
         errors.push({
-            title: 'Zero Return Quantity',
-            desc: 'Please enter at least 1 unit to return.',
-            focus: returnItems[0]
+            title: 'No Items Selected',
+            desc: 'Please check at least one product to return.',
+            focus: 'returnSearchQuery'
         });
     }
 
     if (errors.length > 0) {
         showActionBlockedModal({
-            title: 'Return Cannot Be Processed',
-            subtitle: 'Please resolve the following return requirements:',
+            title: 'Return Requirements Missing',
+            subtitle: 'Please resolve the following before processing:',
             errors: errors
         });
         return;
     }
 
-    const selectedOpt = saleSelect.options[saleSelect.selectedIndex];
-    const custName = selectedOpt.getAttribute('data-customer') || 'Customer';
-    const saleText = selectedOpt.text;
     const whSelect = document.getElementById('returnWarehouse');
     const whName = whSelect.options[whSelect.selectedIndex].text;
     const refundSelect = document.getElementById('returnRefundMethod');
     const refundName = refundSelect.options[refundSelect.selectedIndex].text;
     const reasonSelect = document.getElementById('returnReason');
     const reasonText = reasonSelect.value;
+    const refundTotal = document.getElementById('returnTotalRefundPreview').textContent;
 
     closeModal('modalProcessReturn');
 
     showConfirmPopup({
         icon: '🔄',
         title: 'Confirm Sales Return & Restitution',
-        subtitle: 'Review return impact on physical stock and finances:',
+        subtitle: 'Please verify the refund restitution and inventory effect:',
         borderColor: '#f59e0b',
         items: [
-            { label: 'Customer', value: custName, color: '#f8fafc' },
-            { label: 'Original Invoice', value: saleText.split('—')[0].trim(), color: '#93c5fd' },
-            { label: 'Restock Branch', value: whName, color: '#4ade80' },
-            { label: 'Refund Action', value: refundName, color: '#fbbf24' },
-            { label: 'Return Reason', value: reasonText, color: '#cbd5e1' }
+            { label: 'Customer', value: currentLoadedSale.customerName || 'Walk-in Customer', color: '#f8fafc' },
+            { label: 'Original Invoice', value: currentLoadedSale.ref, color: '#93c5fd' },
+            { label: 'Delivery Status', value: currentLoadedSale.isSupplied ? '✓ Delivered / Supplied' : '⏳ Unsupplied (Delayed Pickup)', color: currentLoadedSale.isSupplied ? '#86efac' : '#fde047' },
+            { label: 'Total Refund Due', value: refundTotal, color: '#4ade80' },
+            { label: 'Restitution Action', value: refundName, color: '#fbbf24' },
+            { label: 'Audit Reason', value: reasonText, color: '#cbd5e1' }
         ],
         impact: {
-            text: '🔄 RESTOCK & AUDIT: Returned items will be added back into physical closing stock and the refund/debt reduction will be recorded in audit logs.',
-            type: 'warning'
+            text: currentLoadedSale.isSupplied 
+                ? '📦 RESTOCK EFFECT: Returned physical items will be restored to branch shelf counts.'
+                : '⏳ ZERO RESTOCK GUARANTEE: Unsupplied orders never left store shelves. Zero units will be added to physical stock; reservation allocation will be safely cancelled and money refunded.',
+            type: currentLoadedSale.isSupplied ? 'warning' : 'info'
         },
-        confirmText: '✓ Yes, Process Return & Restock',
+        confirmText: '✓ Yes, Process Return & Restitution',
         confirmClass: 'btn-warning',
         form: form
     });
