@@ -660,10 +660,10 @@
                     💳 Payment Status & Method
                 </div>
                 <div class="pay-tabs">
-                    <div class="pay-tab" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Cash</div>
-                    <div class="pay-tab active" id="tabPos" onclick="selectPaymentMode('POS')">💳 POS</div>
-                    <div class="pay-tab" id="tabSplit" onclick="selectPaymentMode('SPLIT')">🔀 Split</div>
-                    <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part / Debt</div>
+                    <div class="pay-tab" id="tabCash" onclick="handlePayTabClick('CASH')">💵 Cash</div>
+                    <div class="pay-tab active" id="tabPos" onclick="handlePayTabClick('POS')">💳 POS</div>
+                    <div class="pay-tab" id="tabSplit" onclick="handlePayTabClick('SPLIT')">🔀 Split</div>
+                    <div class="pay-tab" id="tabDebt" onclick="handlePayTabClick('DEBT')">🤝 Part / Debt</div>
                 </div>
 
                 <!-- Split Payment Breakdown Box (Visible when Split is selected) -->
@@ -968,6 +968,35 @@ window.POS_CONFIG = {
     quickRegisterCustomerUrl: "{{ route('pos.customer.quick_register') }}",
     csrfToken: "{{ csrf_token() }}"
 };
+
+function handlePayTabClick(mode) {
+    if (typeof window.selectPaymentMode === 'function') {
+        window.selectPaymentMode(mode);
+    }
+    // Fail-safe immediate UI toggle
+    const sBox = document.getElementById('splitBox');
+    const dBox = document.getElementById('debtBox');
+    document.querySelectorAll('.pay-tab').forEach(t => t.classList.remove('active'));
+    if (mode === 'SPLIT') {
+        const t = document.getElementById('tabSplit');
+        if (t) t.classList.add('active');
+        if (sBox) sBox.style.display = 'block';
+        if (dBox) dBox.style.display = 'none';
+        if (typeof window.updateSplitCalculation === 'function') {
+            window.updateSplitCalculation();
+        }
+    } else if (mode === 'DEBT') {
+        const t = document.getElementById('tabDebt');
+        if (t) t.classList.add('active');
+        if (dBox) dBox.style.display = 'block';
+        if (sBox) sBox.style.display = 'none';
+    } else {
+        const t = document.getElementById(mode === 'CASH' ? 'tabCash' : 'tabPos');
+        if (t) t.classList.add('active');
+        if (sBox) sBox.style.display = 'none';
+        if (dBox) dBox.style.display = 'none';
+    }
+}
 </script>
-<script src="{{ asset('js/pos-engine.js') }}"></script>
+<script src="{{ asset('js/pos-engine.js') }}?v={{ time() }}"></script>
 @endpush
