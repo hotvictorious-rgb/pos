@@ -585,9 +585,11 @@
         paymentMode = mode;
         const tabCash = document.getElementById('tabCash');
         const tabPos = document.getElementById('tabPos');
+        const tabSplit = document.getElementById('tabSplit');
         const tabDebt = document.getElementById('tabDebt');
         if (tabCash) tabCash.className = mode === 'CASH' ? 'pay-tab active' : 'pay-tab';
         if (tabPos) tabPos.className = mode === 'POS' ? 'pay-tab active' : 'pay-tab';
+        if (tabSplit) tabSplit.className = mode === 'SPLIT' ? 'pay-tab active' : 'pay-tab';
         if (tabDebt) tabDebt.className = mode === 'DEBT' ? 'pay-tab active' : 'pay-tab';
 
         const debtBox = document.getElementById('debtBox');
@@ -598,13 +600,46 @@
             }
         }
 
-        updateDebtCalculation();
+        const splitBox = document.getElementById('splitBox');
+        if (splitBox) {
+            splitBox.style.display = mode === 'SPLIT' ? 'block' : 'none';
+            if (mode === 'SPLIT') {
+                const cashInp = document.getElementById('splitCashInput');
+                const posInp = document.getElementById('splitPosInput');
+                const hidTotal = document.getElementById('hiddenTotal');
+                const grossTotal = parseFloat(hidTotal ? hidTotal.value : 0) || 0;
+                const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+                const netPayable = Math.max(0, grossTotal - totalExchangeCredit);
+                if (cashInp && posInp && (!cashInp.value && !posInp.value)) {
+                    cashInp.value = '';
+                    posInp.value = netPayable > 0 ? netPayable : '';
+                }
+                updateSplitCalculation();
+            }
+        }
+
+        if (mode === 'SPLIT') {
+            updateSplitCalculation();
+        } else {
+            updateDebtCalculation();
+        }
         updateCustomerRequirements();
     }
 
     function updateCustomerRequirements() {
         const isSupplied = document.getElementById('radioYes') ? document.getElementById('radioYes').checked : true;
-        const isDebt = (paymentMode === 'DEBT');
+        let isDebt = (paymentMode === 'DEBT');
+        if (paymentMode === 'SPLIT') {
+            const hidTotal = document.getElementById('hiddenTotal');
+            const grossTotal = parseFloat(hidTotal ? hidTotal.value : 0) || 0;
+            const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+            const netPayable = Math.max(0, grossTotal - totalExchangeCredit);
+            const cashVal = parseFloat(document.getElementById('splitCashInput')?.value || 0) || 0;
+            const posVal = parseFloat(document.getElementById('splitPosInput')?.value || 0) || 0;
+            if ((cashVal + posVal) < netPayable) {
+                isDebt = true;
+            }
+        }
         const isStrict = isDebt || !isSupplied;
 
         const nameReq = document.getElementById('custNameReq');
@@ -627,6 +662,11 @@
     }
 
     function updateDebtCalculation() {
+        if (paymentMode === 'SPLIT') {
+            updateSplitCalculation();
+            return;
+        }
+
         const hidTotal = document.getElementById('hiddenTotal');
         const grossTotal = parseFloat(hidTotal ? hidTotal.value : 0) || 0;
         const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
@@ -662,6 +702,78 @@
             if (hidPaid) hidPaid.value = netPayable;
             if (hidCash) hidCash.value = netPayable;
             if (hidPos) hidPos.value = 0;
+        }
+    }
+
+    function updateSplitCalculation() {
+        const hidTotal = document.getElementById('hiddenTotal');
+        const grossTotal = parseFloat(hidTotal ? hidTotal.value : 0) || 0;
+        const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        const netPayable = Math.max(0, grossTotal - totalExchangeCredit);
+
+        const cashInput = document.getElementById('splitCashInput');
+        const posInput = document.getElementById('splitPosInput');
+        const cashVal = parseFloat(cashInput ? cashInput.value : 0) || 0;
+        const posVal = parseFloat(posInput ? posInput.value : 0) || 0;
+
+        const totalTendered = cashVal + posVal;
+        const hidPaid = document.getElementById('hiddenPaid');
+        const hidCash = document.getElementById('hiddenCash');
+        const hidPos = document.getElementById('hiddenPos');
+
+        if (hidCash) hidCash.value = cashVal;
+        if (hidPos) hidPos.value = posVal;
+        if (hidPaid) hidPaid.value = Math.min(netPayable, totalTendered);
+
+        const totalTenderedEl = document.getElementById('splitTotalTenderedDisplay');
+        if (totalTenderedEl) totalTenderedEl.textContent = '₦' + Math.round(totalTendered).toLocaleString('en-US');
+
+        const changeEl = document.getElementById('splitChangeDisplay');
+        const changeRow = document.getElementById('splitChangeRow');
+        const remainingEl = document.getElementById('splitRemainingDisplay');
+        const balanceRow = document.getElementById('splitBalanceRow');
+
+        if (totalTendered >= netPayable) {
+            const change = Math.max(0, cashVal - Math.max(0, netPayable - posVal));
+            if (changeEl) changeEl.textContent = '₦' + Math.round(change).toLocaleString('en-US');
+            if (changeRow) changeRow.style.display = change > 0 ? 'flex' : 'none';
+            if (remainingEl) remainingEl.textContent = '₦0 (Settled)';
+            if (balanceRow) balanceRow.style.display = 'none';
+        } else {
+            const remaining = Math.max(0, netPayable - totalTendered);
+            if (changeRow) changeRow.style.display = 'none';
+            if (remainingEl) remainingEl.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
+            if (balanceRow) balanceRow.style.display = 'flex';
+        }
+
+        updateCustomerRequirements();
+    }
+
+    function fillRemainingToPos() {
+        const hidTotal = document.getElementById('hiddenTotal');
+        const grossTotal = parseFloat(hidTotal ? hidTotal.value : 0) || 0;
+        const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        const netPayable = Math.max(0, grossTotal - totalExchangeCredit);
+        const cashVal = parseFloat(document.getElementById('splitCashInput')?.value || 0) || 0;
+        const posNeeded = Math.max(0, netPayable - cashVal);
+        const posInput = document.getElementById('splitPosInput');
+        if (posInput) {
+            posInput.value = posNeeded > 0 ? posNeeded : 0;
+            updateSplitCalculation();
+        }
+    }
+
+    function fillRemainingToCash() {
+        const hidTotal = document.getElementById('hiddenTotal');
+        const grossTotal = parseFloat(hidTotal ? hidTotal.value : 0) || 0;
+        const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        const netPayable = Math.max(0, grossTotal - totalExchangeCredit);
+        const posVal = parseFloat(document.getElementById('splitPosInput')?.value || 0) || 0;
+        const cashNeeded = Math.max(0, netPayable - posVal);
+        const cashInput = document.getElementById('splitCashInput');
+        if (cashInput) {
+            cashInput.value = cashNeeded > 0 ? cashNeeded : 0;
+            updateSplitCalculation();
         }
     }
 
@@ -1106,8 +1218,32 @@
 
         const confirmPayingEl = document.getElementById('confirmPayingNow');
         if (confirmPayingEl) {
-            confirmPayingEl.textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : 'Paid ' + paymentMode) + ')';
+            confirmPayingEl.textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : (paymentMode === 'SPLIT' ? 'Split Tender' : 'Paid ' + paymentMode)) + ')';
             confirmPayingEl.style.color = '#60a5fa';
+        }
+
+        const confirmSplitRow = document.getElementById('confirmSplitBreakdownRow');
+        const confirmSplitText = document.getElementById('confirmSplitBreakdownText');
+        const confirmChangeRow = document.getElementById('confirmChangeRow');
+        const confirmChangeEl = document.getElementById('confirmChange');
+
+        const cashVal = parseFloat(document.getElementById('hiddenCash')?.value || 0) || 0;
+        const posVal = parseFloat(document.getElementById('hiddenPos')?.value || 0) || 0;
+
+        if (paymentMode === 'SPLIT') {
+            if (confirmSplitRow) confirmSplitRow.style.display = 'flex';
+            if (confirmSplitText) confirmSplitText.textContent = `💵 ₦${Math.round(cashVal).toLocaleString('en-US')} Cash + 💳 ₦${Math.round(posVal).toLocaleString('en-US')} POS`;
+            const totalTender = cashVal + posVal;
+            if (totalTender > netDueAmt && cashVal > 0) {
+                const change = Math.max(0, cashVal - Math.max(0, netDueAmt - posVal));
+                if (confirmChangeRow) confirmChangeRow.style.display = change > 0 ? 'flex' : 'none';
+                if (confirmChangeEl) confirmChangeEl.textContent = '₦' + Math.round(change).toLocaleString('en-US');
+            } else {
+                if (confirmChangeRow) confirmChangeRow.style.display = 'none';
+            }
+        } else {
+            if (confirmSplitRow) confirmSplitRow.style.display = 'none';
+            if (confirmChangeRow) confirmChangeRow.style.display = 'none';
         }
         
         const confirmDebtEl = document.getElementById('confirmDebtLedger');
@@ -1312,6 +1448,9 @@
     window.selectPaymentMode = selectPaymentMode;
     window.setPartPayTender = setPartPayTender;
     window.updateDebtCalculation = updateDebtCalculation;
+    window.updateSplitCalculation = updateSplitCalculation;
+    window.fillRemainingToPos = fillRemainingToPos;
+    window.fillRemainingToCash = fillRemainingToCash;
     window.onCustomerSelected = onCustomerSelected;
     window.validateNigerianPhone = validateNigerianPhone;
     window.onManualCustomerTyping = onManualCustomerTyping;

@@ -260,8 +260,8 @@
     /* Payment Tabs */
     .pay-tabs {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0.4rem;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.35rem;
         margin-bottom: 0.75rem;
     }
 
@@ -660,9 +660,50 @@
                     💳 Payment Status & Method
                 </div>
                 <div class="pay-tabs">
-                    <div class="pay-tab" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Paid (Cash)</div>
-                    <div class="pay-tab active" id="tabPos" onclick="selectPaymentMode('POS')">💳 Paid (POS Terminal)</div>
-                    <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part-Paid / Not Paid</div>
+                    <div class="pay-tab" id="tabCash" onclick="selectPaymentMode('CASH')">💵 Cash</div>
+                    <div class="pay-tab active" id="tabPos" onclick="selectPaymentMode('POS')">💳 POS</div>
+                    <div class="pay-tab" id="tabSplit" onclick="selectPaymentMode('SPLIT')">🔀 Split</div>
+                    <div class="pay-tab" id="tabDebt" onclick="selectPaymentMode('DEBT')">🤝 Part / Debt</div>
+                </div>
+
+                <!-- Split Payment Breakdown Box (Visible when Split is selected) -->
+                <div id="splitBox" style="display: none; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
+                    <div style="font-size: 0.78rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🔀 Mixed Tender Breakdown</span>
+                        <span style="font-size: 0.7rem; color: #38bdf8;">Cash + POS Terminal</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.5rem;">
+                        <div>
+                            <label style="font-size: 0.72rem; color: #4ade80; font-weight: 700; margin-bottom: 0.2rem; display: block;">💵 Cash Amount (₦):</label>
+                            <input type="number" id="splitCashInput" placeholder="0" min="0" step="any" oninput="updateSplitCalculation()" style="width: 100%; padding: 0.45rem 0.6rem; font-size: 0.85rem; background: #0b0f19; border: 1px solid #475569; border-radius: 8px; color: #4ade80; font-weight: 700;">
+                            <button type="button" onclick="fillRemainingToCash()" style="margin-top: 0.3rem; width: 100%; padding: 0.2rem 0.4rem; font-size: 0.68rem; background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); border-radius: 5px; cursor: pointer; font-weight: 600;">
+                                Balance to Cash ⚡
+                            </button>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.72rem; color: #60a5fa; font-weight: 700; margin-bottom: 0.2rem; display: block;">💳 POS Terminal (₦):</label>
+                            <input type="number" id="splitPosInput" placeholder="0" min="0" step="any" oninput="updateSplitCalculation()" style="width: 100%; padding: 0.45rem 0.6rem; font-size: 0.85rem; background: #0b0f19; border: 1px solid #475569; border-radius: 8px; color: #60a5fa; font-weight: 700;">
+                            <button type="button" onclick="fillRemainingToPos()" style="margin-top: 0.3rem; width: 100%; padding: 0.2rem 0.4rem; font-size: 0.68rem; background: rgba(96,165,250,0.12); color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); border-radius: 5px; cursor: pointer; font-weight: 600;">
+                                Balance to POS ⚡
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Split Reconciled Status Strip -->
+                    <div style="background: rgba(15,23,42,0.8); border-radius: 8px; padding: 0.45rem 0.65rem; border: 1px solid rgba(255,255,255,0.06); font-size: 0.78rem;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.2rem;">
+                            <span style="color: #94a3b8;">Total Tendered:</span>
+                            <strong id="splitTotalTenderedDisplay" style="color: #f8fafc;">₦0</strong>
+                        </div>
+                        <div style="display: none; justify-content: space-between; margin-bottom: 0.2rem;" id="splitChangeRow">
+                            <span style="color: #4ade80;">Change to Customer:</span>
+                            <strong id="splitChangeDisplay" style="color: #4ade80;">₦0</strong>
+                        </div>
+                        <div style="display: none; justify-content: space-between;" id="splitBalanceRow">
+                            <span style="color: #f87171;">Remaining Unpaid:</span>
+                            <strong id="splitRemainingDisplay" style="color: #f87171;">₦0</strong>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Part-Payment Input (Visible when Part-Paid / Not Paid is selected) -->
@@ -822,6 +863,14 @@
             <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 0.4rem;">
                 <span style="color: #94a3b8;">Amount Paying Now:</span>
                 <strong id="confirmPayingNow" style="color: #60a5fa;">₦0</strong>
+            </div>
+            <div id="confirmSplitBreakdownRow" style="display: none; justify-content: space-between; font-size: 0.8rem; background: rgba(59,130,246,0.1); padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px dashed rgba(59,130,246,0.3);">
+                <span style="color: #93c5fd;">Tender Breakdown:</span>
+                <span id="confirmSplitBreakdownText" style="font-weight: 700; color: #f8fafc;">💵 ₦0 + 💳 ₦0</span>
+            </div>
+            <div id="confirmChangeRow" style="display: none; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 0.4rem;">
+                <span style="color: #4ade80;">Change to Customer:</span>
+                <strong id="confirmChange" style="color: #4ade80; font-size: 1.05rem;">₦0</strong>
             </div>
             <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 0.4rem;">
                 <span style="color: #94a3b8;">Debt Ledger Impact:</span>
