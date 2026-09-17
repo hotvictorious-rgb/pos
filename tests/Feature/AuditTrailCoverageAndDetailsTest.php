@@ -399,4 +399,83 @@ class AuditTrailCoverageAndDetailsTest extends TestCase
         $filterResp->assertSee('Test sale #1 completed');
         $filterResp->assertDontSee('User logged in');
     }
+
+    /**
+     * Verify strict multi-tenant isolation:
+     * Tenant A can NEVER see or access Tenant B's audit activity logs.
+     */
+    public function test_tenant_audit_isolation_prevents_cross_tenant_data_leakage(): void
+    {
+        // 1. Create Tenant B with its own admin user and warehouse
+        $tenantB = Tenant::create([
+            'id' => 'tenant-b-' . Str::random(5),
+            'name' => 'Abuja Exclusive Emporium',
+            'slug' => 'abuja-emporium-' . Str::random(5),
+            'owner_email' => 'owner@abuja.ng',
+            'status' => 'active',
+            'plan' => 'enterprise',
+        ]);
+
+        $warehouseB = Warehouse::create([
+            'tenant_id' => $tenantB->id,
+            'name' => 'Wuse II Branch',
+            'code' => 'WUSE-02',
+            'address' => 'Wuse II, Abuja',
+            'is_active' => true,
+        ]);
+
+        $adminB = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantB->id,
+            'name' => 'Auditor Aisha',
+            'email' => 'aisha@abuja.ng',
+            'password' => Hash::make('AbujaPass123!'),
+            'role' => 'admin',
+            'warehouse_id' => $warehouseB->id,
+        ]);
+
+        // 2. Record sensitive audit event belonging to Tenant A
+        Activity::recordSecurityEvent('POS_SALE_COMPLETED', 'CONFIDENTIAL: Tenant A Lagos Sale #999999 for ₦5,000,000', [
+            'sale_id' => '999999',
+            'tenant_id' => $this->tenant->id,
+            'total_amount' => 5000000.00,
+        ], $this->admin);
+
+        // 3. Record sensitive audit event belonging to Tenant B
+        Activity::recordSecurityEvent('POS_SALE_COMPLETED', 'CONFIDENTIAL: Tenant B Abuja Sale #888888 for ₦12,000,000', [
+            'sale_id' => '888888',
+            'tenant_id' => $tenantB->id,
+            'total_amount' => 12000000.00,
+        ], $adminB);
+
+        // 4. Authenticate as Tenant A Auditor
+        $this->actingAs($this->admin);
+        session([
+            'user_id' => $this->admin->id,
+            'tenant_id' => $this->tenant->id,
+            'user_role' => 'admin',
+        ]);
+
+        $respA = $this->get(route('auditor.index'));
+        $respA->assertStatus(200);
+        // Tenant A must see its own audit log
+        $respA->assertSee('Tenant A Lagos Sale #999999');
+        // Tenant A must NEVER see Tenant B's audit log
+        $respA->assertDontSee('Tenant B Abuja Sale #888888');
+
+        // 5. Authenticate as Tenant B Auditor
+        $this->actingAs($adminB);
+        session([
+            'user_id' => $adminB->id,
+            'tenant_id' => $tenantB->id,
+            'user_role' => 'admin',
+        ]);
+
+        $respB = $this->get(route('auditor.index'));
+        $respB->assertStatus(200);
+        // Tenant B must see its own audit log
+        $respB->assertSee('Tenant B Abuja Sale #888888');
+        // Tenant B must NEVER see Tenant A's audit log
+        $respB->assertDontSee('Tenant A Lagos Sale #999999');
+    }
 }
