@@ -114,6 +114,8 @@ class TransactionVoidService
                 }
 
                 $restoredItems[] = [
+                    'sku' => $product?->code ?? $item->code ?? $item->productCode ?? 'N/A',
+                    'name' => $product?->name ?? $item->productName,
                     'product' => $product?->name ?? $item->productName,
                     'quantity' => $physicalRestored > 0 ? $physicalRestored : $allocatedCancelled,
                     'is_physical' => ($physicalRestored > 0),
@@ -223,12 +225,14 @@ class TransactionVoidService
                 'STOCK_IN_VOIDED',
                 "Admin {$actor->name} voided Stock In entry #{$logId} (-{$qty} units of {$log->productName}). Reason: {$reason}",
                 [
-                    'log_id' => $logId,
-                    'product_id' => $productId,
-                    'product_name' => $log->productName,
+                    'log_id'            => $logId,
+                    'product_id'        => $productId,
+                    'sku'               => $product?->code ?? $log->productCode ?? 'N/A',
+                    'product_code'      => $product?->code ?? $log->productCode ?? 'N/A',
+                    'product_name'      => $log->productName,
                     'quantity_reversed' => $qty,
-                    'warehouse_id' => $warehouseId,
-                    'reason' => $reason,
+                    'warehouse_id'      => $warehouseId,
+                    'reason'            => $reason,
                 ],
                 $actor
             );
@@ -282,9 +286,12 @@ class TransactionVoidService
                     "Admin {$actor->name} voided Stock Adjustment #{$adj->id} (+{$qty} units restored). Reason: {$reason}",
                     [
                         'adjustment_id' => $adj->id,
-                        'product_id' => $productId,
-                        'qty' => $qty,
-                        'reason' => $reason,
+                        'product_id'    => $productId,
+                        'sku'           => $product?->code ?? 'N/A',
+                        'product_code'  => $product?->code ?? 'N/A',
+                        'product_name'  => $product?->name ?? 'Adjusted Product',
+                        'qty'           => $qty,
+                        'reason'        => $reason,
                     ],
                     $actor
                 );
@@ -331,10 +338,13 @@ class TransactionVoidService
                 'STOCK_OUT_VOIDED',
                 "Admin {$actor->name} voided Stock Out log #{$log->id} (+{$qty} units restored). Reason: {$reason}",
                 [
-                    'log_id' => $log->id,
-                    'product_id' => $productId,
-                    'qty' => $qty,
-                    'reason' => $reason,
+                    'log_id'       => $log->id,
+                    'product_id'   => $productId,
+                    'sku'          => $product?->code ?? $log->productCode ?? 'N/A',
+                    'product_code' => $product?->code ?? $log->productCode ?? 'N/A',
+                    'product_name' => $product?->name ?? $log->productName ?? 'Dispatched Item',
+                    'qty'          => $qty,
+                    'reason'       => $reason,
                 ],
                 $actor
             );

@@ -124,7 +124,7 @@ class TransactionController extends Controller
 
     public function getStockInQuery(Request $request)
     {
-        $query = InventoryLog::where('type', 'STOCK_IN');
+        $query = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
         $this->applyDateFilter($query, 'timestamp', $request);
 
         $effectiveWh = $this->getEffectiveWarehouseId($request);
@@ -142,11 +142,27 @@ class TransactionController extends Controller
         if ($request->filled('inflow_category')) {
             $cat = strtoupper($request->inflow_category);
             if ($cat === 'SUPPLIER') {
-                $query->where('description', 'not like', '%Initial%')->where('description', 'not like', '%Audit%');
+                $query->where('type', 'STOCK_IN')
+                      ->where('description', 'not like', '%Initial%')
+                      ->where('description', 'not like', '%Audit%');
+            } elseif ($cat === 'EXCHANGE') {
+                $query->where(function($q) {
+                    $q->where('type', 'EXCHANGE_IN')
+                      ->orWhere(function($sub) {
+                          $sub->where('type', 'SALES_RETURN')->where('description', 'like', '%Exchange%');
+                      });
+                });
+            } elseif ($cat === 'RETURN') {
+                $query->where(function($q) {
+                    $q->whereIn('type', ['RETURN', 'SALES_RETURN'])
+                      ->where('description', 'not like', '%Exchange%');
+                });
+            } elseif ($cat === 'TRANSFER') {
+                $query->where('type', 'TRANSFER_IN');
             } elseif ($cat === 'OPENING') {
-                $query->where('description', 'like', '%Initial%');
+                $query->where('type', 'STOCK_IN')->where('description', 'like', '%Initial%');
             } elseif ($cat === 'AUDIT') {
-                $query->where('description', 'like', '%Audit%');
+                $query->where('type', 'STOCK_IN')->where('description', 'like', '%Audit%');
             }
         }
 
@@ -176,14 +192,19 @@ class TransactionController extends Controller
         $query = InventoryLog::where(function ($q) {
             $q->whereIn('type', [
                 'SALE',
+                'EXCHANGE_OUT',
                 'DISPATCH_FULFILLED',
+                'STOCK_ADJUSTMENT',
                 'STOCK_ADJUSTMENT_DAMAGE',
                 'STOCK_ADJUSTMENT_EXPIRED',
                 'STOCK_ADJUSTMENT_LOST',
+                'STOCK_ADJUSTMENT_SHRINKAGE',
+                'STOCK_ADJUSTMENT_INTERNAL_USE',
+                'STOCK_ADJUSTMENT_CORRECTION',
                 'TRANSFER_OUT',
                 'STOCK_OUT'
             ])->orWhere(function ($sub) {
-                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
             });
         });
         $this->applyDateFilter($query, 'timestamp', $request);
@@ -200,21 +221,43 @@ class TransactionController extends Controller
             $query->where('warehouse_id', $effectiveWh);
         }
 
-        $outflowParam = $request->get('outflow_type') ?: $request->get('movement_type');
+        $outflowParam = $request->get('outflow_category') ?: $request->get('outflow_type') ?: $request->get('movement_type');
         if (!empty($outflowParam)) {
-            $oType = strtoupper($outflowParam);
-            if ($oType === 'CUSTOMER_PICKUP' || $oType === 'DISPATCH_FULFILLED') {
+            $oType = strtoupper(trim($outflowParam));
+            if ($oType === 'SALE' || $oType === 'RETAIL_SALE' || $oType === 'RETAIL') {
+                $query->where('type', 'SALE')
+                      ->where('description', 'not like', '%Exchange%')
+                      ->whereNotExists(function ($subQ) {
+                          $subQ->select(\Illuminate\Support\Facades\DB::raw(1))
+                               ->from('payments')
+                               ->where('payments.method', 'EXCHANGE_CREDIT')
+                               ->whereRaw("INSTR(inventory_logs.description, payments.saleId) > 0");
+                      });
+            } elseif ($oType === 'EXCHANGE' || $oType === 'EXCHANGE_OUT' || $oType === 'CUSTOMER_EXCHANGE') {
+                $query->where(function ($eq) {
+                    $eq->where('description', 'like', '%Exchange%')
+                       ->orWhere('type', 'EXCHANGE_OUT')
+                       ->orWhereExists(function ($subQ) {
+                           $subQ->select(\Illuminate\Support\Facades\DB::raw(1))
+                                ->from('payments')
+                                ->where('payments.method', 'EXCHANGE_CREDIT')
+                                ->whereRaw("INSTR(inventory_logs.description, payments.saleId) > 0");
+                       });
+                });
+            } elseif ($oType === 'CUSTOMER_PICKUP' || $oType === 'DISPATCH_FULFILLED' || $oType === 'PICKUP' || $oType === 'DISPATCH') {
                 $query->where('type', 'DISPATCH_FULFILLED');
-            } elseif ($oType === 'SALE' || $oType === 'RETAIL_SALE') {
-                $query->where('type', 'SALE');
             } elseif ($oType === 'TRANSFER' || $oType === 'TRANSFER_OUT') {
                 $query->where('type', 'TRANSFER_OUT');
-            } elseif (str_contains($oType, 'DAMAGE')) {
-                $query->where('type', 'like', '%DAMAGE%');
-            } elseif (str_contains($oType, 'EXPIRED')) {
-                $query->where('type', 'like', '%EXPIRED%');
-            } elseif (str_contains($oType, 'LOST')) {
-                $query->where('type', 'like', '%LOST%');
+            } elseif ($oType === 'ADJUSTMENT' || $oType === 'STOCK_ADJUSTMENT' || str_contains($oType, 'DAMAGE') || str_contains($oType, 'EXPIRED') || str_contains($oType, 'LOST') || str_contains($oType, 'SHRINKAGE')) {
+                $query->where(function ($aq) {
+                    $aq->where('type', 'like', 'STOCK_ADJUSTMENT%')
+                       ->orWhere('type', 'like', '%DAMAGE%')
+                       ->orWhere('type', 'like', '%EXPIRED%')
+                       ->orWhere('type', 'like', '%LOST%')
+                       ->orWhere('type', 'like', '%SHRINKAGE%')
+                       ->orWhere('type', 'like', '%CORRECTION%')
+                       ->orWhere('type', 'STOCK_OUT');
+                });
             }
         }
 
@@ -482,10 +525,18 @@ class TransactionController extends Controller
             ->where('method', 'REFUND_CASH')
             ->sum('amount'));
         $totalPaid = max(0.0, round($inflows - $cashRefunds, 2));
+        $totalCashPosPaid = max(0.0, round((float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->whereIn('method', ['CASH', 'POS'])
+            ->where('amount', '>', 0)
+            ->sum('amount') - $cashRefunds, 2));
+        $totalExchangeCredit = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->where('method', 'EXCHANGE_CREDIT')
+            ->where('amount', '>', 0)
+            ->sum('amount');
         $returnCredits = (float) \App\Models\SalesReturn::whereIn('saleId', $saleIds)->sum('refundAmount');
         $netPayable = max(0.0, round($totalRevenue - $returnCredits, 2));
         $totalDebt = max(0.0, round($netPayable - $totalPaid, 2));
-        $sales = (clone $salesQuery)->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'sales_page')->withQueryString();
+        $sales = (clone $salesQuery)->with(['payments', 'returns', 'items.product'])->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'sales_page')->withQueryString();
 
         // TAB 2: STOCK IN
         $stockInQuery = $this->getStockInQuery($request);
@@ -501,6 +552,22 @@ class TransactionController extends Controller
         $stockOutProducts = (clone $stockOutQuery)->distinct('productId')->count('productId');
         $stockOutFulfilled = (clone $stockOutQuery)->where('type', 'DISPATCH_FULFILLED')->count();
         $stockOutLogs = (clone $stockOutQuery)->orderBy('timestamp', 'desc')->paginate(20, ['*'], 'stock_out_page')->withQueryString();
+
+        // Retroactive Exchange Detection for Stock Out items & Sales rows
+        $stockOutSaleUuids = [];
+        foreach ($stockOutLogs as $log) {
+            if (preg_match('/Sale #([a-f0-9\-]{36})/i', $log->description, $m)) {
+                $stockOutSaleUuids[] = $m[1];
+            } elseif (preg_match('/Sale #([a-zA-Z0-9\-]+)/i', $log->description, $m)) {
+                $stockOutSaleUuids[] = $m[1];
+            }
+        }
+        $exchangeSaleIds = !empty($stockOutSaleUuids)
+            ? \App\Models\Payment::whereIn('saleId', array_unique($stockOutSaleUuids))
+                ->where('method', 'EXCHANGE_CREDIT')
+                ->pluck('saleId')
+                ->toArray()
+            : [];
 
         // TAB 4: IN-TRANSIT
         $inTransitQuery = $this->getInTransitQuery($request);
@@ -565,7 +632,7 @@ class TransactionController extends Controller
             'userName',
             'products',
             // Tab 1: Sales
-            'sales', 'totalSalesCount', 'totalRevenue', 'totalPaid', 'totalDebt',
+            'sales', 'totalSalesCount', 'totalRevenue', 'totalPaid', 'totalDebt', 'totalCashPosPaid', 'totalExchangeCredit', 'exchangeSaleIds',
             // Tab 2: Stock In
             'stockInLogs', 'stockInBatches', 'stockInUnits', 'stockInProducts',
             // Tab 3: Stock Out
@@ -702,12 +769,24 @@ class TransactionController extends Controller
                 foreach ($stockInQuery->cursor() as $l) {
                     $inCount++;
                     $inUnits += (float)$l->quantity;
+                    $inflowCategory = 'SUPPLIER';
+                    if ($l->type === 'EXCHANGE_IN' || ($l->type === 'SALES_RETURN' && stripos($l->description, 'Exchange') !== false)) {
+                        $inflowCategory = 'CUSTOMER EXCHANGE';
+                    } elseif ($l->type === 'SALES_RETURN' || $l->type === 'RETURN') {
+                        $inflowCategory = 'CUSTOMER RETURN';
+                    } elseif ($l->type === 'TRANSFER_IN') {
+                        $inflowCategory = 'TRANSFER IN';
+                    } elseif (stripos($l->description, 'Initial') !== false) {
+                        $inflowCategory = 'OPENING STOCK';
+                    } elseif (stripos($l->description, 'Audit') !== false) {
+                        $inflowCategory = 'STOCK AUDIT';
+                    }
                     fputcsv($handle, [
                         $l->id,
                         $l->timestamp,
                         $l->productCode,
                         $l->productName,
-                        $l->type,
+                        $inflowCategory,
                         $l->quantity,
                         $l->userName,
                         $l->description
@@ -913,12 +992,24 @@ class TransactionController extends Controller
                 fputcsv($handle, ['Log ID', 'Date & Time', 'SKU / Barcode', 'Product Name', 'Inflow Type', 'Quantity (Units)', 'Received By Staff', 'Supplier & Notes']);
                 $query = $this->getStockInQuery($request)->orderBy('timestamp', 'desc');
                 foreach ($query->cursor() as $l) {
+                    $inflowCategory = 'SUPPLIER';
+                    if ($l->type === 'EXCHANGE_IN' || ($l->type === 'SALES_RETURN' && stripos($l->description, 'Exchange') !== false)) {
+                        $inflowCategory = 'CUSTOMER EXCHANGE';
+                    } elseif ($l->type === 'SALES_RETURN' || $l->type === 'RETURN') {
+                        $inflowCategory = 'CUSTOMER RETURN';
+                    } elseif ($l->type === 'TRANSFER_IN') {
+                        $inflowCategory = 'TRANSFER IN';
+                    } elseif (stripos($l->description, 'Initial') !== false) {
+                        $inflowCategory = 'OPENING STOCK';
+                    } elseif (stripos($l->description, 'Audit') !== false) {
+                        $inflowCategory = 'STOCK AUDIT';
+                    }
                     fputcsv($handle, [
                         $l->id,
                         $l->timestamp,
                         $l->productCode,
                         $l->productName,
-                        $l->type,
+                        $inflowCategory,
                         $l->quantity,
                         $l->userName,
                         $l->description

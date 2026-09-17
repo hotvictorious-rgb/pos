@@ -84,6 +84,11 @@ class Sale extends Model
         return $this->hasMany(SalesReturn::class, 'saleId', 'id');
     }
 
+    public function salesReturns()
+    {
+        return $this->hasMany(SalesReturn::class, 'saleId', 'id');
+    }
+
     /**
      * Authoritatively calculated current outstanding balance for this sale invoice.
      * Consumes canonical AccountingReportService logic.

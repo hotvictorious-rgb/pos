@@ -153,10 +153,58 @@
     </div>
     @endif
 
+    @php
+        $hasReturns = ($sale->returns && $sale->returns->isNotEmpty());
+        $totalReturnedUnits = $hasReturns ? (int) $sale->returns->sum('quantity') : 0;
+        $totalRefundAmount = $hasReturns ? (float) $sale->returns->sum('refundAmount') : 0.0;
+        $totalSoldUnits = (int) $sale->items->sum('quantity');
+
+        $isFullyReturned = in_array(strtoupper($sale->status ?? ''), ['RETURNED', 'CANCELLED'])
+            || in_array(strtoupper($sale->deliveryStatus ?? ''), ['RETURNED', 'CANCELLED'])
+            || ($totalSoldUnits > 0 && $totalReturnedUnits >= $totalSoldUnits)
+            || ($sale->totalAmount > 0 && $totalRefundAmount >= $sale->totalAmount);
+
+        $isPartiallyReturned = $hasReturns && !$isFullyReturned;
+
+        // Dynamic, authoritative invoice balance derived from AccountingReportService
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $debtRemaining = $accountingService->calculateInvoiceBalance($sale);
+    @endphp
+
+    @if($hasReturns)
+    <!-- Dedicated Processed Returns / Refunds Box -->
+    <div style="background: #fef2f2; border: 1.5px dashed #ef4444; border-radius: 10px; padding: 0.65rem 0.85rem; margin: 0.75rem 0; font-size: 0.82rem;">
+        <div style="font-weight: 800; color: #b91c1c; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <span style="display: flex; align-items: center; gap: 0.3rem;">↩️ Processed Return(s) & Refunds</span>
+            <span style="color: #dc2626; font-size: 0.95rem; font-weight: 800;">-₦{{ number_format($totalRefundAmount, 0) }}</span>
+        </div>
+        @foreach($sale->returns as $ret)
+            <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #991b1b; padding: 0.15rem 0;">
+                <span>• {{ $ret->productName }} (x{{ $ret->quantity }})</span>
+                <strong>-₦{{ number_format($ret->refundAmount, 0) }}</strong>
+            </div>
+            @if($ret->reason)
+                <div style="font-size: 0.7rem; color: #7f1d1d; margin-left: 0.6rem; font-style: italic;">Reason: {{ $ret->reason }}</div>
+            @endif
+        @endforeach
+    </div>
+    @endif
+
     <!-- Summary -->
     @php
-        $debtRemaining = max(0, $sale->totalAmount - $sale->paidAmount);
-        if ($sale->paidAmount >= $sale->totalAmount) {
+        if ($isFullyReturned) {
+            $paymentStatus = 'RETURNED';
+            $combinedStatus = '↩️ FULLY RETURNED & REFUNDED';
+            $badgeBg = '#fee2e2';
+            $badgeColor = '#991b1b';
+            $badgeBorder = '#f87171';
+        } elseif ($isPartiallyReturned) {
+            $paymentStatus = 'PART-RETURN';
+            $combinedStatus = "⚠️ PARTIALLY RETURNED ({$totalReturnedUnits}/{$totalSoldUnits} UNITS)";
+            $badgeBg = '#fef3c7';
+            $badgeColor = '#92400e';
+            $badgeBorder = '#f59e0b';
+        } elseif ($debtRemaining <= 0.01) {
             $paymentStatus = 'PAID';
             if ($hasExchange) {
                 $combinedStatus = $isSupplied ? 'EXCHANGED & SUPPLIED' : 'EXCHANGED & NOT SUPPLIED';
@@ -183,6 +231,7 @@
             $badgeBorder = '#fca5a5';
         }
         $netTopUpTender = max(0, $sale->paidAmount - $exchangeCreditAmount);
+        $netBillAfterReturns = max(0, $sale->totalAmount - $totalRefundAmount);
     @endphp
 
     <div class="receipt-summary">
@@ -191,6 +240,17 @@
             <span>₦{{ number_format($sale->totalAmount, 0) }}</span>
         </div>
 
+        @if($totalRefundAmount > 0)
+        <div class="receipt-row" style="font-size: 0.9rem; color: #dc2626; font-weight: 700;">
+            <span>Less Return Credits:</span>
+            <span>-₦{{ number_format($totalRefundAmount, 0) }}</span>
+        </div>
+        <div class="receipt-row" style="font-size: 1rem; font-weight: 800; border-top: 1px dashed #cbd5e1; padding-top: 0.35rem; margin-top: 0.25rem;">
+            <span>Net Bill (After Returns):</span>
+            <span>₦{{ number_format($netBillAfterReturns, 0) }}</span>
+        </div>
+        @endif
+
         @if($exchangeCreditAmount > 0)
         <div class="receipt-row" style="font-size: 0.9rem; color: #b45309; font-weight: 700;">
             <span>Less Exchange Credit:</span>
@@ -198,7 +258,7 @@
         </div>
         <div class="receipt-row" style="font-size: 1.05rem; font-weight: 800; border-top: 1px dashed #cbd5e1; padding-top: 0.35rem; margin-top: 0.25rem;">
             <span>Net Top-Up Due:</span>
-            <span style="color: #0f172a;">₦{{ number_format(max(0, $sale->totalAmount - $exchangeCreditAmount), 0) }}</span>
+            <span style="color: #0f172a;">₦{{ number_format(max(0, $netBillAfterReturns - $exchangeCreditAmount), 0) }}</span>
         </div>
         @endif
 
@@ -223,7 +283,7 @@
 
         @if($debtRemaining > 0)
         <div class="receipt-row" style="color: #dc2626; font-weight: 800;">
-            <span>Debt Balance ({{ $paymentStatus }}):</span>
+            <span>Current Debt Balance:</span>
             <span>₦{{ number_format($debtRemaining, 0) }}</span>
         </div>
         @endif
@@ -240,7 +300,15 @@
         <div style="font-size: 0.95rem; font-weight: 900; letter-spacing: 0.02em;">
             {{ $combinedStatus }}
         </div>
-        @if($isSupplied)
+        @if($isFullyReturned)
+            <div style="font-size: 0.75rem; font-weight: 600; margin-top: 0.25rem;">
+                ↩️ ALL ITEMS RETURNED TO SHELF & FULL REFUND/CREDIT PROCESSED
+            </div>
+        @elseif($isPartiallyReturned)
+            <div style="font-size: 0.75rem; font-weight: 600; margin-top: 0.25rem;">
+                ⚠️ {{ $totalReturnedUnits }} OF {{ $totalSoldUnits }} UNITS RETURNED TO SHELF
+            </div>
+        @elseif($isSupplied)
             <div style="font-size: 0.75rem; font-weight: 600; margin-top: 0.25rem;">
                 {{ $hasExchange ? '✓ ITEMS EXCHANGED & GOODS SUPPLIED' : '✓ GOODS SUPPLIED & COLLECTED' }}
                 @if($sale->deliveredAt)

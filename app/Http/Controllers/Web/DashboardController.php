@@ -146,13 +146,15 @@ class DashboardController extends Controller
         $totalRefundAmount = $periodSummary['cashRefunded'];
         $returnsCount = $periodSummary['returnCount'];
         $totalReturnCredits = $periodSummary['totalReturnCredits'];
+        $totalExchangeCredit = $periodSummary['exchangeCreditApplied'] ?? 0.0;
+        $exchangeCount = $periodSummary['exchangeCreditCount'] ?? 0;
 
         // Returned units
         $returnsQuery = $accountingService->buildReturnsQuery($filters);
         $returnedUnits = (int) $returnsQuery->sum('quantity');
 
         // 3. Stock Movements (In & Out) - Strictly Scoped by Warehouse
-        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
         $applyDateFilter($stockInQuery, 'timestamp');
         if ($warehouseId) {
             $stockInQuery->where('warehouse_id', $warehouseId);
@@ -170,7 +172,7 @@ class DashboardController extends Controller
                 'STOCK_ADJUSTMENT_LOST'
             ])->orWhere('type', 'like', 'STOCK_ADJUSTMENT%')
               ->orWhere(function ($sub) {
-                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
               });
         });
         $applyDateFilter($stockOutQuery, 'timestamp');
@@ -278,6 +280,8 @@ class DashboardController extends Controller
             'returnsCount',
             'returnedUnits',
             'totalRefundAmount',
+            'totalExchangeCredit',
+            'exchangeCount',
             'totalStockInUnits',
             'totalStockOutUnits',
             'debtRecoveredInPeriod',

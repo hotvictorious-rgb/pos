@@ -10,8 +10,13 @@
                 <div class="val" style="color: #f8fafc;">₦{{ number_format($totalRevenue, 0) }}</div>
             </div>
             <div class="summary-card">
-                <h4>Cash / POS Collected</h4>
+                <h4>Tender Settled</h4>
                 <div class="val" style="color: #4ade80;">₦{{ number_format($totalPaid, 0) }}</div>
+                @if(isset($totalExchangeCredit) && $totalExchangeCredit > 0)
+                    <div style="font-size: 0.72rem; color: #cbd5e1; margin-top: 0.25rem;">
+                        Cash/POS: ₦{{ number_format($totalCashPosPaid ?? ($totalPaid - $totalExchangeCredit), 0) }} • Exch: ₦{{ number_format($totalExchangeCredit, 0) }}
+                    </div>
+                @endif
             </div>
             <div class="summary-card">
                 <h4>Outstanding Debt Created</h4>
@@ -40,6 +45,7 @@
                         <tr>
                             <th>Date & Time</th>
                             <th>Invoice Ref</th>
+                            <th>Sale Type</th>
                             <th>Customer</th>
                             <th>Items Count</th>
                             <th>Total Bill</th>
@@ -55,6 +61,23 @@
                         @php
                             $balance = max(0, $sale->totalAmount - $sale->paidAmount);
                             $isSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
+                            
+                            $isExchange = ($sale->payments && $sale->payments->where('method', 'EXCHANGE_CREDIT')->isNotEmpty())
+                                || str_contains($sale->note ?? '', '[EXCHANGE RETURN')
+                                || in_array($sale->id, $exchangeSaleIds ?? []);
+                            
+                            $hasReturns = ($sale->returns && $sale->returns->isNotEmpty()) || (($sale->returns_count ?? 0) > 0);
+                            $soldUnits = ($sale->items && $sale->items->isNotEmpty()) ? (int) $sale->items->sum('quantity') : 0;
+                            $returnedUnits = ($sale->returns && $sale->returns->isNotEmpty()) ? (int) $sale->returns->sum('quantity') : 0;
+                            $returnedAmount = ($sale->returns && $sale->returns->isNotEmpty()) ? (float) $sale->returns->sum('refundAmount') : 0.0;
+
+                            $isFullyReturned = in_array(strtoupper($sale->status ?? ''), ['RETURNED', 'CANCELLED'])
+                                || in_array(strtoupper($sale->deliveryStatus ?? ''), ['RETURNED', 'CANCELLED'])
+                                || ($soldUnits > 0 && $returnedUnits >= $soldUnits)
+                                || ($sale->totalAmount > 0 && $returnedAmount >= $sale->totalAmount);
+
+                            $isPartiallyReturned = $hasReturns && !$isFullyReturned;
+                            $partReturnLabel = $soldUnits > 0 ? "⚠️ PART-RETURN ({$returnedUnits}/{$soldUnits})" : "⚠️ PART-RETURN";
                         @endphp
                         <tr>
                             <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
@@ -62,6 +85,25 @@
                             </td>
                             <td>
                                 <strong style="color: #93c5fd;">#{{ substr($sale->id, 0, 8) }}</strong>
+                            </td>
+                            <td>
+                                @if($isExchange)
+                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">
+                                        🔄 EXCHANGE
+                                    </span>
+                                @elseif($isFullyReturned)
+                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">
+                                        ↩️ FULL RETURN
+                                    </span>
+                                @elseif($isPartiallyReturned)
+                                    <span title="{{ $returnedUnits }} of {{ $soldUnits }} units returned" style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); cursor: help;">
+                                        {{ $partReturnLabel }}
+                                    </span>
+                                @else
+                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.35);">
+                                        🛒 RETAIL SALE
+                                    </span>
+                                @endif
                             </td>
                             <td>
                                 <strong>{{ $sale->customerName ?: 'Walk-in Customer' }}</strong>
@@ -120,7 +162,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="10" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                            <td colspan="11" style="text-align: center; padding: 3rem; color: var(--text-muted);">
                                 No sales invoices found matching filters.
                             </td>
                         </tr>
@@ -168,6 +210,7 @@
                     <thead>
                         <tr>
                             <th>Date & Time</th>
+                            <th>Inflow Source</th>
                             <th>Product SKU</th>
                             <th>Quantity Added</th>
                             <th>Description / Supplier</th>
@@ -177,9 +220,53 @@
                     </thead>
                     <tbody>
                         @forelse($stockInLogs as $log)
+                        @php
+                            $inflowType = 'SUPPLIER RESTOCK';
+                            $badgeBg = 'rgba(34, 197, 94, 0.15)';
+                            $badgeColor = '#4ade80';
+                            $badgeBorder = 'rgba(34, 197, 94, 0.4)';
+                            $badgeIcon = '📥';
+
+                            if ($log->type === 'EXCHANGE_IN' || ($log->type === 'SALES_RETURN' && stripos($log->description, 'Exchange') !== false)) {
+                                $inflowType = 'CUSTOMER EXCHANGE';
+                                $badgeBg = 'rgba(168, 85, 247, 0.15)';
+                                $badgeColor = '#c084fc';
+                                $badgeBorder = 'rgba(168, 85, 247, 0.4)';
+                                $badgeIcon = '🔄';
+                            } elseif ($log->type === 'SALES_RETURN' || $log->type === 'RETURN') {
+                                $inflowType = 'CUSTOMER RETURN';
+                                $badgeBg = 'rgba(236, 72, 153, 0.15)';
+                                $badgeColor = '#f472b6';
+                                $badgeBorder = 'rgba(236, 72, 153, 0.4)';
+                                $badgeIcon = '↩️';
+                            } elseif ($log->type === 'TRANSFER_IN') {
+                                $inflowType = 'TRANSFER IN';
+                                $badgeBg = 'rgba(59, 130, 246, 0.15)';
+                                $badgeColor = '#60a5fa';
+                                $badgeBorder = 'rgba(59, 130, 246, 0.4)';
+                                $badgeIcon = '🚚';
+                            } elseif (stripos($log->description, 'Initial') !== false) {
+                                $inflowType = 'OPENING STOCK';
+                                $badgeBg = 'rgba(234, 179, 8, 0.15)';
+                                $badgeColor = '#fde047';
+                                $badgeBorder = 'rgba(234, 179, 8, 0.4)';
+                                $badgeIcon = '📦';
+                            } elseif (stripos($log->description, 'Audit') !== false) {
+                                $inflowType = 'STOCK AUDIT';
+                                $badgeBg = 'rgba(249, 115, 22, 0.15)';
+                                $badgeColor = '#fb923c';
+                                $badgeBorder = 'rgba(249, 115, 22, 0.4)';
+                                $badgeIcon = '⚖️';
+                            }
+                        @endphp
                         <tr>
                             <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
                                 {{ date('d M Y, h:i A', strtotime($log->timestamp)) }}
+                            </td>
+                            <td>
+                                <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.65rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: {{ $badgeBg }}; color: {{ $badgeColor }}; border: 1px solid {{ $badgeBorder }};">
+                                    {{ $badgeIcon }} {{ $inflowType }}
+                                </span>
                             </td>
                             <td><strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $log->productCode ?: $log->productName }}</strong></td>
                             <td style="font-weight: 800; font-size: 1.05rem; color: #4ade80;">
@@ -192,7 +279,7 @@
                                     <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('GOODS RECEIVED NOTE (GRN)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Source', '{{ addslashes($log->description ?: 'Official Supplier') }}', 'STOCK INFLOW', '#22c55e', [{name: '{{ addslashes($log->productCode ?: $log->productName) }}', qty: '{{ $log->quantity }} units', note: 'Added directly to physical shelf count'}], 'Total Units: +{{ $log->quantity }} units', '{{ addslashes($log->userName ?: 'Storekeeper') }}', 'Physical stock verified and added to shelf balance.')">
                                         📄 Print GRN
                                     </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Goods Received Entry (Stock In)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Description', '{{ addslashes($log->description ?: 'Supplier Arrival') }}', 'Stock Inflow', '#22c55e', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Quantity Added', val: '+{{ $log->quantity }} units', color: '#4ade80'}, {label: 'Officer', val: '{{ addslashes($log->userName ?: 'Storekeeper') }}'}], 'Physical inventory count increased by {{ $log->quantity }} units.')">
+                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Goods Received Entry (Stock In)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Description', '{{ addslashes($log->description ?: 'Supplier Arrival') }}', 'Stock Inflow', '#22c55e', [{label: 'Source Type', val: '{{ $inflowType }}'}, {label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Quantity Added', val: '+{{ $log->quantity }} units', color: '#4ade80'}, {label: 'Officer', val: '{{ addslashes($log->userName ?: 'Storekeeper') }}'}], 'Physical inventory count increased by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
                                     @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
@@ -205,7 +292,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                            <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
                                 No stock in entries found matching filters.
                             </td>
                         </tr>
@@ -253,7 +340,7 @@
                     <thead>
                         <tr>
                             <th>Date & Time</th>
-                            <th>Event Type</th>
+                            <th>Outflow Source</th>
                             <th>Product SKU</th>
                             <th>Units Out</th>
                             <th>Description</th>
@@ -263,24 +350,70 @@
                     </thead>
                     <tbody>
                         @forelse($stockOutLogs as $log)
+                        @php
+                            $outflowType = 'RETAIL SALE';
+                            $badgeBg = 'rgba(34, 197, 94, 0.15)';
+                            $badgeColor = '#4ade80';
+                            $badgeBorder = 'rgba(34, 197, 94, 0.4)';
+                            $badgeIcon = '🛒';
+
+                            $linkedSaleId = null;
+                            if (preg_match('/Sale #([a-f0-9\-]{36})/i', $log->description, $m)) {
+                                $linkedSaleId = $m[1];
+                            } elseif (preg_match('/Sale #([a-zA-Z0-9\-]+)/i', $log->description, $m)) {
+                                $linkedSaleId = $m[1];
+                            }
+
+                            $isCustomerExchange = $log->type === 'EXCHANGE_OUT' 
+                                || stripos($log->description, 'Exchange') !== false
+                                || ($linkedSaleId && in_array($linkedSaleId, $exchangeSaleIds ?? []));
+
+                            if ($isCustomerExchange) {
+                                $outflowType = 'CUSTOMER EXCHANGE';
+                                $badgeBg = 'rgba(168, 85, 247, 0.15)';
+                                $badgeColor = '#c084fc';
+                                $badgeBorder = 'rgba(168, 85, 247, 0.4)';
+                                $badgeIcon = '🔄';
+                            } elseif (str_contains($log->type, 'DISPATCH_FULFILLED')) {
+                                $outflowType = 'CUSTOMER PICKUP';
+                                $badgeBg = 'rgba(20, 184, 166, 0.15)';
+                                $badgeColor = '#2dd4bf';
+                                $badgeBorder = 'rgba(20, 184, 166, 0.4)';
+                                $badgeIcon = '📦';
+                            } elseif (str_contains($log->type, 'TRANSFER_OUT')) {
+                                $outflowType = 'TRANSFER OUT';
+                                $badgeBg = 'rgba(99, 102, 241, 0.15)';
+                                $badgeColor = '#818cf8';
+                                $badgeBorder = 'rgba(99, 102, 241, 0.4)';
+                                $badgeIcon = '🚚';
+                            } elseif (str_contains($log->type, 'STOCK_ADJUSTMENT') || in_array($log->type, ['DAMAGE', 'EXPIRED', 'LOST', 'SHRINKAGE', 'INTERNAL_USE', 'CORRECTION', 'STOCK_OUT'])) {
+                                $outflowType = 'ADJUSTMENT';
+                                $badgeBg = 'rgba(244, 63, 94, 0.15)';
+                                $badgeColor = '#f43f5e';
+                                $badgeBorder = 'rgba(244, 63, 94, 0.4)';
+                                $badgeIcon = '📉';
+                            } elseif ($log->type === 'SALE') {
+                                $outflowType = 'RETAIL SALE';
+                                $badgeBg = 'rgba(34, 197, 94, 0.15)';
+                                $badgeColor = '#4ade80';
+                                $badgeBorder = 'rgba(34, 197, 94, 0.4)';
+                                $badgeIcon = '🛒';
+                            } else {
+                                $outflowType = str_replace('_', ' ', $log->type);
+                                $badgeBg = 'rgba(148, 163, 184, 0.15)';
+                                $badgeColor = '#cbd5e1';
+                                $badgeBorder = 'rgba(148, 163, 184, 0.4)';
+                                $badgeIcon = '📤';
+                            }
+                        @endphp
                         <tr>
                             <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
                                 {{ date('d M Y, h:i A', strtotime($log->timestamp)) }}
                             </td>
                             <td>
-                                @if(str_contains($log->type, 'DISPATCH_FULFILLED'))
-                                    <span class="badge badge-success">📦 Customer Pickup</span>
-                                @elseif(str_contains($log->type, 'TRANSFER_OUT'))
-                                    <span class="badge badge-info">🚚 Transfer Dispatch</span>
-                                @elseif(str_contains($log->type, 'DAMAGE'))
-                                    <span class="badge badge-danger">📉 Damage Write-off</span>
-                                @elseif(str_contains($log->type, 'EXPIRED'))
-                                    <span class="badge badge-warning">⏰ Expired Stock</span>
-                                @elseif(str_contains($log->type, 'LOST'))
-                                    <span class="badge badge-secondary">🔍 Lost / Audit</span>
-                                @else
-                                    <span class="badge badge-secondary">{{ $log->type }}</span>
-                                @endif
+                                <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.65rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: {{ $badgeBg }}; color: {{ $badgeColor }}; border: 1px solid {{ $badgeBorder }};">
+                                    {{ $badgeIcon }} {{ $outflowType }}
+                                </span>
                             </td>
                             <td><strong style="color: #60a5fa; font-size: 1.05rem; letter-spacing: 0.03em;">{{ $log->productCode ?: $log->productName }}</strong></td>
                             <td style="font-weight: 800; font-size: 1.05rem; color: #f87171;">
@@ -290,10 +423,10 @@
                             <td><strong>{{ $log->userName }}</strong></td>
                             <td>
                                 <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('STOCK DISPATCH & OUTFLOW SLIP', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Outflow Type', '{{ addslashes($log->type) }}', 'PHYSICAL OUTFLOW', '#ef4444', [{name: '{{ addslashes($log->productCode ?: $log->productName) }}', qty: '-{{ $log->quantity }} units', note: '{{ addslashes($log->description) }}'}], 'Total Outflow: -{{ $log->quantity }} units', '{{ addslashes($log->userName) }}', 'Goods officially dispatched from physical shelf inventory.')">
+                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('STOCK DISPATCH & OUTFLOW SLIP', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Outflow Source', '{{ addslashes($outflowType) }}', 'PHYSICAL OUTFLOW', '#ef4444', [{name: '{{ addslashes($log->productCode ?: $log->productName) }}', qty: '-{{ $log->quantity }} units', note: '{{ addslashes($log->description) }}'}], 'Total Outflow: -{{ $log->quantity }} units', '{{ addslashes($log->userName) }}', 'Goods officially dispatched from physical shelf inventory.')">
                                         📄 Print Slip
                                     </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Stock Outflow Record', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Event Type', '{{ addslashes($log->type) }}', 'Stock Outflow', '#ef4444', [{label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Deducted Units', val: '-{{ $log->quantity }} units', color: '#f87171'}, {label: 'Description', val: '{{ addslashes($log->description) }}'}, {label: 'Authorized By', val: '{{ addslashes($log->userName) }}'}], 'Physical count reduced by {{ $log->quantity }} units.')">
+                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Stock Outflow Record', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Outflow Source', '{{ addslashes($outflowType) }}', 'Stock Outflow', '#ef4444', [{label: 'Outflow Source', val: '{{ $outflowType }}'}, {label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Deducted Units', val: '-{{ $log->quantity }} units', color: '#f87171'}, {label: 'Description', val: '{{ addslashes($log->description) }}'}, {label: 'Authorized By', val: '{{ addslashes($log->userName) }}'}], 'Physical count reduced by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
                                     @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))

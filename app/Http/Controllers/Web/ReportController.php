@@ -60,6 +60,9 @@ class ReportController extends Controller
             'returns' => 'repReturns',
             'refunds' => 'repReturns',
             'repreturns' => 'repReturns',
+            'exchanges' => 'repExchanges',
+            'exchange' => 'repExchanges',
+            'repexchanges' => 'repExchanges',
             'ai' => 'repAi',
             'export' => 'repAi',
             'exports' => 'repAi',
@@ -303,6 +306,9 @@ class ReportController extends Controller
         // 11. Pending Orders Backlog & Aging Analytics
         $pendingOrders = $accountingService->getPendingOrdersAnalytics($scopedWh, $filters);
 
+        // 12. Customer Exchanges & Dual-SKU Analytics
+        $exchangeReport = $accountingService->getExchangeReport($filters);
+
         return view('reports.index', compact(
             'activeTab',
             'currentTab',
@@ -332,6 +338,7 @@ class ReportController extends Controller
             'periodSummary',
             'dailyReport',
             'pendingOrders',
+            'exchangeReport',
             'datePreset',
             'fromDate',
             'toDate'
@@ -389,7 +396,7 @@ class ReportController extends Controller
                 fputcsv($handle, ['Net Debt Portfolio Change', $daily['net_debt_change'], '', 'New Credit Issued - Debts Recovered']);
                 fputcsv($handle, ['Total Debt Outstanding (All Time)', $daily['total_debt_outstanding'], '', 'Market Debt Liability']);
                 fputcsv($handle, ['Total Stock Out Units', '', $daily['stock_out_total_units'] . ' Units', 'Dispatched (' . $daily['stock_out_sales_dispatch_units'] . ') + Transfers Out (' . $daily['stock_out_transfer_units'] . ') + Deductions/Adjustments (' . $daily['stock_out_damages_units'] . ')']);
-                fputcsv($handle, ['Total Stock In Units', '', $daily['stock_in_total_units'] . ' Units', 'Supplier Restocks (' . $daily['stock_in_supplier_restock_units'] . ') + Transfers In (' . $daily['stock_in_transfer_units'] . ') + Returns (' . $daily['stock_in_returns_units'] . ')']);
+                fputcsv($handle, ['Total Stock In Units', '', $daily['stock_in_total_units'] . ' Units', 'Supplier Restocks (' . $daily['stock_in_supplier_restock_units'] . ') + Transfers In (' . $daily['stock_in_transfer_units'] . ') + Returns (' . $daily['stock_in_returns_units'] . ') + Exchanges (' . ($daily['stock_in_exchange_units'] ?? 0) . ')']);
                 fputcsv($handle, ['Net Inventory Movement', '', $daily['net_inventory_movement_units'] . ' Units', 'Stock In Units - Stock Out Units']);
                 fputcsv($handle, ['New Pending Orders (in Period)', $daily['pending_orders_new_value'], $daily['pending_orders_new_count'] . ' Orders (' . $daily['pending_orders_new_units'] . ' Units)', 'Awaiting Handover / Delivery']);
                 fputcsv($handle, ['Carried Pending Backlog', $daily['pending_orders_carried_value'], $daily['pending_orders_carried_count'] . ' Orders (' . $daily['pending_orders_carried_units'] . ' Units)', '<24h: ' . $daily['carried_aging_under_24h'] . ' | 24-48h: ' . $daily['carried_aging_24h_to_48h'] . ' | 3-7d: ' . $daily['carried_aging_3d_to_7d'] . ' | >7d: ' . $daily['carried_aging_over_7d']]);
@@ -403,6 +410,7 @@ class ReportController extends Controller
                 fputcsv($handle, ['Collections from Sales', $daily['summary']['cashFromSales'], $daily['summary']['posFromSales'], round($daily['summary']['cashFromSales'] + $daily['summary']['posFromSales'], 2)]);
                 fputcsv($handle, ['Collections from Debt Recovery', $daily['debt_recovered_cash'], $daily['debt_recovered_pos'], $daily['debt_recovered']]);
                 fputcsv($handle, ['Gross Realized Inflows', $daily['summary']['totalCashInflow'], $daily['summary']['totalPosInflow'], round($daily['summary']['totalCashInflow'] + $daily['summary']['totalPosInflow'], 2)]);
+                fputcsv($handle, ['Exchange Credits Tendered', 0.00, 0.00, $daily['exchange_credit_applied'] ?? 0.00]);
                 fputcsv($handle, ['Less: Customer Refunds Disbursed', '-' . $daily['cash_refunded'], 0.00, '-' . $daily['cash_refunded']]);
                 fputcsv($handle, ['Net Inflow Settlement', $daily['net_cash_inflow'], $daily['net_pos_inflow'], $daily['total_net_collections']]);
                 fputcsv($handle, []);
@@ -578,7 +586,7 @@ class ReportController extends Controller
                     }
                 }
             } elseif (in_array($type, ['damages', 'stock', 'stock_out', 'adjustments'])) {
-                fputcsv($handle, ['Date & Time', 'Shop Location', 'SKU', 'Product Name', 'Stock Out Category', 'Quantity Deducted', 'Reason / Notes', 'Staff Responsible']);
+                fputcsv($handle, ['Date & Time', 'Shop Location', 'SKU', 'Product Name', 'Adjustment Type', 'Quantity Deducted', 'Reason / Notes', 'Staff Responsible']);
                 $adjustmentsQuery = $accountingService->buildAdjustmentsQuery($filters);
                 foreach ($adjustmentsQuery->cursor() as $a) {
                     fputcsv($handle, [
@@ -640,6 +648,46 @@ class ReportController extends Controller
                         $ord['debt_balance'],
                         $ord['age_days'],
                         $ord['delivery_status'],
+                    ]);
+                }
+            } elseif (in_array($type, ['exchanges', 'exchange'])) {
+                fputcsv($handle, [
+                    'Exchange Sale ID',
+                    'Date & Time',
+                    'Customer Name',
+                    'Branch / Warehouse',
+                    'Cashier / Staff',
+                    'Returned SKU(s)',
+                    'Returned Item(s)',
+                    'Returned Units',
+                    'Exchange Credit Allowed (NGN)',
+                    'Replacement SKU(s)',
+                    'Replacement Item(s)',
+                    'Replacement Units',
+                    'Replacement Total Value (NGN)',
+                    'Net Differential (NGN)',
+                    'Cash/POS Extra Paid (NGN)',
+                    'Settlement Status'
+                ]);
+                $exchanges = $accountingService->getExchangeReport($filters);
+                foreach ($exchanges['rows'] as $r) {
+                    fputcsv($handle, [
+                        $r['sale_id'],
+                        $r['created_at'],
+                        $r['customer_name'],
+                        $r['warehouse_name'],
+                        $r['cashier_name'],
+                        $r['returned_skus'],
+                        $r['returned_names'],
+                        $r['returned_units'],
+                        $r['exchange_credit'],
+                        $r['replacement_skus'],
+                        $r['replacement_names'],
+                        $r['replacement_units'],
+                        $r['replacement_total'],
+                        $r['differential'],
+                        $r['cash_pos_paid'],
+                        $r['payment_status'],
                     ]);
                 }
             }
@@ -776,6 +824,11 @@ class ReportController extends Controller
                 'meta' => ['report' => 'Customer Returns & Refunds Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'metadata' => ['report' => 'Customer Returns & Refunds Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'data' => $returnsQuery->get()
+            ],
+            'exchanges', 'exchange' => [
+                'meta' => ['report' => 'Customer Exchanges & Dual-SKU Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'metadata' => ['report' => 'Customer Exchanges & Dual-SKU Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'data' => $accountingService->getExchangeReport($filters),
             ],
             'pending_orders' => [
                 'meta' => ['report' => 'Pending Orders Carryover & Aging Backlog', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],

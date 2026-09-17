@@ -295,6 +295,7 @@
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repDebts' ? 'active' : '' }}" onclick="showReport('repDebts', this)">💳 Debtors Aging ({{ $debtors->count() }})</button>
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repDamages' ? 'active' : '' }}" onclick="showReport('repDamages', this)">📉 Stock Out & Deductions ({{ $adjustments->count() }})</button>
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repReturns' ? 'active' : '' }}" onclick="showReport('repReturns', this)">🔄 Returns & Refunds ({{ $returns->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repExchanges' ? 'active' : '' }}" onclick="showReport('repExchanges', this)">🔄 Customer Exchanges ({{ $exchangeReport['exchange_count'] ?? 0 }})</button>
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repAi' ? 'active' : '' }}" onclick="showReport('repAi', this)">🤖 AI Export Hub</button>
     </div>
 
@@ -367,6 +368,7 @@
                 <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
                     <div>• 💵 Net Cash Inflow: <strong style="color: #4ade80;">₦{{ number_format($dailyReport['net_cash_inflow'], 2) }}</strong></div>
                     <div>• 💳 Net POS Inflow: <strong style="color: #60a5fa;">₦{{ number_format($dailyReport['net_pos_inflow'], 2) }}</strong></div>
+                    <div>• 🔄 Exchange Credits Tendered: <strong style="color: #c084fc;">₦{{ number_format($dailyReport['exchange_credit_applied'] ?? 0, 2) }}</strong> ({{ $dailyReport['exchange_count'] ?? 0 }} exchanges)</div>
                     <div>• 🏧 Expected Cash in Drawer: <strong style="color: #fde047;">₦{{ number_format($dailyReport['drawer_physical_cash'], 2) }}</strong></div>
                 </div>
             </div>
@@ -402,7 +404,7 @@
                 </div>
                 <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem;">
                     <div>• 📤 Stock Out: Delivered ({{ number_format($dailyReport['stock_out_sales_dispatch_units']) }}) · Transferred Out ({{ number_format($dailyReport['stock_out_transfer_units']) }}) · Deductions ({{ number_format($dailyReport['stock_out_damages_units']) }})</div>
-                    <div>• 📥 Stock In: Restocked ({{ number_format($dailyReport['stock_in_supplier_restock_units']) }}) · Transferred In ({{ number_format($dailyReport['stock_in_transfer_units']) }}) · Returns ({{ number_format($dailyReport['stock_in_returns_units']) }})</div>
+                    <div>• 📥 Stock In: Restocked ({{ number_format($dailyReport['stock_in_supplier_restock_units']) }}) · Transferred In ({{ number_format($dailyReport['stock_in_transfer_units']) }}) · Returns ({{ number_format($dailyReport['stock_in_returns_units']) }}) · Exchanges ({{ number_format($dailyReport['stock_in_exchange_units'] ?? 0) }})</div>
                     <div>• 🔄 Net Inventory Movement: <strong style="color: {{ $dailyReport['net_inventory_movement_units'] >= 0 ? '#4ade80' : '#f87171' }};">{{ $dailyReport['net_inventory_movement_units'] >= 0 ? '+' : '' }}{{ number_format($dailyReport['net_inventory_movement_units']) }} units</strong></div>
                 </div>
             </div>
@@ -1017,6 +1019,136 @@
     </div>
 
     <!-- ========================================================================= -->
+    <!-- TAB: CUSTOMER EXCHANGES & DUAL-SKU RECONCILIATION HUB -->
+    <!-- ========================================================================= -->
+    <div id="repExchanges" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repExchanges' ? 'active' : '' }}">
+        <!-- KPI Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="card" style="border-left: 4px solid #a855f7; padding: 1rem 1.25rem;">
+                <div style="font-size: 0.75rem; font-weight: 800; color: #c084fc; text-transform: uppercase;">Total Exchanges</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #f8fafc; margin-top: 0.25rem;">{{ number_format($exchangeReport['exchange_count'] ?? 0) }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Customer swap transactions</div>
+            </div>
+            <div class="card" style="border-left: 4px solid #38bdf8; padding: 1rem 1.25rem;">
+                <div style="font-size: 0.75rem; font-weight: 800; color: #38bdf8; text-transform: uppercase;">Exchange Credits Allowed</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #38bdf8; margin-top: 0.25rem;">₦{{ number_format($exchangeReport['total_exchange_credit'] ?? 0, 2) }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Trade-in value credited</div>
+            </div>
+            <div class="card" style="border-left: 4px solid #4ade80; padding: 1rem 1.25rem;">
+                <div style="font-size: 0.75rem; font-weight: 800; color: #4ade80; text-transform: uppercase;">Returned Inflow to Shelf</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #4ade80; margin-top: 0.25rem;">{{ number_format($exchangeReport['total_returned_units'] ?? 0) }} Units</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Restocked items (Stock-In)</div>
+            </div>
+            <div class="card" style="border-left: 4px solid #fbbf24; padding: 1rem 1.25rem;">
+                <div style="font-size: 0.75rem; font-weight: 800; color: #fbbf24; text-transform: uppercase;">Replacement Outflow</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #fbbf24; margin-top: 0.25rem;">{{ number_format($exchangeReport['total_replacement_units'] ?? 0) }} Units</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">New items delivered (Stock-Out)</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="export-bar">
+                <div>
+                    <h3 style="font-size: 1.25rem; font-weight: 800; color: #c084fc; margin-bottom: 0.25rem;">
+                        🔄 Customer Exchanges Ledger & Dual-SKU Pairing
+                    </h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                        Item-for-item reconciliation matching returned shelf items against replacement items handed over.
+                    </p>
+                </div>
+                <div>
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-secondary">
+                        📥 Export Exchanges CSV
+                    </a>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Sale Ref</th>
+                            <th>Customer Name</th>
+                            <th>Branch</th>
+                            <th>Returned Item(s) (In to Shelf)</th>
+                            <th>Exchange Credit</th>
+                            <th>Replacement Item(s) (Out to Cust)</th>
+                            <th>Replacement Total</th>
+                            <th>Differential & Status</th>
+                            <th>Cashier</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($exchangeReport['rows'] ?? [] as $ex)
+                        <tr>
+                            <td style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;">
+                                {{ date('d M Y, h:i A', strtotime($ex['created_at'])) }}
+                            </td>
+                            <td>
+                                <span style="font-family: monospace; font-size: 0.8rem; background: rgba(255,255,255,0.06); padding: 0.2rem 0.4rem; border-radius: 6px;">
+                                    #{{ substr($ex['sale_id'], 0, 8) }}
+                                </span>
+                            </td>
+                            <td><strong>{{ $ex['customer_name'] }}</strong></td>
+                            <td style="font-size: 0.8rem; color: #94a3b8;">{{ $ex['warehouse_name'] }}</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                    <span style="display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.7rem; font-weight: 800; background: rgba(168, 85, 247, 0.2); color: #c084fc;">
+                                        📥 IN (x{{ $ex['returned_units'] }})
+                                    </span>
+                                    <div>
+                                        <strong style="color: #f8fafc;">{{ $ex['returned_names'] }}</strong>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">SKU: {{ $ex['returned_skus'] }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="font-weight: 800; color: #38bdf8;">
+                                ₦{{ number_format($ex['exchange_credit'], 2) }}
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                    <span style="display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.7rem; font-weight: 800; background: rgba(245, 158, 11, 0.2); color: #fbbf24;">
+                                        📤 OUT (x{{ $ex['replacement_units'] }})
+                                    </span>
+                                    <div>
+                                        <strong style="color: #f8fafc;">{{ $ex['replacement_names'] }}</strong>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">SKU: {{ $ex['replacement_skus'] }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="font-weight: 800; color: #f8fafc;">
+                                ₦{{ number_format($ex['replacement_total'], 2) }}
+                            </td>
+                            <td>
+                                @if($ex['differential'] > 0)
+                                    <div style="font-weight: 800; color: #fbbf24; font-size: 0.82rem;">+₦{{ number_format($ex['differential'], 2) }} extra</div>
+                                    <div style="font-size: 0.72rem; color: #4ade80;">Paid: ₦{{ number_format($ex['cash_pos_paid'], 2) }}</div>
+                                @elseif($ex['differential'] < 0)
+                                    <div style="font-weight: 800; color: #f472b6; font-size: 0.82rem;">-₦{{ number_format(abs($ex['differential']), 2) }} refund/credit</div>
+                                @else
+                                    <div style="font-weight: 800; color: #4ade80; font-size: 0.82rem;">Even Swap (₦0.00)</div>
+                                @endif
+                                <span style="display: inline-block; font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; background: {{ $ex['payment_status'] === 'SETTLED' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)' }}; color: {{ $ex['payment_status'] === 'SETTLED' ? '#4ade80' : '#f87171' }}; margin-top: 0.2rem;">
+                                    {{ $ex['payment_status'] }}
+                                </span>
+                            </td>
+                            <td><strong>{{ $ex['cashier_name'] }}</strong></td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="10" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                                No customer exchange transactions found in the selected period.
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
     <!-- TAB 7: AI DATA EXPORT HUB -->
     <!-- ========================================================================= -->
     <div id="repAi" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repAi' ? 'active' : '' }}">
@@ -1035,6 +1167,15 @@
                     <div style="display: flex; gap: 0.5rem;">
                         <a href="{{ route('reports.export.csv', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
                         <a href="{{ route('reports.export.json', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    </div>
+                </div>
+
+                <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(168,85,247,0.4); border-radius: 14px; padding: 1.25rem;">
+                    <h4 style="font-size: 1rem; font-weight: 800; color: #c084fc; margin-bottom: 0.35rem;">🔄 Customer Exchanges & Dual-SKU</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Paired item swaps, returned vs replacement SKU units, trade-in values, and price differentials.</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
                     </div>
                 </div>
 

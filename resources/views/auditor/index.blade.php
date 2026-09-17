@@ -301,6 +301,33 @@
                     </div>
                 </div>
 
+                <!-- Line Items & SKUs Breakdown Section -->
+                <div id="actModalItemsSection" style="display: none; background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 12px; padding: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h4 style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #38bdf8; letter-spacing: 0.05em; margin: 0;">
+                            🏷️ Line Items & SKU Breakdown
+                        </h4>
+                        <span id="actModalItemsCountBadge" class="badge badge-info" style="font-size: 0.7rem;"></span>
+                    </div>
+                    <div style="overflow-x: auto; max-height: 260px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: #94a3b8; font-size: 0.75rem;">
+                                    <th style="padding: 6px 8px;">#</th>
+                                    <th style="padding: 6px 8px;">SKU / Code</th>
+                                    <th style="padding: 6px 8px;">Product Description</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Qty</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Unit Value</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody id="actModalItemsTableBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Raw Metadata Payload (Collapsible) -->
                 <div style="background: rgba(15,23,42,0.8); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
                     <details id="actModalRawDetails">
@@ -430,8 +457,11 @@ function showActivityDetails(act, warehouseMap) {
     document.getElementById('actModalUser').innerText = act.userName || 'System';
     document.getElementById('actModalUserId').innerText = act.userId ? 'ID: ' + act.userId : '';
 
-    // Metadata unpacking
-    const meta = act.metadata || {};
+    // Metadata unpacking (handles both object and JSON string)
+    let meta = act.metadata || {};
+    if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+    }
 
     // IP, Device, Request ID
     const ip = meta.ip || meta.client_ip || '127.0.0.1';
@@ -470,6 +500,18 @@ function showActivityDetails(act, warehouseMap) {
     if (meta.paid_amount !== undefined) {
         cards.push({ label: 'Paid Amount', value: formatNaira(meta.paid_amount), color: '#4ade80' });
     }
+    if (meta.debt_incurred !== undefined && meta.debt_incurred > 0) {
+        cards.push({ label: 'Debt Incurred', value: formatNaira(meta.debt_incurred), color: '#f87171' });
+    }
+    if (meta.amount_paid !== undefined) {
+        cards.push({ label: 'Debt Payment', value: formatNaira(meta.amount_paid), color: '#4ade80' });
+    }
+    if (meta.previous_debt !== undefined) {
+        cards.push({ label: 'Previous Debt', value: formatNaira(meta.previous_debt), color: '#fb923c' });
+    }
+    if (meta.new_balance !== undefined) {
+        cards.push({ label: 'New Debt Balance', value: formatNaira(meta.new_balance), color: '#f87171' });
+    }
     if (meta.refund_amount !== undefined) {
         cards.push({ label: 'Refund Amount', value: formatNaira(meta.refund_amount), color: '#f43f5e' });
     }
@@ -477,13 +519,36 @@ function showActivityDetails(act, warehouseMap) {
         cards.push({ label: 'Cash Tender', value: formatNaira(meta.cash_amount), color: '#fbbf24' });
     }
     if (meta.pos_amount !== undefined && meta.pos_amount > 0) {
-        cards.push({ label: 'POS Terminal Tender', value: formatNaira(meta.pos_amount), color: '#a78bfa' });
+        cards.push({ label: 'POS Tender', value: formatNaira(meta.pos_amount), color: '#a78bfa' });
     }
     if (meta.exchange_credit !== undefined && meta.exchange_credit > 0) {
         cards.push({ label: 'Exchange Credit', value: formatNaira(meta.exchange_credit), color: '#f472b6' });
     }
 
-    // Identifiers
+    // Inventory & Logistics metrics
+    if (meta.stock_before !== undefined) {
+        cards.push({ label: 'Stock Before', value: meta.stock_before + ' units', color: '#94a3b8' });
+    }
+    if (meta.stock_after !== undefined) {
+        cards.push({ label: 'Stock After', value: meta.stock_after + ' units', color: '#38bdf8' });
+    }
+    if (meta.adjustment_type) {
+        cards.push({ label: 'Write-Off Type', value: meta.adjustment_type, color: '#fb7185' });
+    }
+    if (meta.supplier) {
+        cards.push({ label: 'Supplier', value: meta.supplier, color: '#cbd5e1' });
+    }
+    if (meta.carrier_name) {
+        cards.push({ label: 'Carrier', value: meta.carrier_name, color: '#cbd5e1' });
+    }
+    if (meta.transfer_no) {
+        cards.push({ label: 'Transfer No', value: '#' + meta.transfer_no, color: '#f1f5f9' });
+    }
+    if (meta.missing_units !== undefined && meta.missing_units > 0) {
+        cards.push({ label: 'Discrepancy', value: '⚠️ ' + meta.missing_units + ' units', color: '#ef4444' });
+    }
+
+    // Identifiers & Context
     if (meta.sale_id) {
         cards.push({ label: 'Sale Invoice', value: '#' + meta.sale_id, color: '#f1f5f9' });
     }
@@ -502,20 +567,17 @@ function showActivityDetails(act, warehouseMap) {
     if (meta.refund_method) {
         cards.push({ label: 'Refund Method', value: meta.refund_method, color: '#cbd5e1' });
     }
+    if (meta.payment_method) {
+        cards.push({ label: 'Payment Method', value: meta.payment_method, color: '#cbd5e1' });
+    }
+    if (meta.reference_no) {
+        cards.push({ label: 'Payment Ref', value: meta.reference_no, color: '#f1f5f9' });
+    }
     if (meta.reason) {
         cards.push({ label: 'Audit Reason', value: meta.reason, color: '#fca5a5' });
     }
-    if (meta.portal) {
-        cards.push({ label: 'Portal', value: meta.portal, color: '#818cf8' });
-    }
-    if (meta.attempted_email) {
-        cards.push({ label: 'Attempted Email', value: meta.attempted_email, color: '#f87171' });
-    }
-    if (meta.role) {
-        cards.push({ label: 'Assigned Role', value: meta.role, color: '#38bdf8' });
-    }
-    if (meta.product_code) {
-        cards.push({ label: 'Product Code', value: meta.product_code, color: '#38bdf8' });
+    if (meta.product_code || meta.sku) {
+        cards.push({ label: 'Primary SKU', value: meta.sku || meta.product_code, color: '#38bdf8' });
     }
     if (meta.unit_price !== undefined) {
         cards.push({ label: 'Unit Price', value: formatNaira(meta.unit_price), color: '#4ade80' });
@@ -534,6 +596,84 @@ function showActivityDetails(act, warehouseMap) {
         });
     } else {
         forensicSection.style.display = 'none';
+    }
+
+    // Line Items & SKU Table Population
+    const itemsSection = document.getElementById('actModalItemsSection');
+    const itemsTableBody = document.getElementById('actModalItemsTableBody');
+    const itemsBadge = document.getElementById('actModalItemsCountBadge');
+    itemsTableBody.innerHTML = '';
+
+    let allItemsToRender = [];
+    if (Array.isArray(meta.items) && meta.items.length > 0) {
+        allItemsToRender = meta.items;
+    }
+
+    let exchangeItems = [];
+    if (Array.isArray(meta.returned_exchange_items) && meta.returned_exchange_items.length > 0) {
+        exchangeItems = meta.returned_exchange_items;
+    }
+
+    const totalTableRows = allItemsToRender.length + exchangeItems.length;
+
+    if (totalTableRows > 0) {
+        itemsSection.style.display = 'block';
+        itemsBadge.innerText = totalTableRows + ' Line Item' + (totalTableRows > 1 ? 's' : '');
+
+        let rowIdx = 1;
+
+        // Render standard line items
+        allItemsToRender.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.style.cssText = 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+            const sku = item.sku || item.product_code || item.code || 'N/A';
+            const name = item.name || item.product_name || item.product || 'Item';
+            const qty = item.quantity !== undefined ? item.quantity : (item.dispatched_qty || 1);
+            const unitVal = item.unit_price !== undefined ? item.unit_price : (item.refund_amount !== undefined ? item.refund_amount : 0);
+            const subtotal = item.subtotal !== undefined ? item.subtotal : (unitVal * Math.abs(qty));
+
+            tr.innerHTML = `
+                <td style="padding: 6px 8px; color: var(--text-muted);">${rowIdx++}</td>
+                <td style="padding: 6px 8px;">
+                    <span style="font-family: monospace; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 0.75rem;">
+                        ${sku}
+                    </span>
+                </td>
+                <td style="padding: 6px 8px; color: #f1f5f9; font-weight: 600;">${name}</td>
+                <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: ${qty < 0 ? '#f87171' : '#4ade80'};">
+                    ${qty > 0 ? '+' : ''}${qty}
+                </td>
+                <td style="padding: 6px 8px; text-align: right; color: #94a3b8;">${formatNaira(unitVal)}</td>
+                <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #f8fafc;">${formatNaira(subtotal)}</td>
+            `;
+            itemsTableBody.appendChild(tr);
+        });
+
+        // Render exchange returns if present
+        exchangeItems.forEach(ex => {
+            const tr = document.createElement('tr');
+            tr.style.cssText = 'border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(244,114,182,0.05);';
+            const sku = ex.sku || ex.productCode || 'N/A';
+            const name = (ex.name || ex.productName || 'Exchanged Item') + ' <span class="badge badge-purple" style="font-size: 0.65rem; margin-left: 4px;">EXCHANGED IN</span>';
+            const qty = ex.quantity || 1;
+            const credit = ex.credit_value || 0;
+
+            tr.innerHTML = `
+                <td style="padding: 6px 8px; color: var(--text-muted);">${rowIdx++}</td>
+                <td style="padding: 6px 8px;">
+                    <span style="font-family: monospace; background: rgba(244,114,182,0.2); color: #f472b6; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 0.75rem;">
+                        ${sku}
+                    </span>
+                </td>
+                <td style="padding: 6px 8px; color: #f1f5f9;">${name}</td>
+                <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #f472b6;">-${qty}</td>
+                <td style="padding: 6px 8px; text-align: right; color: #94a3b8;">${formatNaira(credit / qty)}</td>
+                <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #f472b6;">-${formatNaira(credit)}</td>
+            `;
+            itemsTableBody.appendChild(tr);
+        });
+    } else {
+        itemsSection.style.display = 'none';
     }
 
     // Raw JSON details

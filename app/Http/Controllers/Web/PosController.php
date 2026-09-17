@@ -557,10 +557,39 @@ class PosController extends Controller
 
             // Security & Operations Audit Log (Fail-safe isolated)
             try {
-                \App\Models\Activity::recordSecurityEvent('POS_SALE_COMPLETED', "POS Retail Sale #{$sale->id} completed for ₦" . number_format((float) ($sale->totalAmount ?? $grossTotal), 2) . " by {$userName}.", [
+                $sale->loadMissing('items');
+                $lineItems = $sale->items->map(function ($item) {
+                    return [
+                        'sku' => $item->code ?? $item->productCode ?? 'N/A',
+                        'name' => $item->productName ?? 'Unknown Item',
+                        'quantity' => (int) $item->quantity,
+                        'unit_price' => (float) $item->unitPrice,
+                        'subtotal' => (float) (($item->quantity ?? 1) * ($item->unitPrice ?? 0)),
+                    ];
+                })->values()->all();
+
+                $exchanges = [];
+                if (!empty($validatedExchangeReturns)) {
+                    foreach ($validatedExchangeReturns as $vEx) {
+                        $exchanges[] = [
+                            'sku' => $vEx['productCode'] ?? $vEx['code'] ?? 'N/A',
+                            'name' => $vEx['productName'] ?? 'Item',
+                            'quantity' => (int) ($vEx['quantity'] ?? 1),
+                            'credit_value' => (float) ($vEx['creditAmount'] ?? (($vEx['quantity'] ?? 1) * ($vEx['unitPrice'] ?? 0))),
+                            'orig_sale_ref' => $vEx['origSaleRef'] ?? null,
+                        ];
+                    }
+                }
+
+                $grossVal = (float) ($sale->totalAmount ?? $grossTotal);
+                $paidVal = (float) ($sale->paidAmount ?? $paidAmount);
+                $debtIncurred = max(0.0, round($grossVal - $paidVal, 2));
+
+                \App\Models\Activity::recordSecurityEvent('POS_SALE_COMPLETED', "POS Retail Sale #{$sale->id} completed for ₦" . number_format($grossVal, 2) . " by {$userName}." . ($debtIncurred > 0 ? " (₦" . number_format($debtIncurred, 2) . " Debt Incurred)" : ""), [
                     'sale_id' => $sale->id,
-                    'total_amount' => (float) ($sale->totalAmount ?? $grossTotal),
-                    'paid_amount' => (float) ($sale->paidAmount ?? $paidAmount),
+                    'total_amount' => $grossVal,
+                    'paid_amount' => $paidVal,
+                    'debt_incurred' => $debtIncurred,
                     'cash_amount' => (float) ($sale->cashAmount ?? $cashAmount),
                     'pos_amount' => (float) ($sale->posAmount ?? $posAmount),
                     'exchange_credit' => (float) $totalExchangeCredit,
@@ -568,7 +597,11 @@ class PosController extends Controller
                     'customer_name' => $sale->customerName ?: ($customerName ?: 'Walk-in Customer'),
                     'customer_phone' => $sale->customerPhone ?: ($customerPhone ?: null),
                     'is_supplied' => (bool) $isSuppliedNow,
-                    'items_count' => is_array($request->items) ? count($request->items) : 0,
+                    'delivery_status' => $sale->deliveryStatus ?? ($isSuppliedNow ? 'DELIVERED' : 'UNSUPPLIED'),
+                    'sale_type' => $sale->sale_type ?? 'RETAIL',
+                    'items_count' => count($lineItems),
+                    'items' => $lineItems,
+                    'returned_exchange_items' => $exchanges,
                     'warehouse_id' => $warehouseId,
                 ]);
             } catch (\Throwable $auditEx) {
@@ -612,7 +645,7 @@ class PosController extends Controller
      */
     public function receipt($id)
     {
-        $sale = Sale::with(['items', 'warehouse'])->findOrFail($id);
+        $sale = Sale::with(['items', 'returns', 'payments', 'warehouse'])->findOrFail($id);
 
         // Branch Isolation: Branch-scoped users are strictly restricted to receipts within their own assigned branch
         $authUser = Auth::user();
@@ -778,16 +811,38 @@ class PosController extends Controller
             // Security & Operations Audit Log (Fail-safe isolated)
             try {
                 $actualRefund = (float) ($salesReturn->refundAmount ?? ($salesReturn->refund_amount ?? 0));
+                $origSale = \App\Models\Sale::find($request->sale_id);
+
+                $resolvedReturnItems = [];
+                if (is_array($request->items)) {
+                    $pIds = collect($request->items)->pluck('productId')->filter()->all();
+                    $products = \App\Models\Product::whereIn('id', $pIds)->get()->keyBy('id');
+                    foreach ($request->items as $rItem) {
+                        $p = $products->get($rItem['productId'] ?? null);
+                        $qty = (int) ($rItem['quantity'] ?? 1);
+                        $lineRef = (float) ($rItem['refundAmount'] ?? ($rItem['unit_price'] ?? 0) * $qty);
+                        $resolvedReturnItems[] = [
+                            'sku' => $p ? $p->code : ($rItem['code'] ?? $rItem['productCode'] ?? 'N/A'),
+                            'name' => $p ? $p->name : ($rItem['productName'] ?? 'Returned Product'),
+                            'quantity' => $qty,
+                            'refund_amount' => $lineRef,
+                            'unit_price' => $qty > 0 ? round($lineRef / $qty, 2) : $lineRef,
+                        ];
+                    }
+                }
+
                 \App\Models\Activity::recordSecurityEvent('SALES_RETURN_REFUNDED', "Sales Return #{$salesReturn->code} processed for Sale #{$request->sale_id} (Refund: ₦" . number_format($actualRefund, 2) . " via {$request->refund_method}) by {$userName}.", [
                     'return_id' => $salesReturn->id,
                     'return_code' => $salesReturn->code,
                     'sale_id' => $request->sale_id,
+                    'customer_name' => $origSale?->customerName ?? 'Walk-in Customer',
+                    'customer_phone' => $origSale?->customerPhone ?? null,
                     'refund_amount' => $actualRefund,
                     'refund_method' => $request->refund_method,
                     'reason' => $request->reason,
                     'warehouse_id' => $warehouseId,
-                    'items_count' => is_array($request->items) ? count($request->items) : 0,
-                    'items' => $request->items,
+                    'items_count' => count($resolvedReturnItems),
+                    'items' => $resolvedReturnItems,
                 ]);
             } catch (\Throwable $auditEx) {
                 \Illuminate\Support\Facades\Log::warning("SALES_RETURN_REFUNDED audit log isolated failure: {$auditEx->getMessage()}", [

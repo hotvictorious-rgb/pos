@@ -101,7 +101,34 @@ class StockController extends Controller
         // Stock In Logs Query (Dedicated to Stock In Hub)
         $logsQuery = InventoryLog::with(['product', 'warehouse'])
             ->where('warehouse_id', $activeWarehouse->id)
-            ->where('type', 'STOCK_IN');
+            ->whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
+
+        if ($request->filled('inflow_category')) {
+            $cat = strtoupper($request->inflow_category);
+            if ($cat === 'SUPPLIER') {
+                $logsQuery->where('type', 'STOCK_IN')
+                          ->where('description', 'not like', '%Initial%')
+                          ->where('description', 'not like', '%Audit%');
+            } elseif ($cat === 'EXCHANGE') {
+                $logsQuery->where(function($q) {
+                    $q->where('type', 'EXCHANGE_IN')
+                      ->orWhere(function($sub) {
+                          $sub->where('type', 'SALES_RETURN')->where('description', 'like', '%Exchange%');
+                      });
+                });
+            } elseif ($cat === 'RETURN') {
+                $logsQuery->where(function($q) {
+                    $q->whereIn('type', ['RETURN', 'SALES_RETURN'])
+                      ->where('description', 'not like', '%Exchange%');
+                });
+            } elseif ($cat === 'TRANSFER') {
+                $logsQuery->where('type', 'TRANSFER_IN');
+            } elseif ($cat === 'OPENING') {
+                $logsQuery->where('type', 'STOCK_IN')->where('description', 'like', '%Initial%');
+            } elseif ($cat === 'AUDIT') {
+                $logsQuery->where('type', 'STOCK_IN')->where('description', 'like', '%Audit%');
+            }
+        }
 
         $this->applyDateFilter($logsQuery, 'created_at', $datePreset, $fromDate, $toDate);
 
@@ -911,32 +938,19 @@ class StockController extends Controller
 
         $request->validate([
             'product_id' => 'required',
-            'type' => 'required|string|max:50',
+            'type' => 'nullable|string|max:50',
             'quantity' => 'required|numeric|min:1',
-            'reason' => 'nullable|string|max:500',
+            'reason' => 'required|string|min:3|max:500',
+        ], [
+            'reason.required' => 'A specific reason/justification is compulsory for all stock adjustments.',
+            'reason.min' => 'Please provide a clear justification (at least 3 characters) explaining why this stock is being deducted.',
         ]);
 
         $userId = Auth::id() ?? 'USER-1';
         $userName = Auth::user()->name ?? 'Storekeeper';
 
-        // Accommodating Reason: If user leaves reason blank, default to friendly category title
-        $typeTitles = [
-            'DAMAGE' => 'Physical Damage / Broken Goods',
-            'EXPIRED' => 'Expired / Past Shelf Life',
-            'INTERNAL_USE' => 'Internal Store Use / Staff Consumption',
-            'SAMPLE' => 'Promotional Sample / Marketing Giveaway',
-            'SHRINKAGE' => 'Stock Loss / Shrinkage',
-            'THEFT' => 'Theft / Pilferage / Unaccounted Loss',
-            'SUPPLIER_RETURN' => 'Return of Defective Batch to Supplier',
-            'CORRECTION' => 'Downward Count Correction / Audit Reconciliation',
-            'CUSTOMER_GOODWILL' => 'Customer Compensation / Goodwill Replacement',
-            'OTHER' => 'General Stock Out / Deduction',
-        ];
-        $typeKey = strtoupper(trim($request->type));
+        $typeKey = !empty($request->type) ? strtoupper(trim($request->type)) : 'ADJUSTMENT';
         $reason = trim((string)$request->reason);
-        if ($reason === '') {
-            $reason = $typeTitles[$typeKey] ?? ucwords(strtolower(str_replace('_', ' ', $typeKey)));
-        }
 
         try {
             $idempotencyKey = $this->resolveIdempotencyKey($request);

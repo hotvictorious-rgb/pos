@@ -233,20 +233,30 @@ class StockService
                 'timestamp' => now()->toIso8601String(),
             ]);
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'STOCK_IN',
-                'description' => "{$userName} added {$quantity} units of {$product->name} at warehouse #{$warehouseId}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-                'metadata' => json_encode([
-                    'product_id' => $productId,
+            try {
+                Activity::recordSecurityEvent('STOCK_IN', "{$userName} added {$quantity} units of {$product->name} ({$product->code}) at warehouse #{$warehouseId}", [
+                    'product_id'   => $productId,
+                    'sku'          => $product->code,
+                    'product_code' => $product->code,
+                    'product_name' => $product->name,
                     'warehouse_id' => $warehouseId,
-                    'quantity' => $quantity,
-                    'supplier' => $supplierName,
-                ]),
-            ]);
+                    'quantity'     => $quantity,
+                    'stock_before' => (int) ($stock->physical_stock - $quantity),
+                    'stock_after'  => (int) $stock->physical_stock,
+                    'supplier'     => $supplierName,
+                    'notes'        => $notes,
+                    'items'        => [
+                        [
+                            'sku'        => $product->code,
+                            'name'       => $product->name,
+                            'quantity'   => $quantity,
+                            'unit_price' => (float) ($product->costPrice ?? $product->cost_price ?? 0),
+                        ]
+                    ]
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("STOCK_IN audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $stock;
         });
@@ -403,6 +413,11 @@ class StockService
                     $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
                     $product->save();
 
+                    $isExchangeSale = !empty($saleData['exchange_returns']) || !empty($saleData['exchange_credit']) || (isset($saleData['tender']['exchange_credit']) && (float)$saleData['tender']['exchange_credit'] > 0);
+                    $logDesc = $isExchangeSale
+                        ? "Sale #{$saleId} (Exchange Replacement for {$customerName})"
+                        : "Sale #{$saleId} (Supplied to {$customerName})";
+
                     InventoryLog::create([
                         'id' => (string) Str::uuid(),
                         'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
@@ -414,7 +429,7 @@ class StockService
                         'userName' => $userName,
                         'productCode' => $product->code,
                         'productName' => $product->name,
-                        'description' => "Sale #{$saleId} (Supplied to {$customerName})",
+                        'description' => $logDesc,
                         'timestamp' => now()->toIso8601String(),
                     ]);
                 } else {
@@ -511,7 +526,7 @@ class StockService
                             'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
                             'productId' => $retProductId,
                             'warehouse_id' => $warehouseId,
-                            'type' => 'SALES_RETURN',
+                            'type' => 'EXCHANGE_IN',
                             'quantity' => $unitsRestoredToShelf,
                             'userId' => $userId,
                             'userName' => $userName,
@@ -520,6 +535,36 @@ class StockService
                             'description' => $logDesc,
                             'timestamp' => now()->toIso8601String(),
                         ]);
+
+                        if ($unitsRestoredToShelf > 0) {
+                            try {
+                                \App\Models\Activity::recordSecurityEvent(
+                                    'STOCK_IN',
+                                    "Restocked {$unitsRestoredToShelf}x " . ($retProduct?->name ?? 'Exchanged Item') . " via Customer Exchange for Sale #{$saleId} (Ref: " . ($exRet['origSaleRef'] ?? 'Prior Sale') . ")",
+                                    [
+                                        'inflow_type'   => 'CUSTOMER_EXCHANGE',
+                                        'sale_id'       => $saleId,
+                                        'orig_sale_id'  => $origSaleId,
+                                        'product_id'    => $retProductId,
+                                        'sku'           => $retProduct?->code ?? 'EXCHANGE',
+                                        'product_name'  => $retProduct?->name ?? 'Exchanged Item',
+                                        'quantity'      => $unitsRestoredToShelf,
+                                        'warehouse_id'  => $warehouseId,
+                                        'items'         => [
+                                            [
+                                                'sku'       => $retProduct?->code ?? 'EXCHANGE',
+                                                'name'      => $retProduct?->name ?? 'Exchanged Item',
+                                                'quantity'  => $unitsRestoredToShelf,
+                                                'unit_cost' => (float) ($retProduct?->costPrice ?? 0),
+                                                'amount'    => (float) $retCredit,
+                                            ]
+                                        ]
+                                    ]
+                                );
+                            } catch (\Throwable $e) {
+                                \Illuminate\Support\Facades\Log::warning("Exchange stock-in audit logging isolated failure: " . $e->getMessage());
+                            }
+                        }
 
                         // Authoritative SalesReturn record to prevent duplicate future returns of the original sale line item
                         if ($origSaleId) {
@@ -710,14 +755,26 @@ class StockService
             $sale->deliveredBy = $userName;
             $sale->save();
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'DISPATCH_FULFILLED',
-                'description' => "{$userName} dispatched previously unsupplied goods for Sale #{$saleId} ({$sale->customerName})",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $dispatchedItems = $sale->items->map(function ($it) {
+                    return [
+                        'sku' => $it->code ?? $it->productCode ?? 'N/A',
+                        'name' => $it->productName ?? 'Item',
+                        'quantity' => (int) $it->quantity,
+                    ];
+                })->values()->all();
+
+                Activity::recordSecurityEvent('DISPATCH_FULFILLED', "{$userName} dispatched previously unsupplied goods for Sale #{$saleId} ({$sale->customerName})", [
+                    'sale_id' => $saleId,
+                    'customer_name' => $sale->customerName,
+                    'customer_phone' => $sale->customerPhone,
+                    'warehouse_id' => $warehouseId,
+                    'items_count' => count($dispatchedItems),
+                    'items' => $dispatchedItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("DISPATCH_FULFILLED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $sale;
         });
@@ -810,6 +867,27 @@ class StockService
                 'description' => "Reservation fulfilled ({$qty} units) for Sale #{$saleId} to {$sale->customerName}",
                 'timestamp' => now()->toIso8601String(),
             ]);
+
+            try {
+                Activity::recordSecurityEvent('RESERVATION_FULFILLED', "Reservation fulfilled ({$qty} units of {$product?->name}) for Sale #{$saleId} to {$sale->customerName}", [
+                    'sale_id' => $saleId,
+                    'product_id' => $productId,
+                    'sku' => $product?->code ?? 'N/A',
+                    'product_name' => $product?->name ?? 'Unknown Item',
+                    'quantity' => $qty,
+                    'warehouse_id' => $warehouseId,
+                    'customer_name' => $sale->customerName,
+                    'items' => [
+                        [
+                            'sku' => $product?->code ?? 'N/A',
+                            'name' => $product?->name ?? 'Unknown Item',
+                            'quantity' => $qty,
+                        ]
+                    ]
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("RESERVATION_FULFILLED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $reservation;
         });
@@ -966,15 +1044,27 @@ class StockService
                 ]);
             }
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'type' => 'TRANSFER_DISPATCHED',
-                'description' => "Transfer #{$transferNo} dispatched from Shop #{$sourceWarehouseId} to Shop #{$destWarehouseId} by {$userName}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $transfer->loadMissing('items');
+                $transferItems = $transfer->items->map(function ($it) {
+                    return [
+                        'sku' => $it->product_code ?? 'N/A',
+                        'name' => $it->product_name ?? 'Transfer Item',
+                        'quantity' => (int) $it->dispatched_qty,
+                    ];
+                })->values()->all();
+
+                Activity::recordSecurityEvent('TRANSFER_DISPATCHED', "Transfer #{$transferNo} dispatched from Shop #{$sourceWarehouseId} to Shop #{$destWarehouseId} by {$userName}", [
+                    'transfer_no' => $transferNo,
+                    'source_warehouse_id' => $sourceWarehouseId,
+                    'destination_warehouse_id' => $destWarehouseId,
+                    'carrier_name' => $carrierName,
+                    'items_count' => count($transferItems),
+                    'items' => $transferItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("TRANSFER_DISPATCHED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $transfer;
         });
@@ -1056,21 +1146,37 @@ class StockService
             $transfer->save();
 
             // Log activity & trigger Auditor alert if discrepancy exists
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => $hasDiscrepancy ? 'THEFT_ALERT_DISCREPANCY' : 'TRANSFER_RECEIVED',
-                'description' => $hasDiscrepancy
+            try {
+                $transfer->loadMissing('items');
+                $receivedItems = $transfer->items->map(function ($tItem) {
+                    return [
+                        'sku' => $tItem->product_code ?? 'N/A',
+                        'name' => $tItem->product_name ?? 'Transfer Item',
+                        'dispatched_qty' => (int) $tItem->dispatched_qty,
+                        'received_qty' => (int) $tItem->received_qty,
+                        'discrepancy_qty' => (int) $tItem->discrepancy_qty,
+                    ];
+                })->values()->all();
+
+                $evtType = $hasDiscrepancy ? 'THEFT_ALERT_DISCREPANCY' : 'TRANSFER_RECEIVED';
+                $evtDesc = $hasDiscrepancy
                     ? "🚨 THEFT/VARIANCE ALERT: Transfer #{$transfer->transfer_no} received with {$totalDiscrepancy} missing units! Carrier: {$transfer->carrier_name}, Counted by: {$userName}"
-                    : "Transfer #{$transfer->transfer_no} successfully received and verified with 0 discrepancies by {$userName}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-                'metadata' => json_encode([
+                    : "Transfer #{$transfer->transfer_no} successfully received and verified with 0 discrepancies by {$userName}";
+
+                Activity::recordSecurityEvent($evtType, $evtDesc, [
                     'transfer_no' => $transfer->transfer_no,
+                    'source_warehouse_id' => $transfer->source_warehouse_id,
+                    'destination_warehouse_id' => $transfer->destination_warehouse_id,
+                    'carrier_name' => $transfer->carrier_name,
                     'has_discrepancy' => $hasDiscrepancy,
                     'missing_units' => $totalDiscrepancy,
-                ]),
-            ]);
+                    'discrepancy_notes' => $discrepancyNotes,
+                    'items_count' => count($receivedItems),
+                    'items' => $receivedItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("TRANSFER_RECEIVED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $transfer;
         });
@@ -1126,14 +1232,27 @@ class StockService
             $transfer->notes = trim(($transfer->notes ?? '') . " [Recalled by {$userName}: " . ($reason ?? 'Delivery cancelled') . "]");
             $transfer->save();
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'TRANSFER_CANCELLED',
-                'description' => "Transfer #{$transfer->transfer_no} cancelled by {$userName}. Stock restored to " . ($transfer->source->name ?? 'Source') . ".",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $transfer->loadMissing('items');
+                $cancelledItems = $transfer->items->map(function ($it) {
+                    return [
+                        'sku' => $it->product_code ?? 'N/A',
+                        'name' => $it->product_name ?? 'Transfer Item',
+                        'quantity' => (int) $it->dispatched_qty,
+                    ];
+                })->values()->all();
+
+                Activity::recordSecurityEvent('TRANSFER_CANCELLED', "Transfer #{$transfer->transfer_no} cancelled by {$userName}. Stock restored to " . ($transfer->source->name ?? 'Source') . ".", [
+                    'transfer_no' => $transfer->transfer_no,
+                    'source_warehouse_id' => $transfer->source_warehouse_id,
+                    'destination_warehouse_id' => $transfer->destination_warehouse_id,
+                    'reason' => $reason,
+                    'items_count' => count($cancelledItems),
+                    'items' => $cancelledItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("TRANSFER_CANCELLED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $transfer;
         });
@@ -1304,14 +1423,24 @@ class StockService
                 'notes' => $notes ?? "Part-payment of ₦" . number_format($amount, 2) . " received via {$cleanMethod}. New balance: ₦" . number_format($customer->total_debt, 2),
             ]);
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'DEBT_PAYMENT',
-                'description' => "{$userName} recorded debt payment of ₦" . number_format($amount, 2) . " via {$cleanMethod} for {$customer->name}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $oldDebtNaira = \App\Services\Accounting\AccountingReportService::toNaira($currentCustDebtKobo);
+                Activity::recordSecurityEvent('DEBT_PAYMENT', "{$userName} recorded debt payment of ₦" . number_format($amount, 2) . " via {$cleanMethod} for {$customer->name} (Prev: ₦" . number_format($oldDebtNaira, 2) . ", New: ₦" . number_format($customer->total_debt, 2) . ")", [
+                    'customer_id'        => $customer->id,
+                    'customer_name'      => $customer->name,
+                    'customer_phone'     => $customer->phone,
+                    'amount_paid'        => (float) $amount,
+                    'payment_method'     => $cleanMethod,
+                    'previous_debt'      => (float) $oldDebtNaira,
+                    'new_balance'        => (float) $customer->total_debt,
+                    'reference_no'       => $refNo,
+                    'allocated_sale_ids' => $allocatedSaleIds,
+                    'warehouse_id'       => $targetWarehouseId,
+                    'ledger_id'          => $ledger->id,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("DEBT_PAYMENT audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $ledger;
         });
@@ -1364,12 +1493,16 @@ class StockService
                 'status' => 'APPROVED',
             ]);
 
+            $adjLogType = (strtoupper($type) === 'ADJUSTMENT' || str_starts_with(strtoupper($type), 'STOCK_ADJUSTMENT'))
+                ? 'STOCK_ADJUSTMENT'
+                : 'STOCK_ADJUSTMENT_' . strtoupper($type);
+
             InventoryLog::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => session('tenant_id') ?? $product->tenant_id ?? null,
                 'productId' => $productId,
                 'warehouse_id' => $warehouseId,
-                'type' => 'STOCK_ADJUSTMENT_' . strtoupper($type),
+                'type' => $adjLogType,
                 'quantity' => -$quantity,
                 'userId' => $userId,
                 'userName' => $userName,
@@ -1379,14 +1512,30 @@ class StockService
                 'timestamp' => now()->toIso8601String(),
             ]);
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'STOCK_ADJUSTMENT',
-                'description' => "{$userName} wrote off {$quantity} units of {$product->name} ({$type}) at Shop #{$warehouseId}. Reason: {$reason}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                Activity::recordSecurityEvent('STOCK_ADJUSTMENT', "{$userName} wrote off {$quantity} units of {$product->name} ({$product->code}, {$type}) at Shop #{$warehouseId}. Reason: {$reason}", [
+                    'product_id'      => $productId,
+                    'sku'             => $product->code,
+                    'product_code'    => $product->code,
+                    'product_name'    => $product->name,
+                    'adjustment_type' => strtoupper($type),
+                    'quantity'        => $quantity,
+                    'reason'          => $reason,
+                    'warehouse_id'    => $warehouseId,
+                    'stock_before'    => (int) ($stock->physical_stock + $quantity),
+                    'stock_after'     => (int) $stock->physical_stock,
+                    'items'           => [
+                        [
+                            'sku'        => $product->code,
+                            'name'       => $product->name,
+                            'quantity'   => -$quantity,
+                            'unit_price' => (float) ($product->unitPrice ?? 0),
+                        ]
+                    ]
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("STOCK_ADJUSTMENT audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $adjustment;
         });
@@ -1606,6 +1755,36 @@ class StockService
                     'description' => "Customer Return for Sale #{$saleId} ({$movementDesc}). Reason: {$reason}",
                     'timestamp' => now()->toIso8601String(),
                 ]);
+
+                if ($physicalUnitsRestored > 0) {
+                    try {
+                        \App\Models\Activity::recordSecurityEvent(
+                            'STOCK_IN',
+                            "Restocked {$physicalUnitsRestored}x {$product->name} via Customer Return for Sale #{$saleId} ({$movementDesc})",
+                            [
+                                'inflow_type'   => 'CUSTOMER_RETURN',
+                                'sale_id'       => $saleId,
+                                'product_id'    => $product->id,
+                                'sku'           => $product->code,
+                                'product_name'  => $product->name,
+                                'quantity'      => $physicalUnitsRestored,
+                                'warehouse_id'  => $warehouseId,
+                                'reason'        => $reason,
+                                'items'         => [
+                                    [
+                                        'sku'       => $product->code,
+                                        'name'      => $product->name,
+                                        'quantity'  => $physicalUnitsRestored,
+                                        'unit_cost' => (float) ($product->costPrice ?? 0),
+                                        'amount'    => (float) ($qty * $unitPrice),
+                                    ]
+                                ]
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("Customer return stock-in audit logging isolated failure: " . $e->getMessage());
+                    }
+                }
             }
 
             // Update sale delivery status if all reservations are resolved
@@ -1802,14 +1981,38 @@ class StockService
 
             $salesReturn = $primaryReturn;
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'SALES_RETURN',
-                'description' => "{$userName} processed Sales Return for Sale #{$saleId} (₦" . number_format($totalRefundAmount, 2) . " refund). Reason: {$reason}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $returnItemsMeta = [];
+                $allReturns = \App\Models\SalesReturn::where('saleId', $saleId)
+                    ->where('code', $salesReturn->code ?? ($primaryReturn->code ?? ''))
+                    ->get();
+                if ($allReturns->isEmpty() && $primaryReturn) {
+                    $allReturns = collect([$primaryReturn]);
+                }
+                foreach ($allReturns as $ret) {
+                    $prod = Product::find($ret->productId);
+                    $returnItemsMeta[] = [
+                        'sku' => $prod?->code ?? $ret->code ?? 'N/A',
+                        'name' => $ret->productName,
+                        'quantity' => (int) $ret->quantity,
+                        'refund_amount' => (float) $ret->refundAmount,
+                    ];
+                }
+
+                Activity::recordSecurityEvent('SALES_RETURN', "{$userName} processed Sales Return for Sale #{$saleId} (₦" . number_format($totalRefundAmount, 2) . " refund). Reason: {$reason}", [
+                    'return_code'   => $salesReturn->code ?? null,
+                    'sale_id'       => $saleId,
+                    'customer_name' => $sale->customerName,
+                    'refund_amount' => (float) $totalRefundAmount,
+                    'refund_method' => $refundMethod,
+                    'reason'        => $reason,
+                    'warehouse_id'  => $warehouseId,
+                    'items_count'   => count($returnItemsMeta),
+                    'items'         => $returnItemsMeta,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("SALES_RETURN audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $salesReturn;
         });

@@ -445,15 +445,25 @@ class AccountingReportService
         $auditUserId = $actingUser->id;
         $auditUserName = $actingUser->name;
 
-        Activity::create([
-            'id'          => (string) Str::uuid(),
-            'tenant_id'   => session('tenant_id') ?? $customer->tenant_id ?? null,
-            'type'        => 'DEBT_CORRECTION',
-            'description' => "Customer '{$customer->name}' debt corrected from ₦" . number_format($oldDebt, 2) . " to ₦" . number_format($customer->total_debt, 2) . " by {$auditUserName}. Reason: {$reason}",
-            'userId'      => $auditUserId,
-            'userName'    => $auditUserName,
-            'timestamp'   => now()->toIso8601String(),
-        ]);
+        try {
+            \App\Models\Activity::recordSecurityEvent(
+                'DEBT_CORRECTION',
+                "Customer '{$customer->name}' debt corrected from ₦" . number_format($oldDebt, 2) . " to ₦" . number_format($customer->total_debt, 2) . " by {$auditUserName}. Reason: {$reason}",
+                [
+                    'customer_id'    => $customer->id,
+                    'customer_name'  => $customer->name,
+                    'customer_phone' => $customer->phone,
+                    'old_debt'       => $oldDebt,
+                    'new_debt'       => (float) $customer->total_debt,
+                    'variance'       => round((float) $customer->total_debt - $oldDebt, 2),
+                    'reason'         => $reason,
+                    'corrected_by'   => $auditUserName,
+                ],
+                $actingUser
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("DEBT_CORRECTION audit logging isolated failure: " . $e->getMessage());
+        }
 
         return [
             'customerId'   => $customer->id,
@@ -651,7 +661,7 @@ class AccountingReportService
                 'STOCK_ADJUSTMENT_LOST'
             ])->orWhere('type', 'like', 'STOCK_ADJUSTMENT%')
               ->orWhere(function ($sub) {
-                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
               });
         });
         $this->applyDateFilterToQuery($stockOutQuery, 'timestamp', $filters);
@@ -665,8 +675,8 @@ class AccountingReportService
         $transferOutUnits   = (int) abs($stockOutLogs->filter(fn($l) => $l->type === 'TRANSFER_OUT')->sum('quantity'));
         $damageLossUnits    = max(0, $totalStockOutUnits - $salesDispatchUnits - $transferOutUnits);
 
-        // 2. Stock In Analysis (Supplier Restocks, Transfers In, Customer Returns, Void Restorations)
-        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'SALE_VOIDED', 'STOCK_ADJUSTMENT_VOIDED']);
+        // 2. Stock In Analysis (Supplier Restocks, Transfers In, Customer Returns, Exchanges, Void Restorations)
+        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN', 'SALE_VOIDED', 'STOCK_ADJUSTMENT_VOIDED']);
         $this->applyDateFilterToQuery($stockInQuery, 'timestamp', $filters);
         if ($scopedWh) {
             $stockInQuery->where('warehouse_id', $scopedWh);
@@ -676,7 +686,8 @@ class AccountingReportService
 
         $supplierRestockUnits = (int) $stockInLogs->filter(fn($l) => $l->type === 'STOCK_IN')->sum('quantity');
         $transferInUnits      = (int) $stockInLogs->filter(fn($l) => $l->type === 'TRANSFER_IN')->sum('quantity');
-        $returnedRestockUnits = (int) $stockInLogs->filter(fn($l) => in_array($l->type, ['RETURN', 'SALES_RETURN', 'SALE_VOIDED', 'STOCK_ADJUSTMENT_VOIDED']))->sum('quantity');
+        $exchangeRestockUnits = (int) $stockInLogs->filter(fn($l) => $l->type === 'EXCHANGE_IN' || ($l->type === 'SALES_RETURN' && stripos($l->description, 'Exchange') !== false))->sum('quantity');
+        $returnedRestockUnits = (int) $stockInLogs->filter(fn($l) => in_array($l->type, ['RETURN', 'SALES_RETURN', 'SALE_VOIDED', 'STOCK_ADJUSTMENT_VOIDED']) && stripos($l->description, 'Exchange') === false)->sum('quantity');
 
         // Net Inventory Movement
         $netInventoryMovementUnits = $totalStockInUnits - $totalStockOutUnits;
@@ -815,6 +826,8 @@ class AccountingReportService
             // 2. Collections (Cash & POS)
             'cash_collected'                => $summary['cashCollected'],
             'pos_collected'                 => $summary['posCollected'],
+            'exchange_credit_applied'       => $summary['exchangeCreditApplied'] ?? 0.0,
+            'exchange_count'                => $summary['exchangeCreditCount'] ?? 0,
             'cash_refunded'                 => $summary['cashRefunded'],
             'net_cash_inflow'               => $summary['netCashInflow'],
             'net_pos_inflow'                => $summary['netPosInflow'],
@@ -840,6 +853,7 @@ class AccountingReportService
             'stock_in_supplier_restock_units'=> $supplierRestockUnits,
             'stock_in_transfer_units'       => $transferInUnits,
             'stock_in_returns_units'        => $returnedRestockUnits,
+            'stock_in_exchange_units'       => $exchangeRestockUnits,
             'net_inventory_movement_units'  => $netInventoryMovementUnits,
             // 5. Pending Orders
             'pending_orders_new_count'      => $newPendingCount,
@@ -1049,7 +1063,7 @@ class AccountingReportService
         // Payment method filter (CASH or POS)
         if (!empty($filters['method']) || !empty($filters['payment_method'])) {
             $method = strtoupper($filters['method'] ?? $filters['payment_method']);
-            if (in_array($method, ['CASH', 'POS', 'REFUND_CASH'])) {
+            if (in_array($method, ['CASH', 'POS', 'REFUND_CASH', 'EXCHANGE_CREDIT', 'STORE_CREDIT'])) {
                 $query->where('method', $method);
             }
         }
@@ -1243,6 +1257,8 @@ class AccountingReportService
         $posFromSales = (float) $payments->where('method', 'POS')->where('amount', '>', 0)
             ->reject(fn($p) => str_contains($p->recordedBy ?? '', '[DEBT_RECOVERY]'))
             ->sum('amount');
+        $exchangeCreditFromSales = (float) $payments->where('method', 'EXCHANGE_CREDIT')->where('amount', '>', 0)->sum('amount');
+        $exchangeCreditCount = $payments->where('method', 'EXCHANGE_CREDIT')->where('amount', '>', 0)->count();
 
         // Cash refunds paid out to customers
         $cashRefunded = (float) abs($payments->where('method', 'REFUND_CASH')->sum('amount'));
@@ -1357,6 +1373,9 @@ class AccountingReportService
             'totalReturnCredits'         => $totalReturnCredits,
             'cashFromSales'              => round($cashFromSales, 2),
             'posFromSales'               => round($posFromSales, 2),
+            'exchangeCreditApplied'      => round($exchangeCreditFromSales, 2),
+            'totalExchangeCreditApplied' => round($exchangeCreditFromSales, 2),
+            'exchangeCreditCount'        => $exchangeCreditCount,
             'cashDebtRecovered'          => round($totalCashFromDebt, 2),
             'posDebtRecovered'           => round($totalPosFromDebt, 2),
             'totalCashInflow'            => round($totalCashInflow, 2),
@@ -1724,6 +1743,138 @@ class AccountingReportService
             'sumOutstanding'   => $sumOutstanding,
             'variance'         => $variance,
             'balanced'         => ($variance === 0),
+        ];
+    }
+
+    /**
+     * Dedicated Exchange Report & Dual-SKU Reconciliation.
+     * Identifies all customer exchanges: sales where exchange credit was tendered,
+     * or sales linked to exchange-type returns.
+     * Pairs returned items (incoming to shelf) with replacement items (outgoing to customer),
+     * and shows price differential, extra payment collected, or refund balance.
+     */
+    public function getExchangeReport(array $filters): array
+    {
+        $dates = $this->resolveDateRange(
+            $filters['date_preset'] ?? $filters['date_range'] ?? $filters['period'] ?? null,
+            $filters['from_date'] ?? $filters['from'] ?? null,
+            $filters['to_date'] ?? $filters['to'] ?? null
+        );
+
+        $user = Auth::user();
+        $scopedWh = ($user && $user->isBranchScoped()) ? (int) $user->warehouse_id : (!empty($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null);
+
+        // 1. Query Sales with EXCHANGE_CREDIT payment OR exchange-related returns
+        $query = Sale::with(['items.product', 'customer', 'payments', 'warehouse'])
+            ->where(function ($q) {
+                $q->whereHas('payments', function ($pq) {
+                    $pq->where('method', 'EXCHANGE_CREDIT');
+                })->orWhereHas('salesReturns', function ($rq) {
+                    $rq->where('reason', 'like', '%Exchange%');
+                });
+            });
+
+        $query->whereBetween('createdAt', [$dates['startIso'], $dates['endIso']]);
+
+        if ($scopedWh) {
+            $query->where('warehouse_id', $scopedWh);
+        }
+
+        if (!empty($filters['user_id'])) {
+            $query->where('userId', $filters['user_id']);
+        }
+        if (!empty($filters['user_name'])) {
+            $query->where('userName', 'like', "%{$filters['user_name']}%");
+        }
+        if (!empty($filters['search'])) {
+            $s = trim($filters['search']);
+            $query->where(function ($sq) use ($s) {
+                $sq->where('id', 'like', "%{$s}%")
+                   ->orWhere('customerName', 'like', "%{$s}%")
+                   ->orWhere('userName', 'like', "%{$s}%");
+            });
+        }
+
+        $exchangeSales = $query->orderBy('createdAt', 'desc')->get();
+
+        $rows = [];
+        $totalExchangeCredit = 0.0;
+        $totalDifferential = 0.0;
+        $totalReturnedUnits = 0;
+        $totalReplacementUnits = 0;
+
+        foreach ($exchangeSales as $sale) {
+            $creditAmount = (float) $sale->payments->where('method', 'EXCHANGE_CREDIT')->sum('amount');
+            if ($creditAmount <= 0) {
+                $exRet = SalesReturn::where('saleId', $sale->id)->where('reason', 'like', '%Exchange%')->first();
+                $creditAmount = $exRet ? (float) $exRet->refundAmount : 0.0;
+            }
+
+            // Find returned item(s)
+            $returns = SalesReturn::where('saleId', $sale->id)
+                ->where('reason', 'like', '%Exchange%')
+                ->get();
+
+            if ($returns->isEmpty()) {
+                $returns = SalesReturn::where('reason', 'like', "%Sale #{$sale->id}%")->get();
+            }
+
+            $returnedSkus = [];
+            $returnedNames = [];
+            $returnedQty = 0;
+            foreach ($returns as $ret) {
+                $returnedSkus[] = $ret->code ?? $ret->productCode ?? 'N/A';
+                $returnedNames[] = $ret->productName . " (x{$ret->quantity})";
+                $returnedQty += (int) $ret->quantity;
+            }
+
+            $replacementSkus = [];
+            $replacementNames = [];
+            $replacementQty = 0;
+            $replacementTotal = (float) $sale->totalAmount;
+
+            foreach ($sale->items as $item) {
+                $replacementSkus[] = $item->product?->code ?? 'N/A';
+                $replacementNames[] = $item->productName . " (x{$item->quantity})";
+                $replacementQty += (int) $item->quantity;
+            }
+
+            $cashPosExtraPaid = (float) $sale->payments->whereIn('method', ['CASH', 'POS'])->sum('amount');
+            $diff = round($replacementTotal - $creditAmount, 2);
+
+            $rows[] = [
+                'sale_id'           => $sale->id,
+                'created_at'        => $sale->createdAt ?: $sale->created_at,
+                'customer_name'     => $sale->customerName ?: 'Walk-in Customer',
+                'cashier_name'      => $sale->userName,
+                'warehouse_name'    => $sale->warehouse->name ?? 'N/A',
+                'returned_skus'     => implode(', ', array_filter($returnedSkus)) ?: 'EXCHANGE',
+                'returned_names'    => implode(', ', array_filter($returnedNames)) ?: 'Returned Item',
+                'returned_units'    => $returnedQty ?: 1,
+                'exchange_credit'   => $creditAmount,
+                'replacement_skus'  => implode(', ', array_filter($replacementSkus)),
+                'replacement_names' => implode(', ', array_filter($replacementNames)),
+                'replacement_units' => $replacementQty,
+                'replacement_total' => $replacementTotal,
+                'differential'      => $diff,
+                'cash_pos_paid'     => $cashPosExtraPaid,
+                'payment_status'    => ($diff <= 0 || $cashPosExtraPaid >= $diff) ? 'SETTLED' : 'PARTIAL/DEBT',
+            ];
+
+            $totalExchangeCredit += $creditAmount;
+            $totalDifferential += $diff;
+            $totalReturnedUnits += ($returnedQty ?: 1);
+            $totalReplacementUnits += $replacementQty;
+        }
+
+        return [
+            'dateInfo'               => $dates,
+            'exchange_count'         => count($rows),
+            'total_exchange_credit'  => round($totalExchangeCredit, 2),
+            'total_differential'     => round($totalDifferential, 2),
+            'total_returned_units'   => $totalReturnedUnits,
+            'total_replacement_units'=> $totalReplacementUnits,
+            'rows'                   => $rows,
         ];
     }
 }
