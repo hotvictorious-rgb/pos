@@ -39,14 +39,14 @@ class Activity extends Model
     ): self {
         $req = request();
         $actor = $actor ?: \Illuminate\Support\Facades\Auth::user();
-        $tenantId = $actor?->tenant_id ?: session('tenant_id');
+        $tenantId = $actor?->tenant_id ?: (session('tenant_id') ?: ($metadata['tenant_id'] ?? (config('saas.enabled') ? 'default-tenant' : null)));
 
         $baseMetadata = [
             'ip'           => $req ? $req->ip() : '127.0.0.1',
             'user_agent'   => $req ? substr((string) $req->userAgent(), 0, 500) : null,
             'request_id'   => ($req && $req->header('X-Request-ID')) ? $req->header('X-Request-ID') : (string) \Illuminate\Support\Str::uuid(),
             'tenant_id'    => $tenantId,
-            'warehouse_id' => $actor?->warehouse_id ?: session('active_warehouse_id'),
+            'warehouse_id' => $actor?->warehouse_id ?: (session('active_warehouse_id') ?: ($metadata['warehouse_id'] ?? null)),
         ];
 
         return self::create([

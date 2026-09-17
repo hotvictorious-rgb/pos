@@ -35,16 +35,34 @@ class AuthController extends Controller
 
         if (!$user) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for email '{$email}' (User not found).", [
+                'attempted_email' => $email,
+                'reason' => 'user_not_found',
+                'portal' => 'api',
+            ]);
             return response()->json(['error' => 'Invalid email address or password.'], 401);
         }
 
         if ($user->disabled) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_DISABLED', "Blocked login attempt for deactivated user '{$user->name}' ({$email}).", [
+                'user_id' => $user->id,
+                'email' => $email,
+                'role' => $user->role,
+                'reason' => 'account_disabled',
+                'portal' => 'api',
+            ], $user);
             return response()->json(['error' => 'Your account has been disabled by the administrator.'], 403);
         }
 
         if (!Hash::check($password, $user->password)) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for email '{$email}' (Wrong password).", [
+                'user_id' => $user->id,
+                'attempted_email' => $email,
+                'reason' => 'invalid_password',
+                'portal' => 'api',
+            ], $user);
             return response()->json(['error' => 'Invalid email address or password.'], 401);
         }
 
@@ -52,6 +70,11 @@ class AuthController extends Controller
         if (config('saas.enabled')) {
             if (empty($tenantId)) {
                 $this->hitRateLimit($request, $email);
+                $this->logAuthEvent('AUTH_LOGIN_FAILED', "Blocked API login for user '{$user->name}' (No active business tenant).", [
+                    'user_id' => $user->id,
+                    'reason' => 'no_tenant_assigned',
+                    'portal' => 'api',
+                ], $user);
                 return response()->json(['error' => 'Account is not assigned to an active business tenant.'], 403);
             }
 
@@ -59,10 +82,20 @@ class AuthController extends Controller
                 $tenant = Tenant::find($tenantId);
                 if (!$tenant) {
                     $this->hitRateLimit($request, $email);
+                    $this->logAuthEvent('AUTH_LOGIN_FAILED', "Blocked API login for user '{$user->name}' (Tenant not found).", [
+                        'user_id' => $user->id,
+                        'reason' => 'tenant_not_found',
+                        'portal' => 'api',
+                    ], $user);
                     return response()->json(['error' => 'Your business account was not found. Please contact support.'], 403);
                 }
                 if (!$tenant->isActive()) {
                     $this->hitRateLimit($request, $email);
+                    $this->logAuthEvent('AUTH_LOGIN_FAILED', "Blocked API login for user '{$user->name}' (Tenant subscription inactive).", [
+                        'user_id' => $user->id,
+                        'reason' => 'tenant_inactive',
+                        'portal' => 'api',
+                    ], $user);
                     return response()->json(['error' => 'Your business subscription has expired or been suspended.'], 403);
                 }
             }
@@ -80,6 +113,15 @@ class AuthController extends Controller
             'tenant_id' => $activeTenantId
         ]);
         \Illuminate\Support\Facades\Auth::login($user);
+
+        $this->logAuthEvent('AUTH_LOGIN_SUCCESS', "User '{$user->name}' ({$user->role}) signed in successfully via API.", [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'role' => $user->role,
+            'tenant_id' => $activeTenantId,
+            'warehouse_id' => $user->warehouse_id,
+            'portal' => 'api',
+        ], $user);
 
         return response()->json($user);
     }
@@ -110,16 +152,31 @@ class AuthController extends Controller
 
         if (!$user) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for email '{$email}' (Invalid credentials).", [
+                'attempted_email' => $email,
+                'reason' => 'user_not_found',
+            ]);
             return back()->withInput()->with('error', 'Invalid email address or password.');
         }
 
         if ($user->disabled) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_DISABLED', "Blocked login attempt for deactivated user '{$user->name}' ({$email}).", [
+                'user_id' => $user->id,
+                'email' => $email,
+                'role' => $user->role,
+                'reason' => 'account_disabled',
+            ], $user);
             return back()->withInput()->with('error', 'Your account has been disabled by the administrator.');
         }
 
         if (!Hash::check($password, $user->password)) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for email '{$email}' (Wrong password).", [
+                'user_id' => $user->id,
+                'attempted_email' => $email,
+                'reason' => 'invalid_password',
+            ], $user);
             return back()->withInput()->with('error', 'Invalid email address or password.');
         }
 
@@ -155,6 +212,15 @@ class AuthController extends Controller
             'tenant_id' => $activeTenantId
         ]);
         \Illuminate\Support\Facades\Auth::login($user);
+
+        $this->logAuthEvent('AUTH_LOGIN_SUCCESS', "User '{$user->name}' ({$user->role}) signed in successfully.", [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'role' => $user->role,
+            'tenant_id' => $activeTenantId,
+            'warehouse_id' => $user->warehouse_id,
+            'portal' => 'standard',
+        ], $user);
 
         $intended = session()->pull('url.intended', '/');
         if (!$user->isSuperAdmin() && (str_contains($intended, 'saas/admin') || str_contains($intended, 'super-admin'))) {
@@ -283,18 +349,36 @@ class AuthController extends Controller
 
         if (!$user) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed portal login attempt for email '{$email}' on [{$portal}] portal (User not found).", [
+                'attempted_email' => $email,
+                'portal' => $portal,
+                'reason' => 'user_not_found',
+            ]);
             return back()->withInput()->with('error', 'Invalid email address or password.');
         }
 
         // 2. Disabled Account Check
         if ($user->disabled) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_DISABLED', "Blocked portal login attempt for deactivated user '{$user->name}' on [{$portal}] portal.", [
+                'user_id' => $user->id,
+                'email' => $email,
+                'role' => $user->role,
+                'portal' => $portal,
+                'reason' => 'account_disabled',
+            ], $user);
             return back()->withInput()->with('error', 'Your account has been disabled by the administrator.');
         }
 
         // 3. Password Verification
         if (!Hash::check($password, $user->password)) {
             $this->hitRateLimit($request, $email);
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed portal login attempt for email '{$email}' on [{$portal}] portal (Wrong password).", [
+                'user_id' => $user->id,
+                'attempted_email' => $email,
+                'portal' => $portal,
+                'reason' => 'invalid_password',
+            ], $user);
             return back()->withInput()->with('error', 'Invalid email address or password.');
         }
 
@@ -387,6 +471,15 @@ class AuthController extends Controller
         ]);
         Auth::login($user);
 
+        $this->logAuthEvent('AUTH_LOGIN_SUCCESS', "User '{$user->name}' ({$user->role}) signed in successfully via [{$portal}] portal.", [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'role' => $user->role,
+            'tenant_id' => $activeTenantId,
+            'warehouse_id' => $user->warehouse_id,
+            'portal' => $portal,
+        ], $user);
+
         // 6. Navigation
         if ($portal === 'super-admin' || $portal === 'super-admin-employee') {
             session()->forget('url.intended');
@@ -464,6 +557,22 @@ class AuthController extends Controller
 
         RateLimiter::clear($emailKey);
         RateLimiter::clear($ipKey);
+    }
+
+    /**
+     * Fail-safe isolated audit logger for authentication events.
+     * Guaranteed never to break or interrupt login flows even if logging storage encounters an anomaly.
+     */
+    protected function logAuthEvent(string $type, string $description, array $metadata = [], ?User $actor = null): void
+    {
+        try {
+            Activity::recordSecurityEvent($type, $description, $metadata, $actor);
+        } catch (\Throwable $e) {
+            Log::warning("Auth audit logging failure isolated: {$e->getMessage()}", [
+                'type' => $type,
+                'metadata' => $metadata,
+            ]);
+        }
     }
 
     /**

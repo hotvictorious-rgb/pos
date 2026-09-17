@@ -124,6 +124,23 @@ class PosController extends Controller
             ]);
         }
 
+        // Security & Operations Audit Log (Fail-safe isolated)
+        try {
+            $isNew = $customer->wasRecentlyCreated ?? false;
+            $actionType = $isNew ? 'CUSTOMER_REGISTERED' : 'CUSTOMER_UPDATED';
+            \App\Models\Activity::recordSecurityEvent($actionType, "Customer '{$customer->name}' ({$customer->phone}, Code: {$customer->customer_code}) " . ($isNew ? 'registered' : 'updated') . " via POS quick registration.", [
+                'customer_id' => $customer->id,
+                'customer_code' => $customer->customer_code,
+                'name' => $customer->name,
+                'phone' => $customer->phone,
+                'was_new' => $isNew,
+            ]);
+        } catch (\Throwable $auditEx) {
+            \Illuminate\Support\Facades\Log::warning("CUSTOMER_REGISTERED audit log isolated failure: {$auditEx->getMessage()}", [
+                'customer_id' => $customer->id ?? null,
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => "Customer {$customer->name} ({$customer->customer_code}) registered successfully!",
@@ -538,6 +555,28 @@ class PosController extends Controller
                 }
             );
 
+            // Security & Operations Audit Log (Fail-safe isolated)
+            try {
+                \App\Models\Activity::recordSecurityEvent('POS_SALE_COMPLETED', "POS Retail Sale #{$sale->id} completed for ₦" . number_format((float) ($sale->totalAmount ?? $grossTotal), 2) . " by {$userName}.", [
+                    'sale_id' => $sale->id,
+                    'total_amount' => (float) ($sale->totalAmount ?? $grossTotal),
+                    'paid_amount' => (float) ($sale->paidAmount ?? $paidAmount),
+                    'cash_amount' => (float) ($sale->cashAmount ?? $cashAmount),
+                    'pos_amount' => (float) ($sale->posAmount ?? $posAmount),
+                    'exchange_credit' => (float) $totalExchangeCredit,
+                    'customer_id' => $sale->customerId ?? $customerId,
+                    'customer_name' => $sale->customerName ?: ($customerName ?: 'Walk-in Customer'),
+                    'customer_phone' => $sale->customerPhone ?: ($customerPhone ?: null),
+                    'is_supplied' => (bool) $isSuppliedNow,
+                    'items_count' => is_array($request->items) ? count($request->items) : 0,
+                    'warehouse_id' => $warehouseId,
+                ]);
+            } catch (\Throwable $auditEx) {
+                \Illuminate\Support\Facades\Log::warning("POS_SALE_COMPLETED audit log isolated failure: {$auditEx->getMessage()}", [
+                    'sale_id' => $sale->id ?? null,
+                ]);
+            }
+
             if ($request->wantsJson()) {
                 return response()->json([
                     'success' => true,
@@ -735,6 +774,26 @@ class PosController extends Controller
                     );
                 }
             );
+
+            // Security & Operations Audit Log (Fail-safe isolated)
+            try {
+                $actualRefund = (float) ($salesReturn->refundAmount ?? ($salesReturn->refund_amount ?? 0));
+                \App\Models\Activity::recordSecurityEvent('SALES_RETURN_REFUNDED', "Sales Return #{$salesReturn->code} processed for Sale #{$request->sale_id} (Refund: ₦" . number_format($actualRefund, 2) . " via {$request->refund_method}) by {$userName}.", [
+                    'return_id' => $salesReturn->id,
+                    'return_code' => $salesReturn->code,
+                    'sale_id' => $request->sale_id,
+                    'refund_amount' => $actualRefund,
+                    'refund_method' => $request->refund_method,
+                    'reason' => $request->reason,
+                    'warehouse_id' => $warehouseId,
+                    'items_count' => is_array($request->items) ? count($request->items) : 0,
+                    'items' => $request->items,
+                ]);
+            } catch (\Throwable $auditEx) {
+                \Illuminate\Support\Facades\Log::warning("SALES_RETURN_REFUNDED audit log isolated failure: {$auditEx->getMessage()}", [
+                    'return_id' => $salesReturn->id ?? null,
+                ]);
+            }
 
             if ($request->wantsJson() || $request->expectsJson()) {
                 return response()->json([
