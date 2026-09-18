@@ -254,6 +254,7 @@ class PosController extends Controller
                 'customerPhone' => $sale->customerPhone,
                 'totalAmount' => (float) $sale->totalAmount,
                 'paidAmount' => (float) $sale->paidAmount,
+                'outstandingBalance' => (float) app(\App\Services\Accounting\AccountingReportService::class)->calculateInvoiceBalance($sale),
                 'date' => date('d M Y, h:i A', strtotime($sale->createdAt)),
                 'deliveryStatus' => $sale->deliveryStatus,
                 'isSupplied' => $isSupplied,
@@ -262,6 +263,55 @@ class PosController extends Controller
             ],
             'matches' => $matchesSummary,
         ]);
+    }
+
+    /**
+     * Real-time duplicate check for physical receipt slip references.
+     * Prevents cashiers or users from reusing an already recorded slip number.
+     */
+    public function checkReceiptRef(Request $request)
+    {
+        $rawRef = trim($request->get('ref', $request->get('receipt_ref', '')));
+        if (empty($rawRef)) {
+            return response()->json(['exists' => false]);
+        }
+
+        $user = Auth::user();
+        $warehouseId = $user && $user->isBranchScoped() ? $user->warehouse_id : ($request->warehouse_id ?: session('active_warehouse_id'));
+
+        $cleanRef = ltrim($rawRef, '#');
+        $query = Sale::query();
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+
+        $existing = $query->whereNotIn('status', ['CANCELLED', 'VOIDED'])
+            ->where(function ($q) use ($cleanRef, $rawRef) {
+                $q->where('receipt_ref', $cleanRef)
+                  ->orWhere('receipt_ref', $rawRef)
+                  ->orWhere('note', 'like', "%[RECEIPT REF: #{$cleanRef}]%")
+                  ->orWhere('note', 'like', "%[RECEIPT REF: {$cleanRef}]%")
+                  ->orWhere('note', 'like', "%[RECEIPT REF: #{$rawRef}]%");
+            })
+            ->first();
+
+        if ($existing) {
+            $cashier = $existing->userName ?: 'Cashier';
+            $dateStr = date('d M Y, h:i A', strtotime($existing->createdAt));
+            $saleRef = substr($existing->id, 0, 8);
+            return response()->json([
+                'exists' => true,
+                'saleId' => $saleRef,
+                'fullSaleId' => $existing->id,
+                'cashier' => $cashier,
+                'date' => $dateStr,
+                'customer' => $existing->customerName ?: 'Walk-in Customer',
+                'amount' => (float) $existing->totalAmount,
+                'message' => "Receipt slip #{$rawRef} has already been issued on Sale #{$saleRef} by {$cashier} on {$dateStr} at this branch. Users cannot enter an already existing receipt number again."
+            ]);
+        }
+
+        return response()->json(['exists' => false]);
     }
 
     /**
@@ -406,9 +456,36 @@ class PosController extends Controller
             $isNotSupplied = !$isSuppliedNow;
 
             $customerId = $request->customerId ? (int) $request->customerId : null;
-            $receiptRef = trim($request->receipt_ref ?? $request->receiptRef ?? '');
+            $rawReceiptRef = trim($request->receipt_ref ?? $request->receiptRef ?? '');
+            $receiptRef = $rawReceiptRef;
             if (empty($receiptRef) && !empty($exchangeRefList)) {
                 $receiptRef = implode(', ', $exchangeRefList);
+            }
+
+            // 🔒 Strict Uniqueness: Physical receipt slip numbers cannot be duplicated across active sales at this branch
+            if (!empty($rawReceiptRef)) {
+                $cleanRef = ltrim($rawReceiptRef, '#');
+                $existingSaleWithRef = Sale::where('warehouse_id', $warehouseId)
+                    ->whereNotIn('status', ['CANCELLED', 'VOIDED'])
+                    ->where(function ($q) use ($cleanRef, $rawReceiptRef) {
+                        $q->where('receipt_ref', $cleanRef)
+                          ->orWhere('receipt_ref', $rawReceiptRef)
+                          ->orWhere('note', 'like', "%[RECEIPT REF: #{$cleanRef}]%")
+                          ->orWhere('note', 'like', "%[RECEIPT REF: {$cleanRef}]%")
+                          ->orWhere('note', 'like', "%[RECEIPT REF: #{$rawReceiptRef}]%");
+                    })
+                    ->first();
+
+                if ($existingSaleWithRef) {
+                    $cName = $existingSaleWithRef->userName ?: 'Cashier';
+                    $sDate = date('d M Y, h:i A', strtotime($existingSaleWithRef->createdAt));
+                    $sRef = substr($existingSaleWithRef->id, 0, 8);
+                    $errorMsg = "⚠️ Duplicate Receipt Number: Receipt slip #{$rawReceiptRef} was already used on Sale #{$sRef} by {$cName} on {$sDate} at this branch. Users cannot enter an already existing receipt number again. Please verify the physical booklet slip.";
+                    if ($request->wantsJson() || $request->ajax()) {
+                        return response()->json(['success' => false, 'error' => $errorMsg], 422);
+                    }
+                    return back()->withErrors(['error' => $errorMsg])->withInput();
+                }
             }
 
             $customerPhone = preg_replace('/[\s\-\(\)\+]/', '', trim($request->customerPhone ?? ''));
@@ -490,7 +567,7 @@ class PosController extends Controller
                 (string) $tenantId,
                 (string) $userId,
                 $idempotencyPayload,
-                function () use ($customerId, $customerPhone, $customerName, $grossTotal, $paidAmount, $calc, $request, $warehouseId, $isSuppliedNow, $userId, $userName, $validatedExchangeReturns, $totalExchangeCredit, $receiptRef, $cashAmount, $posAmount) {
+                function () use ($customerId, $customerPhone, $customerName, $grossTotal, $paidAmount, $calc, $request, $warehouseId, $isSuppliedNow, $userId, $userName, $validatedExchangeReturns, $totalExchangeCredit, $receiptRef, $rawReceiptRef, $cashAmount, $posAmount) {
                     // Resolve or create customer record strictly INSIDE transactional idempotency boundary
                     $resolvedCustomerId = $customerId;
                     $resolvedCustomerName = $customerName;
@@ -546,6 +623,7 @@ class PosController extends Controller
                         'customerPhone' => $resolvedCustomerPhone ?: null,
                         'customerId' => $resolvedCustomerId,
                         'sale_type' => 'RETAIL', // Strictly forced: Client cannot select privileged wholesale mode at retail checkout
+                        'receipt_ref' => !empty($rawReceiptRef) ? ltrim($rawReceiptRef, '#') : null,
                         'note' => $finalNote,
                         'exchange_returns' => $validatedExchangeReturns,
                         'exchange_credit' => $totalExchangeCredit,
@@ -620,7 +698,7 @@ class PosController extends Controller
             }
 
             return redirect()->route('pos.receipt', $sale->id)->with('success', 'Sale recorded successfully!');
-        } catch (\InvalidArgumentException $e) {
+        } catch (\App\Exceptions\InsufficientStockException | \InvalidArgumentException $e) {
             if ($request->wantsJson()) {
                 return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
             }
@@ -740,8 +818,8 @@ class PosController extends Controller
             'sale_id' => 'required',
             'warehouse_id' => 'required',
             'items' => 'required|array|min:1',
-            'refund_method' => 'required|string|in:CASH_REFUND,POS_TRANSFER_REFUND,DEBT_REDUCTION,STORE_CREDIT',
-            'reason' => 'required|string',
+            'refund_method' => 'required|string|in:REFUND,CASH_REFUND,POS_TRANSFER_REFUND,DEBT_REDUCTION,STORE_CREDIT',
+            'reason' => 'required|string|min:3|max:255',
         ]);
 
         $userId = Auth::id() ?? 'USER-1';

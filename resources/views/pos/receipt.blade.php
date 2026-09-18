@@ -274,6 +274,13 @@
             <span>₦{{ number_format($netTopUpTender, 0) }} ({{ $paymentStatus }})</span>
         </div>
 
+        @if(($sale->cashAmount > 0 && $sale->posAmount > 0))
+        <div class="receipt-row" style="font-size: 0.8rem; color: #475569; padding-left: 0.35rem;">
+            <span>• Channels:</span>
+            <span>💵 Cash: ₦{{ number_format($sale->cashAmount, 0) }} + 💳 POS: ₦{{ number_format($sale->posAmount, 0) }}</span>
+        </div>
+        @endif
+
         @if($sale->changeAmount > 0)
         <div class="receipt-row" style="color: #2563eb; font-weight: 800;">
             <span>Change Returned:</span>

@@ -191,18 +191,32 @@ class DashboardController extends Controller
         $debtRecoveryCount = (clone $debtPaymentQuery)->count();
 
         $totalOutstandingDebt = $periodSummary['currentOutstanding'];
+        $relevantSalesQuery = Sale::whereNotNull('customerId')
+            ->whereNotIn('status', ['CANCELLED', 'RETURNED']);
         if ($warehouseId) {
-            $activeDebtorsCount = Sale::where('warehouse_id', $warehouseId)
-                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->whereNotNull('customerId')
-                ->get()
-                ->filter(fn($s) => $accountingService->calculateInvoiceBalance($s) > 0.01)
-                ->pluck('customerId')
-                ->unique()
-                ->count();
-        } else {
-            $activeDebtorsCount = Customer::where('total_debt', '>', 0)->count();
+            $relevantSalesQuery->where('warehouse_id', $warehouseId);
         }
+        $openSales = $relevantSalesQuery->get(['id', 'customerId', 'totalAmount', 'deliveryStatus', 'warehouse_id']);
+        $openBalances = $accountingService->calculateInvoiceBalancesForSales($openSales);
+        $totalDeliveredDebt = 0.0;
+        $totalInstallmentDebt = 0.0;
+        $activeDebtorIds = [];
+
+        foreach ($openSales as $os) {
+            $b = $openBalances[$os->id] ?? 0.0;
+            if ($b > 0.01) {
+                $activeDebtorIds[] = $os->customerId;
+                $isUnsup = in_array(strtoupper($os->deliveryStatus ?? ''), ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING', 'PENDING_PICKUP']);
+                if ($isUnsup) {
+                    $totalInstallmentDebt += $b;
+                } else {
+                    $totalDeliveredDebt += $b;
+                }
+            }
+        }
+        $totalDeliveredDebt = round($totalDeliveredDebt, 2);
+        $totalInstallmentDebt = round($totalInstallmentDebt, 2);
+        $activeDebtorsCount = $warehouseId ? count(array_unique($activeDebtorIds)) : Customer::where('total_debt', '>', 0)->count();
 
         // 5. Fulfillment & Unsupplied Backlog
         $unsuppliedCount = $pendingOrders['total_orders'];
@@ -287,6 +301,8 @@ class DashboardController extends Controller
             'debtRecoveredInPeriod',
             'debtRecoveryCount',
             'totalOutstandingDebt',
+            'totalDeliveredDebt',
+            'totalInstallmentDebt',
             'activeDebtorsCount',
             'unsuppliedCount',
             'unsuppliedValue',

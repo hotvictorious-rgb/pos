@@ -234,4 +234,32 @@ class SplitPaymentTenderTest extends TestCase
         // Invoice balance must show ₦50,000
         $this->assertEquals(50000.00, $sale->invoice_balance);
     }
+
+    /**
+     * Test 4: Under-tender Mismatch Rejected.
+     * Declared paidAmount is ₦100,000, but tender sum is only ₦20,000 => must error out.
+     */
+    public function test_underpaid_tender_mismatch_rejected()
+    {
+        $response = $this->actingAs($this->cashier)
+            ->withSession(['tenant_id' => $this->tenant->id, 'active_warehouse_id' => $this->warehouse->id])
+            ->post(route('pos.checkout'), [
+                'warehouse_id' => $this->warehouse->id,
+                'items' => [
+                    [
+                        'productId' => $this->product->id,
+                        'quantity' => 1,
+                        'unitPrice' => 100000.00,
+                    ]
+                ],
+                'cashAmount' => 10000.00,
+                'posAmount' => 10000.00,
+                'paidAmount' => 100000.00,
+                'totalAmount' => 100000.00,
+                'is_supplied' => 'yes',
+                'customerName' => 'Walk-in Customer',
+            ]);
+
+        $response->assertSessionHasErrors(['error']);
+    }
 }

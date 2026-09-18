@@ -275,13 +275,22 @@
             <span class="badge-pill" id="badge-refunds">{{ number_format($refundsCount) }}</span>
         </button>
 
-        <!-- 8. Debts -->
+        <!-- 8. Debts & Installments -->
         <button type="button" 
            onclick="switchLedgerTab('debts')" 
            id="tab-btn-debts"
            class="tab-btn {{ $activeTab === 'debts' ? 'active' : '' }}">
-            <span>💳 Debts Ledger</span>
+            <span>💳 Debts & Installments</span>
             <span class="badge-pill" id="badge-debts">{{ number_format($debtsEntryCount) }}</span>
+        </button>
+
+        <!-- 9. Customer Exchanges -->
+        <button type="button" 
+           onclick="switchLedgerTab('exchanges')" 
+           id="tab-btn-exchanges"
+           class="tab-btn {{ $activeTab === 'exchanges' ? 'active' : '' }}">
+            <span>🔄 Customer Exchanges</span>
+            <span class="badge-pill" id="badge-exchanges" style="background: rgba(147, 51, 234, 0.4); color: #d8b4fe;">{{ number_format($exchangesCount) }}</span>
         </button>
     </div>
 
@@ -343,6 +352,14 @@
                             <option value="">-- All Handover States --</option>
                             <option value="SUPPLIED" {{ in_array(request('delivery_status'), ['SUPPLIED', 'DELIVERED']) ? 'selected' : '' }}>🟢 Supplied & Handed Over</option>
                             <option value="UNSUPPLIED" {{ request('delivery_status') === 'UNSUPPLIED' ? 'selected' : '' }}>⏳ Not Supplied (Awaiting Pickup)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.75rem;">Status Filter</label>
+                        <select name="include_voided" onchange="this.form.submit()">
+                            <option value="0" {{ !request('include_voided') ? 'selected' : '' }}>✅ Active Sales Only (Clean)</option>
+                            <option value="1" {{ request('include_voided') == '1' ? 'selected' : '' }}>🛡️ Include Voided / Cancelled (Audit)</option>
                         </select>
                     </div>
                 </div>
@@ -496,14 +513,23 @@
                     </div>
                 </div>
 
-                <!-- TAB 8: DEBTS FILTERS -->
+                <!-- TAB 8: DEBTS & INSTALLMENTS FILTERS -->
                 <div id="tab-filters-debts" class="tab-filter-section" style="{{ $activeTab === 'debts' ? 'display: contents;' : 'display: none;' }}">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.75rem;">Type / Agreement</label>
+                        <select name="goods_status" onchange="this.form.submit()">
+                            <option value="">-- All Debts & Installments --</option>
+                            <option value="GOODS_CARRIED" {{ request('goods_status') === 'GOODS_CARRIED' ? 'selected' : '' }}>🚨 Customer Debts (Goods Supplied)</option>
+                            <option value="PAY_SMALL_SMALL" {{ request('goods_status') === 'PAY_SMALL_SMALL' ? 'selected' : '' }}>📦 Installments (Goods in Shop)</option>
+                        </select>
+                    </div>
+
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Ledger Entry Type</label>
                         <select name="ledger_type">
                             <option value="">-- All Entry Types --</option>
-                            <option value="PAYMENT" {{ request('ledger_type') === 'PAYMENT' ? 'selected' : '' }}>💵 Part Payment Received</option>
-                            <option value="INVOICE" {{ request('ledger_type') === 'INVOICE' ? 'selected' : '' }}>💳 Debt Incurred</option>
+                            <option value="PAYMENT" {{ request('ledger_type') === 'PAYMENT' ? 'selected' : '' }}>💵 Payment Received</option>
+                            <option value="INVOICE" {{ request('ledger_type') === 'INVOICE' ? 'selected' : '' }}>💳 Balance Incurred</option>
                             <option value="RETURN_CREDIT" {{ request('ledger_type') === 'RETURN_CREDIT' ? 'selected' : '' }}>🔄 Return Credit Offset</option>
                         </select>
                     </div>
@@ -516,6 +542,10 @@
                             <option value="POS" {{ request('payment_method') === 'POS' ? 'selected' : '' }}>POS Terminal</option>
                         </select>
                     </div>
+                </div>
+
+                <!-- Tab 9: Customer Exchanges Filter (Inherits search, dates, branch, cashier) -->
+                <div id="tab-filters-exchanges" class="tab-filter-section" style="{{ $activeTab === 'exchanges' ? 'display: contents;' : 'display: none;' }}">
                 </div>
             </div>
 
@@ -583,6 +613,18 @@
                     <span style="color: var(--text-muted);">Delivery Status:</span>
                     <strong id="dtlDelivery"></strong>
                 </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-top: 0.35rem;">
+                    <span style="color: var(--text-muted);">Agreement Type:</span>
+                    <strong id="dtlAgreementType"></strong>
+                </div>
+            </div>
+
+            <!-- Traded-in Exchange Items (Dynamic if this is an exchange sale) -->
+            <div id="dtlExchangeContainer" style="display: none; background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                <label style="font-size: 0.75rem; font-weight: 800; color: #c084fc; text-transform: uppercase; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.35rem;">
+                    <span>🔁 Traded-In Product(s) Brought Back:</span>
+                </label>
+                <div id="dtlExchangeProductText" style="font-size: 0.85rem; color: #f3e8ff; font-weight: 600; line-height: 1.4;"></div>
             </div>
 
             <!-- Items Table -->
@@ -975,7 +1017,30 @@ function viewSaleDetails(sale) {
     document.getElementById('dtlCashier').textContent = sale.userName || 'Cashier';
     const isSupplied = (sale.deliveryStatus === 'DELIVERED' || sale.deliveryStatus === 'SUPPLIED');
     document.getElementById('dtlDelivery').textContent = isSupplied ? '🟢 Supplied & Collected' : '⏳ Goods in Shop (Awaiting Pickup)';
+    const agreementEl = document.getElementById('dtlAgreementType');
+    if (agreementEl) {
+        if (!isSupplied) {
+            agreementEl.innerHTML = '<span style="color: #c084fc; font-weight: 800;">📦 Installment (Goods in Shop)</span>';
+        } else if (parseFloat(sale.paidAmount) < parseFloat(sale.totalAmount)) {
+            agreementEl.innerHTML = '<span style="color: #f87171; font-weight: 800;">🚨 Customer Debt (Goods Supplied)</span>';
+        } else {
+            agreementEl.innerHTML = '<span style="color: #4ade80; font-weight: 800;">✅ Fully Settled Direct Sale</span>';
+        }
+    }
     document.getElementById('dtlReceiptBtn').href = '/pos/receipt/' + sale.id;
+
+    // Check if this sale is an exchange (contains [EXCHANGE RETURN: ...])
+    const exMatch = (sale.note || '').match(/\[EXCHANGE RETURN:\s*(.*?)(?:\s*\|\s*Total Credit:.*?)?\]/i);
+    const exBox = document.getElementById('dtlExchangeContainer');
+    const exText = document.getElementById('dtlExchangeProductText');
+    if (exBox && exText) {
+        if (exMatch && exMatch[1]) {
+            exText.textContent = exMatch[1].trim();
+            exBox.style.display = 'block';
+        } else {
+            exBox.style.display = 'none';
+        }
+    }
 
     let itemsHtml = '';
     (sale.items || []).forEach(item => {

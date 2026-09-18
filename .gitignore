@@ -41,3 +41,4 @@ composer.phar
 /storage/app/private/*
 /storage/installed
 *.zip
+scratch/

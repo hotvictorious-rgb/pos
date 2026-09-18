@@ -905,7 +905,13 @@
                         <span class="panel-item-icon">👥</span>
                         <div>
                             <div class="panel-item-name">Total Debt Portfolio</div>
-                            <div class="panel-item-sub">{{ $activeDebtorsCount }} customer debtor{{ $activeDebtorsCount == 1 ? '' : 's' }}</div>
+                            <div class="panel-item-sub">
+                                {{ $activeDebtorsCount }} customer debtor{{ $activeDebtorsCount == 1 ? '' : 's' }}
+                                @if(!empty($totalDeliveredDebt) || !empty($totalInstallmentDebt))
+                                    · <span style="color: #fb923c;">₦{{ number_format($totalDeliveredDebt ?? 0, 0) }} Carried</span>
+                                    · <span style="color: #38bdf8;">₦{{ number_format($totalInstallmentDebt ?? 0, 0) }} In-Shop</span>
+                                @endif
+                            </div>
                         </div>
                     </div>
                     <div class="panel-item-val" style="color: #c084fc;">

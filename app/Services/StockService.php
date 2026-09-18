@@ -365,6 +365,34 @@ class StockService
                 $salePayload['customerPhone'] = $saleData['customerPhone'];
             }
 
+            if (!empty($saleData['receipt_ref'])) {
+                $rawRef = trim($saleData['receipt_ref']);
+                $cleanRef = ltrim($rawRef, '#');
+                $dupQuery = Sale::where('warehouse_id', $warehouseId)
+                    ->whereNotIn('status', ['CANCELLED', 'VOIDED'])
+                    ->where(function ($q) use ($cleanRef, $rawRef) {
+                        $q->where('receipt_ref', $cleanRef)
+                          ->orWhere('receipt_ref', $rawRef)
+                          ->orWhere('note', 'like', "%[RECEIPT REF: #{$cleanRef}]%")
+                          ->orWhere('note', 'like', "%[RECEIPT REF: {$cleanRef}]%")
+                          ->orWhere('note', 'like', "%[RECEIPT REF: #{$rawRef}]%");
+                    });
+                if (isset($saleData['id'])) {
+                    $dupQuery->where('id', '!=', $saleData['id']);
+                }
+                $existingDup = $dupQuery->first();
+                if ($existingDup) {
+                    $cashier = $existingDup->userName ?: 'Cashier';
+                    $dateStr = date('d M Y, h:i A', strtotime($existingDup->createdAt));
+                    $saleShort = substr($existingDup->id, 0, 8);
+                    throw new \InvalidArgumentException("⚠️ Duplicate Receipt Number: Receipt slip '#{$rawRef}' was already used on Sale #{$saleShort} by {$cashier} on {$dateStr} at this branch. Users cannot enter an already existing receipt number again.");
+                }
+
+                if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'receipt_ref')) {
+                    $salePayload['receipt_ref'] = $cleanRef;
+                }
+            }
+
             $sale = Sale::create($salePayload);
 
             // Sort line items deterministically by product ID to guarantee monotonic lock acquisition and eliminate database deadlocks
@@ -1549,8 +1577,8 @@ class StockService
         $this->assertUserCapability('returns.process', $userId);
         $this->assertUserWarehouseAuthority($warehouseId);
 
-        if (!in_array($refundMethod, ['CASH_REFUND', 'POS_TRANSFER_REFUND', 'DEBT_REDUCTION', 'STORE_CREDIT'], true)) {
-            throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: CASH_REFUND, POS_TRANSFER_REFUND, DEBT_REDUCTION, STORE_CREDIT.");
+        if (!in_array($refundMethod, ['REFUND', 'CASH_REFUND', 'POS_TRANSFER_REFUND', 'DEBT_REDUCTION', 'STORE_CREDIT'], true)) {
+            throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: REFUND, CASH_REFUND, POS_TRANSFER_REFUND, DEBT_REDUCTION, STORE_CREDIT.");
         }
 
         return DB::transaction(function () use ($saleId, $returnItems, $warehouseId, $refundMethod, $reason, $userId, $userName) {
@@ -1559,9 +1587,9 @@ class StockService
             }
 
             // Canonical Lock Hierarchy Enforcement (Level 2: Customer):
-            // If debt reduction is requested, lock Customer *before* Sale (Level 3) to prevent AB-BA deadlock with recordCustomerPayment
+            // If refund or debt reduction is requested, lock Customer *before* Sale (Level 3) to prevent AB-BA deadlock with recordCustomerPayment
             $customer = null;
-            if ($refundMethod === 'DEBT_REDUCTION') {
+            if (in_array($refundMethod, ['REFUND', 'DEBT_REDUCTION', 'STORE_CREDIT'], true)) {
                 $saleMeta = Sale::select('id', 'customerId', 'customerName')->where('id', $saleId)->first();
                 if ($saleMeta) {
                     $cId = $saleMeta->customerId;
@@ -1806,6 +1834,96 @@ class StockService
             }
 
             $wasDelivered = ($sale->deliveryStatus === 'DELIVERED');
+
+            // Intelligent Unified Restitution: 'REFUND'
+            // Invariant: Exact item price math. No store credit. No bank account prompt.
+            // Part-payment rule: min(Return Value, Debt) cancels debt, excess is refunded as real money.
+            // Cash drawer protection: Payment is recorded with method 'REFUND' (100% isolating cashier daily cash drawer).
+            if ($refundMethod === 'REFUND') {
+                $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+                $invoiceOutstanding = $accountingService->calculateInvoiceBalance($sale);
+
+                // Compute split: Cancel debt first, refund remaining cash to customer
+                $debtReduction = min($totalRefundAmount, $invoiceOutstanding);
+                $actualMoneyRefund = max(0.0, round($totalRefundAmount - $debtReduction, 2));
+
+                // Guard: Actual money refunded cannot exceed actual money paid across this sale
+                $totalActualPaid = (float) Payment::where('saleId', $saleId)->where('amount', '>', 0)->sum('amount');
+                if ($totalActualPaid <= 0) {
+                    $totalActualPaid = (float) ($sale->paidAmount ?? 0);
+                }
+                $priorRefunds = abs((float) Payment::where('saleId', $saleId)
+                    ->whereIn('method', ['REFUND_CASH', 'REFUND', 'REFUND_POS', 'REFUND_TRANSFER'])
+                    ->sum('amount'));
+                $maxRefundableMoney = max(0.0, round($totalActualPaid - $priorRefunds, 2));
+
+                if ($actualMoneyRefund > $maxRefundableMoney) {
+                    $actualMoneyRefund = $maxRefundableMoney;
+                }
+
+                // 1. Debt Cancellation (Customer Ledger)
+                if ($debtReduction > 0) {
+                    if (!$customer) {
+                        $cId = $sale->customerId ?? $sale->customer_id ?? null;
+                        $customer = $cId ? Customer::find($cId) : null;
+                        if (!$customer && $sale->customerName && $sale->customerName !== 'Walk-in Customer') {
+                            $customer = Customer::where('name', $sale->customerName)->first();
+                        }
+                    }
+
+                    if ($customer) {
+                        $currentDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                        $reductionKobo = \App\Services\Accounting\AccountingReportService::toKobo($debtReduction);
+                        $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira(max(0, $currentDebtKobo - $reductionKobo));
+                        $customer->save();
+
+                        CustomerLedger::create([
+                            'tenant_id' => $sale->tenant_id,
+                            'customer_id' => $customer->id,
+                            'sale_id' => $saleId,
+                            'warehouse_id' => $sale->warehouse_id,
+                            'type' => 'RETURN_CREDIT',
+                            'amount' => $debtReduction,
+                            'balance_after' => $customer->total_debt,
+                            'payment_method' => 'RETURN_CREDIT',
+                            'reference_no' => 'RET-' . strtoupper(Str::random(6)),
+                            'recorded_by' => $userName,
+                            'notes' => "Debt reduced by ₦" . number_format($debtReduction, 2) . " due to Sales Return on Sale #{$saleId}",
+                        ]);
+                    }
+                }
+
+                // 2. Real Money Refund (Negative Payment with method 'REFUND' to isolate cashier drawer)
+                if ($actualMoneyRefund > 0) {
+                    $sale->paidAmount = max(0, (float) $sale->paidAmount - $actualMoneyRefund);
+                    $sale->save();
+
+                    Payment::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
+                        'saleId' => $saleId,
+                        'amount' => -$actualMoneyRefund,
+                        'method' => 'REFUND',
+                        'timestamp' => now()->toIso8601String(),
+                        'recordedBy' => $userName,
+                        'createdAt' => now()->toIso8601String(),
+                    ]);
+                }
+
+                // Update Sale Status
+                $balanceAfterReturn = max(0.0, round($invoiceOutstanding - $debtReduction, 2));
+                $allOriginalQty = (int) $sale->items->sum('quantity');
+                $allReturnedQty = (int) \App\Models\SalesReturn::where('saleId', $saleId)->sum('quantity') + (int) array_sum(array_column($returnItems, 'quantity'));
+
+                if ($allReturnedQty >= $allOriginalQty) {
+                    $sale->status = 'RETURNED';
+                } elseif ($balanceAfterReturn <= 0.01 && $sale->paidAmount > 0) {
+                    $sale->status = 'COMPLETED';
+                } else {
+                    $sale->status = ($sale->paidAmount <= 0) ? 'RETURNED' : 'PARTIAL';
+                }
+                $sale->save();
+            }
 
             // Financial integrity: Cash or Electronic (POS/Transfer) Refund
             if ($refundMethod === 'CASH_REFUND' || $refundMethod === 'POS_TRANSFER_REFUND') {

@@ -300,27 +300,33 @@
                 <!-- Live Refund Calculation Summary -->
                 <div id="returnRefundPreviewBox" style="display: none; background: rgba(15, 23, 42, 0.9); border: 1px solid #10b981; border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-                        <span style="font-size: 0.85rem; color: #94a3b8;">Total Restitution / Refund Due:</span>
+                        <span style="font-size: 0.85rem; color: #94a3b8;">Total Value of Returned Items:</span>
+                        <strong style="font-size: 1.15rem; color: #f8fafc;" id="returnTotalValuePreview">₦0</strong>
+                    </div>
+                    <div id="returnDebtSplitRow" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 0.35rem;">
+                        <span style="font-size: 0.82rem; color: #f59e0b;">📉 Debt to Cancel:</span>
+                        <strong style="font-size: 0.95rem; color: #fbbf24;" id="returnDebtReductionPreview">-₦0</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                        <span style="font-size: 0.85rem; color: #86efac; font-weight: 700;">💵 Actual Cash/Money to Refund:</span>
                         <strong style="font-size: 1.25rem; color: #4ade80;" id="returnTotalRefundPreview">₦0</strong>
                     </div>
-                    <div id="returnInventoryImpactNote" style="font-size: 0.8rem; color: #cbd5e1;"></div>
+                    <div id="returnInventoryImpactNote" style="font-size: 0.8rem; color: #cbd5e1; margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgba(255,255,255,0.08);"></div>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Refund Action / Restitution Method</label>
-                    <select name="refund_method" id="returnRefundMethod" required style="width: 100%; padding: 0.6rem; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
-                        <option value="CASH_REFUND">💵 Cash Refund (Disbursed from Cash Drawer)</option>
-                        <option value="POS_TRANSFER_REFUND">💳 POS / Bank Transfer Reversal (Electronic Refund)</option>
-                        <option value="DEBT_REDUCTION">📉 Reduce Customer Debt / Invoice Balance</option>
-                        <option value="STORE_CREDIT">🪙 Customer Store Credit / Exchange Balance</option>
+                    <label style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Restitution Action</label>
+                    <select name="refund_method" id="returnRefundMethod" required onchange="recalculateReturnRefundTotals()" style="width: 100%; padding: 0.6rem; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
+                        <option value="REFUND" selected>🔄 Process Return & Refund</option>
+                        <option value="DEBT_REDUCTION">📉 Reduce Customer Debt Only</option>
                     </select>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1.25rem;">
-                    <label style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Audit Reason for Return</label>
+                    <label style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Mandatory Audit Reason for Return</label>
                     <select name="reason" id="returnReason" required style="width: 100%; padding: 0.6rem; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
                         <option value="Customer cancelled unsupplied order (Buffer refund)">Customer cancelled unsupplied order (Buffer refund)</option>
-                        <option value="Defective or Damaged packaging">Defective or Damaged packaging</option>
+                        <option value="Defective or Damaged product packaging">Defective or Damaged product packaging</option>
                         <option value="Wrong product delivered">Wrong product delivered</option>
                         <option value="Customer changed mind / Exchange">Customer changed mind / Exchange</option>
                         <option value="Expired date discovered">Expired date discovered</option>
@@ -438,7 +444,18 @@ function populateReturnSale(sale) {
     document.getElementById('cardSaleRef').textContent = `Sale ${sale.ref}`;
     document.getElementById('cardSaleCustomer').textContent = `Customer: ${sale.customerName || 'Walk-in Customer'} ${sale.customerPhone ? '· ' + sale.customerPhone : ''}`;
     document.getElementById('cardSaleDate').textContent = `Date: ${sale.date}`;
-    document.getElementById('cardSaleTotal').textContent = `Total Bill: ₦${Math.round(sale.totalAmount).toLocaleString()}`;
+
+    // Total Bill & Outstanding Info
+    const totalBill = Math.round(sale.totalAmount || 0).toLocaleString();
+    const paidBill = Math.round(sale.paidAmount || 0).toLocaleString();
+    const debt = Math.round(sale.outstandingBalance || 0);
+    let cardTotalHtml = `<div>Total Bill: ₦${totalBill}</div>`;
+    cardTotalHtml += `<div style="font-size:0.75rem; color:#94a3b8;">Paid: ₦${paidBill}`;
+    if (debt > 0) {
+        cardTotalHtml += ` · <span style="color:#f87171; font-weight:700;">Debt: ₦${debt.toLocaleString()}</span>`;
+    }
+    cardTotalHtml += `</div>`;
+    document.getElementById('cardSaleTotal').innerHTML = cardTotalHtml;
 
     // Delivery Status Badge
     const badgeEl = document.getElementById('cardDeliveryStatusBadge');
@@ -496,7 +513,7 @@ function populateReturnSale(sale) {
 function recalculateReturnRefundTotals() {
     if (!currentLoadedSale || !currentLoadedSale.items) return;
 
-    let totalRefund = 0;
+    let totalReturnValue = 0;
     let totalPhysicalRestock = 0;
     let totalBufferReleased = 0;
 
@@ -509,7 +526,7 @@ function recalculateReturnRefundTotals() {
             if (q > item.eligibleQty) q = item.eligibleQty;
             qtyInp.value = q;
 
-            totalRefund += (q * item.unitPrice);
+            totalReturnValue += (q * item.unitPrice);
             if (currentLoadedSale.isSupplied) {
                 totalPhysicalRestock += q;
             } else {
@@ -518,7 +535,35 @@ function recalculateReturnRefundTotals() {
         }
     });
 
-    document.getElementById('returnTotalRefundPreview').textContent = '₦' + Math.round(totalRefund).toLocaleString();
+    const outstandingDebt = parseFloat(currentLoadedSale.outstandingBalance || 0);
+    const refundMethodSelect = document.getElementById('returnRefundMethod');
+    const refundMethod = refundMethodSelect ? refundMethodSelect.value : 'REFUND';
+    
+    let debtReduction = 0;
+    let actualMoneyRefund = 0;
+
+    if (refundMethod === 'DEBT_REDUCTION') {
+        debtReduction = Math.min(totalReturnValue, outstandingDebt);
+        actualMoneyRefund = 0;
+    } else { // 'REFUND'
+        debtReduction = Math.min(totalReturnValue, outstandingDebt);
+        actualMoneyRefund = Math.max(0, totalReturnValue - debtReduction);
+        const maxPaidMoney = parseFloat(currentLoadedSale.paidAmount || 0);
+        if (actualMoneyRefund > maxPaidMoney) {
+            actualMoneyRefund = maxPaidMoney;
+        }
+    }
+
+    document.getElementById('returnTotalValuePreview').textContent = '₦' + Math.round(totalReturnValue).toLocaleString();
+    document.getElementById('returnTotalRefundPreview').textContent = '₦' + Math.round(actualMoneyRefund).toLocaleString();
+
+    const debtSplitRow = document.getElementById('returnDebtSplitRow');
+    if (debtReduction > 0) {
+        debtSplitRow.style.display = 'flex';
+        document.getElementById('returnDebtReductionPreview').textContent = '-₦' + Math.round(debtReduction).toLocaleString();
+    } else {
+        debtSplitRow.style.display = 'none';
+    }
 
     const noteEl = document.getElementById('returnInventoryImpactNote');
     if (currentLoadedSale.isSupplied) {
@@ -575,22 +620,32 @@ function confirmProcessReturn() {
     const reasonSelect = document.getElementById('returnReason');
     const reasonText = reasonSelect.value;
     const refundTotal = document.getElementById('returnTotalRefundPreview').textContent;
+    const totalReturnValue = document.getElementById('returnTotalValuePreview').textContent;
 
     closeModal('modalProcessReturn');
+
+    const popupItems = [
+        { label: 'Customer', value: currentLoadedSale.customerName || 'Walk-in Customer', color: '#f8fafc' },
+        { label: 'Original Invoice', value: currentLoadedSale.ref, color: '#93c5fd' },
+        { label: 'Delivery Status', value: currentLoadedSale.isSupplied ? '✓ Delivered / Supplied' : '⏳ Unsupplied (Pickup Pending)', color: currentLoadedSale.isSupplied ? '#86efac' : '#fde047' },
+        { label: 'Total Value of Items', value: totalReturnValue, color: '#cbd5e1' }
+    ];
+
+    const debtSplitRow = document.getElementById('returnDebtSplitRow');
+    if (debtSplitRow && debtSplitRow.style.display !== 'none') {
+        const debtReductionVal = document.getElementById('returnDebtReductionPreview').textContent;
+        popupItems.push({ label: 'Debt to Cancel', value: debtReductionVal, color: '#fbbf24' });
+    }
+
+    popupItems.push({ label: 'Actual Cash Refund Due', value: refundTotal, color: '#4ade80' });
+    popupItems.push({ label: 'Mandatory Reason', value: reasonText, color: '#93c5fd' });
 
     showConfirmPopup({
         icon: '🔄',
         title: 'Confirm Sales Return & Restitution',
         subtitle: 'Please verify the refund restitution and inventory effect:',
         borderColor: '#f59e0b',
-        items: [
-            { label: 'Customer', value: currentLoadedSale.customerName || 'Walk-in Customer', color: '#f8fafc' },
-            { label: 'Original Invoice', value: currentLoadedSale.ref, color: '#93c5fd' },
-            { label: 'Delivery Status', value: currentLoadedSale.isSupplied ? '✓ Delivered / Supplied' : '⏳ Unsupplied (Delayed Pickup)', color: currentLoadedSale.isSupplied ? '#86efac' : '#fde047' },
-            { label: 'Total Refund Due', value: refundTotal, color: '#4ade80' },
-            { label: 'Restitution Action', value: refundName, color: '#fbbf24' },
-            { label: 'Audit Reason', value: reasonText, color: '#cbd5e1' }
-        ],
+        items: popupItems,
         impact: {
             text: currentLoadedSale.isSupplied 
                 ? '📦 RESTOCK EFFECT: Returned physical items will be restored to branch shelf counts.'

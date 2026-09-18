@@ -282,13 +282,13 @@ class AccountingReportService
         $inflowPaymentsKobo = self::toKobo(
             Payment::where('saleId', $sale->id)
                 ->where('amount', '>', 0)
-                ->where('method', '!=', 'REFUND_CASH')
+                ->whereNotIn('method', ['REFUND_CASH', 'REFUND', 'REFUND_POS', 'REFUND_TRANSFER'])
                 ->sum('amount')
         );
 
         $cashRefundsKobo = abs(self::toKobo(
             Payment::where('saleId', $sale->id)
-                ->where('method', 'REFUND_CASH')
+                ->whereIn('method', ['REFUND_CASH', 'REFUND', 'REFUND_POS', 'REFUND_TRANSFER'])
                 ->sum('amount')
         ));
 
@@ -303,7 +303,7 @@ class AccountingReportService
      * Executes in exactly 2 aggregate queries and derives all balances in pure integer kobo.
      *
      * @param iterable|\Illuminate\Support\Collection $sales
-     * @return array<string, float> Map of [sale_id => remaining_balance_naira]
+     * @return array [sale_id => float balance]
      */
     public function calculateInvoiceBalancesForSales(iterable $sales): array
     {
@@ -329,8 +329,8 @@ class AccountingReportService
             ->groupBy('saleId')
             ->selectRaw('
                 saleId,
-                SUM(CASE WHEN amount > 0 AND method != "REFUND_CASH" THEN amount ELSE 0 END) as total_inflow,
-                SUM(CASE WHEN method = "REFUND_CASH" THEN amount ELSE 0 END) as total_cash_refund
+                SUM(CASE WHEN amount > 0 AND method NOT IN ("REFUND_CASH", "REFUND", "REFUND_POS", "REFUND_TRANSFER") THEN amount ELSE 0 END) as total_inflow,
+                SUM(CASE WHEN method IN ("REFUND_CASH", "REFUND", "REFUND_POS", "REFUND_TRANSFER") THEN amount ELSE 0 END) as total_cash_refund
             ')
             ->get()
             ->keyBy('saleId');

@@ -15,6 +15,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Rules\PasswordPolicy;
+use Carbon\Carbon;
 
 class SaaSController extends Controller
 {
@@ -161,6 +162,17 @@ class SaaSController extends Controller
                 elseif ($t->plan === 'pro') $mrr += $pricePro;
                 elseif ($t->plan === 'enterprise') $mrr += $priceEnterprise;
             }
+            // Pending manual bank payment verification notices
+            $paymentNotices = \App\Models\Activity::withoutGlobalScopes()
+                ->where('type', 'MANUAL_SUBSCRIPTION_PAYMENT_SUBMITTED')
+                ->orderBy('created_at', 'desc')
+                ->limit(50)
+                ->get();
+
+            $pendingPayments = $paymentNotices->filter(function ($act) {
+                $meta = $act->metadata ?? [];
+                return ($meta['status'] ?? 'pending') === 'pending';
+            });
         } else {
             $tenants = collect();
             $totalTenants = null;
@@ -168,6 +180,8 @@ class SaaSController extends Controller
             $trialTenants = null;
             $suspendedTenants = null;
             $mrr = null;
+            $paymentNotices = collect();
+            $pendingPayments = collect();
         }
 
         // Platform-wide infrastructure count (zero tenant business data)
@@ -218,6 +232,8 @@ class SaaSController extends Controller
             'totalBranchesPlatform',
             'settings',
             'backups',
+            'paymentNotices',
+            'pendingPayments',
             'canTenants',
             'canSettings',
             'canBackup',
@@ -369,25 +385,152 @@ class SaaSController extends Controller
 
         $tenant = Tenant::findOrFail($id);
         
-        if ($request->has('plan')) {
+        if ($request->has('plan') && in_array($request->input('plan'), ['basic', 'pro', 'enterprise'])) {
             $tenant->plan = $request->input('plan');
         }
-        if ($request->has('max_branches')) {
-            $tenant->max_branches = (int) $request->input('max_branches');
+        if ($request->has('max_branches') && $request->filled('max_branches')) {
+            $tenant->max_branches = max(1, (int) $request->input('max_branches'));
         }
-        if ($request->has('max_users')) {
-            $tenant->max_users = (int) $request->input('max_users');
+        if ($request->has('max_users') && $request->filled('max_users')) {
+            $tenant->max_users = max(1, (int) $request->input('max_users'));
         }
-        if ($request->input('extend_trial')) {
-            $days = (int) $request->input('extend_trial');
-            $baseDate = ($tenant->trial_ends_at && $tenant->trial_ends_at->isFuture()) ? $tenant->trial_ends_at : now();
-            $tenant->trial_ends_at = $baseDate->addDays($days);
-            $tenant->status = 'trial';
+        if ($request->has('status') && in_array($request->input('status'), ['active', 'trial', 'suspended'])) {
+            $tenant->status = $request->input('status');
+        }
+        if ($request->filled('expiry_date')) {
+            try {
+                $tenant->trial_ends_at = Carbon::parse($request->input('expiry_date'));
+            } catch (\Exception $e) {
+                // Ignore parsing errors
+            }
+        }
+        if ($request->filled('extend_trial') || $request->filled('extend_days')) {
+            $days = (int) ($request->input('extend_trial') ?: $request->input('extend_days'));
+            if ($days > 0) {
+                $baseDate = ($tenant->trial_ends_at && $tenant->trial_ends_at->isFuture()) ? $tenant->trial_ends_at : now();
+                $tenant->trial_ends_at = $baseDate->copy()->addDays($days);
+                if ($tenant->status !== 'active') {
+                    $tenant->status = 'trial';
+                }
+            }
         }
 
         $tenant->save();
 
         return back()->with('success', "✓ Subscription plan & custom limits updated for '{$tenant->name}'!");
+    }
+
+    /** Approve a Tenant's Manual Bank Transfer Notice */
+    public function approvePaymentNotice(Request $request, $id)
+    {
+        $this->requirePlatformCapability('platform.tenants');
+
+        $activity = \App\Models\Activity::withoutGlobalScopes()->findOrFail($id);
+        $meta = $activity->metadata ?? [];
+        $tenantId = $meta['tenant_id'] ?? $activity->tenant_id;
+
+        $tenant = Tenant::findOrFail($tenantId);
+        $planKey = $meta['plan'] ?? $tenant->plan;
+        $months = (int) ($request->input('months', 1));
+        if ($months < 1) $months = 1;
+
+        $plansConfig = config('saas.plans', []);
+        $targetPlan = $plansConfig[$planKey] ?? null;
+
+        // Base date: if future, add to it; otherwise add to now
+        $baseDate = ($tenant->trial_ends_at && $tenant->trial_ends_at->isFuture()) ? $tenant->trial_ends_at : now();
+        $newExpiry = $baseDate->copy()->addDays($months * 30);
+
+        $tenant->update([
+            'status' => 'active',
+            'plan' => $planKey,
+            'trial_ends_at' => $newExpiry,
+            'max_branches' => $targetPlan['max_branches'] ?? $tenant->max_branches,
+            'max_users' => $targetPlan['max_users'] ?? $tenant->max_users,
+        ]);
+
+        // Update Activity Metadata
+        $meta['status'] = 'approved';
+        $meta['approved_at'] = now()->toIso8601String();
+        $meta['approved_by'] = Auth::user()?->email ?? 'super_admin';
+        $meta['admin_notes'] = $request->input('notes', 'Payment confirmed via corporate bank statement.');
+        $activity->metadata = $meta;
+        $activity->save();
+
+        \App\Models\Activity::recordSecurityEvent(
+            'MANUAL_SUBSCRIPTION_PAYMENT_APPROVED',
+            "Approved bank payment of ₦" . number_format($meta['amount'] ?? 0, 2) . " for {$tenant->name}. Plan: {$planKey}. Expiry: " . $newExpiry->format('M d, Y'),
+            [
+                'payment_activity_id' => $id,
+                'tenant_id' => $tenant->id,
+                'plan' => $planKey,
+                'new_expiry' => $newExpiry->toIso8601String(),
+            ],
+            Auth::user()
+        );
+
+        return back()->with('success', "✅ Payment verified! Tenant '{$tenant->name}' is now ACTIVE on {$planKey} plan until " . $newExpiry->format('M d, Y') . ".");
+    }
+
+    /** Reject a Tenant's Manual Bank Transfer Notice */
+    public function rejectPaymentNotice(Request $request, $id)
+    {
+        $this->requirePlatformCapability('platform.tenants');
+
+        $activity = \App\Models\Activity::withoutGlobalScopes()->findOrFail($id);
+        $meta = $activity->metadata ?? [];
+        $reason = $request->input('reason', 'Payment reference could not be verified on corporate bank statement.');
+
+        $meta['status'] = 'rejected';
+        $meta['rejected_at'] = now()->toIso8601String();
+        $meta['rejected_by'] = Auth::user()?->email ?? 'super_admin';
+        $meta['rejection_reason'] = $reason;
+        $activity->metadata = $meta;
+        $activity->save();
+
+        return back()->with('success', "❌ Payment notice marked as rejected for {$meta['tenant_name']}.");
+    }
+
+    /** Reset the Primary Admin Password for a Business Tenant */
+    public function resetTenantAdminPassword(Request $request, $id)
+    {
+        $this->requirePlatformCapability('platform.tenants');
+
+        $tenant = Tenant::findOrFail($id);
+        
+        // Find primary admin user for this tenant
+        $adminUser = User::withoutGlobalScopes()
+            ->where('tenant_id', $id)
+            ->whereIn('role', ['admin', 'owner', 'store_owner', 'super_admin'])
+            ->first();
+
+        if (!$adminUser) {
+            return back()->with('error', "No administrator user found for tenant '{$tenant->name}'.");
+        }
+
+        $newPassword = $request->filled('custom_password') 
+            ? trim($request->input('custom_password')) 
+            : 'VMPos#' . rand(100000, 999999);
+
+        if (strlen($newPassword) < 6) {
+            return back()->with('error', 'Password must be at least 6 characters.');
+        }
+
+        $adminUser->password = Hash::make($newPassword);
+        $adminUser->save();
+
+        \App\Models\Activity::recordSecurityEvent(
+            'TENANT_ADMIN_PASSWORD_RESET_BY_SUPER_ADMIN',
+            "Password for tenant admin {$adminUser->email} ({$tenant->name}) was reset by Super Admin.",
+            [
+                'tenant_id' => $tenant->id,
+                'user_id' => $adminUser->id,
+                'admin_email' => $adminUser->email,
+            ],
+            Auth::user()
+        );
+
+        return back()->with('success', "🔑 Password for '{$tenant->name}' ({$adminUser->email}) successfully reset to: {$newPassword}");
     }
 
 

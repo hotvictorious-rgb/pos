@@ -217,4 +217,85 @@ class MultiBranchSelectionAndScopingTest extends TestCase
         $this->assertNotNull(session('active_warehouse_id'));
         $this->assertContains(session('active_warehouse_id'), [$this->branchA1->id, $this->branchA2->id]);
     }
+
+    public function test_pdf_export_strictly_enforces_tenant_and_branch_isolation(): void
+    {
+        // 1. Create a product in Tenant A
+        $prodA = Product::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Alpha Special Mattress',
+            'code' => 'ASM-01',
+            'category' => 'Mattresses',
+            'unitPrice' => 50000,
+            'archived' => false,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'product_id' => $prodA->id,
+            'warehouse_id' => $this->branchA1->id,
+            'physical_stock' => 15,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'product_id' => $prodA->id,
+            'warehouse_id' => $this->branchA2->id,
+            'physical_stock' => 25,
+        ]);
+
+        // 2. Create a product in Tenant B
+        $prodB = Product::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $this->tenantB->id,
+            'name' => 'Beta Secret Gadget',
+            'code' => 'BSG-99',
+            'category' => 'Gadgets',
+            'unitPrice' => 100000,
+            'archived' => false,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenantB->id,
+            'product_id' => $prodB->id,
+            'warehouse_id' => $this->branchB1->id,
+            'physical_stock' => 50,
+        ]);
+
+        $this->adminA->update(['role' => 'admin']);
+        $this->cashierA1->update(['role' => 'branch_manager', 'warehouse_id' => $this->branchA1->id]);
+
+        // Tenant A Admin: Exports Consolidated PDF
+        $responseAdmin = $this->actingAs($this->adminA)
+            ->withSession([
+                'user_id' => $this->adminA->id,
+                'tenant_id' => $this->tenantA->id,
+            ])
+            ->get(route('reports.export.pdf', ['type' => 'inventory']));
+
+        $responseAdmin->assertStatus(200);
+        $responseAdmin->assertSee('ALPHA MAIN BRANCH');
+        $responseAdmin->assertSee('ALPHA NWANIBA BRANCH');
+        $responseAdmin->assertSee('Alpha Special Mattress');
+        // Tenant A must NEVER see Tenant B's product or warehouse!
+        $responseAdmin->assertDontSee('Beta Secret Gadget');
+        $responseAdmin->assertDontSee('BETA HEAD OFFICE');
+
+        // Tenant A Branch Manager (Branch Scoped to Branch A1) tries to export with warehouse_id=ALL
+        $responseCashier = $this->actingAs($this->cashierA1)
+            ->withSession([
+                'user_id' => $this->cashierA1->id,
+                'tenant_id' => $this->tenantA->id,
+                'warehouse_id' => $this->branchA1->id,
+            ])
+            ->get(route('reports.export.pdf', ['type' => 'inventory', 'warehouse_id' => 'ALL']));
+
+        $responseCashier->assertStatus(200);
+        $responseCashier->assertSee('ALPHA MAIN BRANCH');
+        // Branch-scoped user must be clamped to branchA1 only - cannot see Branch A2 column or Tenant B!
+        $responseCashier->assertDontSee('ALPHA NWANIBA BRANCH');
+        $responseCashier->assertDontSee('Alpha Nwaniba Branch');
+        $responseCashier->assertDontSee('Beta Secret Gadget');
+    }
 }

@@ -27,6 +27,7 @@ class Sale extends Model
         'posAmount',
         'transferAmount',
         'note',
+        'receipt_ref',
         'status',
         'sale_type',
         'customerId',

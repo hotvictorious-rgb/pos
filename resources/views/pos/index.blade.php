@@ -455,7 +455,7 @@
         <div class="category-pills">
             <button class="cat-btn active" onclick="filterCategory('ALL', this)">All Items</button>
             @foreach($categories as $cat)
-                <button class="cat-btn" onclick="filterCategory('{{ $cat }}', this)">{{ $cat }}</button>
+                <button class="cat-btn" onclick="filterCategory('{{ addslashes($cat) }}', this)">{{ $cat }}</button>
             @endforeach
         </div>
 
@@ -471,7 +471,7 @@
                  data-price="{{ $product->unitPrice }}"
                  data-category="{{ $product->category }}"
                  data-stock="{{ $product->physical_stock }}"
-                 onclick="addToCart('{{ $product->id }}', '{{ addslashes($product->code) }}', {{ $product->unitPrice }}, {{ $product->physical_stock }})">
+                 onclick="addToCart('{{ $product->id }}', '{{ addslashes($product->code) }}', {{ (float)($product->unitPrice ?? 0) }}, {{ (int)($product->physical_stock ?? 0) }})">
                 <div style="flex: 1; min-width: 0;">
                     <div class="p-name" title="SKU: {{ $product->code }}" style="font-size: 1.05rem; font-weight: 800; color: #60a5fa; letter-spacing: 0.03em;">
                         {{ $product->code }}
@@ -576,7 +576,8 @@
                         <span style="font-weight: 700;">🧾 Physical Receipt Slip No <span id="receiptRefReq" style="color: #38bdf8; font-weight: 800; display: none;">* (Required for Pickup / Debt)</span></span>
                         <span style="color: #38bdf8; font-size: 0.68rem; font-weight: 800; background: rgba(56,189,248,0.12); padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid rgba(56,189,248,0.3);">★ Primary Identifier</span>
                     </label>
-                    <input type="text" name="receipt_ref" id="receiptRefInput" placeholder="e.g. 4082 or Paper Booklet Slip Ref" style="width: 100%; padding: 0.4rem 0.6rem; font-size: 0.85rem; font-weight: 700; background: #0b0f19; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; transition: all 0.2s ease;">
+                    <input type="text" name="receipt_ref" id="receiptRefInput" data-check-url="{{ route('pos.check_receipt_ref') }}" placeholder="e.g. 4082 (Optional for Full Cash / POS / Split)" style="width: 100%; padding: 0.4rem 0.6rem; font-size: 0.85rem; font-weight: 700; background: #0b0f19; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; transition: all 0.2s ease;" oninput="onReceiptRefInput(this)" autocomplete="off">
+                    <div id="receiptRefFeedback" style="display: none; margin-top: 0.35rem; font-size: 0.72rem; padding: 0.35rem 0.55rem; border-radius: 6px; line-height: 1.35;"></div>
                 </div>
 
                 <div id="manualCustomerFields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
@@ -670,7 +671,7 @@
                 <div id="splitBox" style="display: none; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
                     <div style="font-size: 0.78rem; font-weight: 800; color: #93c5fd; text-transform: uppercase; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
                         <span>🔀 Mixed Tender Breakdown</span>
-                        <span style="font-size: 0.7rem; color: #38bdf8;">Cash + POS Terminal</span>
+                        <span style="font-size: 0.7rem; color: #38bdf8; font-weight: 800;">🔒 Full Settlement Only</span>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.5rem;">
                         <div>
@@ -700,29 +701,53 @@
                             <strong id="splitChangeDisplay" style="color: #4ade80;">₦0</strong>
                         </div>
                         <div style="display: none; justify-content: space-between;" id="splitBalanceRow">
-                            <span style="color: #f87171;">Remaining Unpaid:</span>
+                            <span style="color: #f87171; font-weight: 700;">⚠️ Incomplete Shortfall:</span>
                             <strong id="splitRemainingDisplay" style="color: #f87171;">₦0</strong>
                         </div>
+                    </div>
+                    <div id="splitIncompleteNotice" style="display: none; margin-top: 0.4rem; font-size: 0.72rem; color: #fca5a5; background: rgba(239, 68, 68, 0.12); padding: 0.35rem 0.55rem; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.25);">
+                        ⚠️ <strong>Split Payment must be settled in full.</strong> If customer is paying a deposit and taking the rest on credit, switch to the <strong>"Part / Debt"</strong> tab.
                     </div>
                 </div>
 
                 <!-- Part-Payment Input (Visible when Part-Paid / Not Paid is selected) -->
                 <div id="debtBox" style="display: none; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 0.85rem; margin-bottom: 1rem;">
-                    <label style="color: #c084fc; font-weight: 700; font-size: 0.82rem;">Amount Paying Now (₦) [Part-Paid or 0 for Not Paid]:</label>
+                    <label style="color: #c084fc; font-weight: 700; font-size: 0.82rem;">Amount Paying Now (₦) [Deposit or 0 for Fully Unpaid]:</label>
                     <input type="number" id="partPayInput" placeholder="e.g. 5000 (or 0 if totally unpaid)" onkeyup="updateDebtCalculation()" step="any" style="margin-bottom: 0.6rem;">
 
-                    <!-- Sleek Part-Payment Tender Method Selector (Defaults to POS) -->
+                    <!-- Sleek Part-Payment Tender Method Selector (POS, Cash, or Split Deposit) -->
                     <div id="partPayTenderBox" style="margin-bottom: 0.75rem; background: rgba(15,23,42,0.6); padding: 0.5rem 0.65rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
                         <div style="font-size: 0.72rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.35rem;">
-                            <span>💳</span> Tender Method for Amount Paid Now:
+                            <span>💳</span> Tender Method for Deposit Paid Now:
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                            <button type="button" id="btnPartPos" onclick="setPartPayTender('POS')" style="padding: 0.45rem 0.6rem; font-size: 0.8rem; font-weight: 700; border-radius: 8px; border: 2px solid #3b82f6; background: rgba(59,130,246,0.25); color: #93c5fd; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.35rem; box-shadow: 0 0 10px rgba(59,130,246,0.3);">
-                                <span>💳</span> POS (Default)
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem;">
+                            <button type="button" id="btnPartPos" onclick="setPartPayTender('POS')" style="padding: 0.45rem 0.4rem; font-size: 0.78rem; font-weight: 700; border-radius: 8px; border: 2px solid #3b82f6; background: rgba(59,130,246,0.25); color: #93c5fd; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.25rem; box-shadow: 0 0 10px rgba(59,130,246,0.3);">
+                                <span>💳</span> POS
                             </button>
-                            <button type="button" id="btnPartCash" onclick="setPartPayTender('CASH')" style="padding: 0.45rem 0.6rem; font-size: 0.8rem; font-weight: 700; border-radius: 8px; border: 1px solid #475569; background: rgba(15,23,42,0.8); color: #94a3b8; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                            <button type="button" id="btnPartCash" onclick="setPartPayTender('CASH')" style="padding: 0.45rem 0.4rem; font-size: 0.78rem; font-weight: 700; border-radius: 8px; border: 1px solid #475569; background: rgba(15,23,42,0.8); color: #94a3b8; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.25rem;">
                                 <span>💵</span> Cash
                             </button>
+                            <button type="button" id="btnPartSplit" onclick="setPartPayTender('SPLIT')" style="padding: 0.45rem 0.4rem; font-size: 0.78rem; font-weight: 700; border-radius: 8px; border: 1px solid #475569; background: rgba(15,23,42,0.8); color: #94a3b8; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.25rem;">
+                                <span>🔀</span> Split
+                            </button>
+                        </div>
+
+                        <!-- Sub-breakdown when Deposit is Split into Cash + POS -->
+                        <div id="partSplitSubBox" style="display: none; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed rgba(255,255,255,0.1);">
+                            <div style="font-size: 0.7rem; color: #93c5fd; font-weight: 700; margin-bottom: 0.4rem; display: flex; justify-content: space-between; align-items: center;">
+                                <span>Deposit Breakdown (Cash + POS):</span>
+                                <span id="partSplitSumDisplay" style="color: #4ade80; font-weight: 800;">Deposit: ₦0</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                <div>
+                                    <label style="font-size: 0.7rem; color: #4ade80; font-weight: 700; margin-bottom: 0.15rem; display: block;">💵 Cash Deposit (₦):</label>
+                                    <input type="number" id="partSplitCashInput" placeholder="0" min="0" step="any" oninput="updatePartSplitCalculation()" style="width: 100%; padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0b0f19; border: 1px solid #475569; border-radius: 6px; color: #4ade80; font-weight: 700;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.7rem; color: #60a5fa; font-weight: 700; margin-bottom: 0.15rem; display: block;">💳 POS Deposit (₦):</label>
+                                    <input type="number" id="partSplitPosInput" placeholder="0" min="0" step="any" oninput="updatePartSplitCalculation()" style="width: 100%; padding: 0.35rem 0.5rem; font-size: 0.82rem; background: #0b0f19; border: 1px solid #475569; border-radius: 6px; color: #60a5fa; font-weight: 700;">
+                                </div>
+                            </div>
                         </div>
                     </div>
 

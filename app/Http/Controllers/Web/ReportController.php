@@ -154,6 +154,8 @@ class ReportController extends Controller
 
             $branchTotalDebt = 0.0;
             $customerBranchDebts = [];
+            $custDeliveredDebts = [];
+            $custInstallmentDebts = [];
             $oldestDebtDate = [];
 
             foreach ($branchSales as $bs) {
@@ -163,6 +165,12 @@ class ReportController extends Controller
                     if (!empty($bs->customerId)) {
                         $cId = $bs->customerId;
                         $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                        $isUnsup = in_array(strtoupper($bs->deliveryStatus ?? ''), ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING', 'PENDING_PICKUP']);
+                        if ($isUnsup) {
+                            $custInstallmentDebts[$cId] = ($custInstallmentDebts[$cId] ?? 0.0) + $bal;
+                        } else {
+                            $custDeliveredDebts[$cId] = ($custDeliveredDebts[$cId] ?? 0.0) + $bal;
+                        }
                         if (!isset($oldestDebtDate[$cId])) {
                             $oldestDebtDate[$cId] = $bs->createdAt ?: $bs->created_at;
                         }
@@ -174,13 +182,15 @@ class ReportController extends Controller
 
             $debtors = Customer::whereIn('id', array_keys($customerBranchDebts))
                 ->get()
-                ->map(function ($c) use ($customerBranchDebts, $oldestDebtDate) {
+                ->map(function ($c) use ($customerBranchDebts, $custDeliveredDebts, $custInstallmentDebts, $oldestDebtDate) {
                     $debtDate = $oldestDebtDate[$c->id] ?? ($c->created_at ?: $c->updated_at);
                     $daysOld = $debtDate ? Carbon::parse($debtDate)->diffInDays(now()) : 0;
                     $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
                     $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
                     $c->branch_debt = $bDebt;
                     $c->total_debt = $bDebt; // Never expose tenant-wide total_debt to branch personnel or filtered branch views
+                    $c->delivered_debt = round($custDeliveredDebts[$c->id] ?? 0.0, 2);
+                    $c->installment_debt = round($custInstallmentDebts[$c->id] ?? 0.0, 2);
                     return $c;
                 })
                 ->sortByDesc('branch_debt')
@@ -195,10 +205,21 @@ class ReportController extends Controller
                 ->get();
             $saleBalances = $accountingService->calculateInvoiceBalancesForSales($oldestSales);
             $oldestDebtDate = [];
+            $custDeliveredDebts = [];
+            $custInstallmentDebts = [];
+
             foreach ($oldestSales as $sale) {
-                if (($saleBalances[$sale->id] ?? 0.0) > 0.01) {
-                    if (!isset($oldestDebtDate[$sale->customerId])) {
-                        $oldestDebtDate[$sale->customerId] = $sale->createdAt ?: $sale->created_at;
+                $bal = $saleBalances[$sale->id] ?? 0.0;
+                if ($bal > 0.01) {
+                    $cId = $sale->customerId;
+                    $isUnsup = in_array(strtoupper($sale->deliveryStatus ?? ''), ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING', 'PENDING_PICKUP']);
+                    if ($isUnsup) {
+                        $custInstallmentDebts[$cId] = ($custInstallmentDebts[$cId] ?? 0.0) + $bal;
+                    } else {
+                        $custDeliveredDebts[$cId] = ($custDeliveredDebts[$cId] ?? 0.0) + $bal;
+                    }
+                    if (!isset($oldestDebtDate[$cId])) {
+                        $oldestDebtDate[$cId] = $sale->createdAt ?: $sale->created_at;
                     }
                 }
             }
@@ -206,11 +227,13 @@ class ReportController extends Controller
             $debtors = Customer::where('total_debt', '>', 0)
                 ->orderBy('total_debt', 'desc')
                 ->get()
-                ->map(function ($c) use ($oldestDebtDate) {
+                ->map(function ($c) use ($oldestDebtDate, $custDeliveredDebts, $custInstallmentDebts) {
                     $debtDate = $oldestDebtDate[$c->id] ?? ($c->created_at ?: $c->updated_at);
                     $daysOld = $debtDate ? Carbon::parse($debtDate)->diffInDays(now()) : 0;
                     $c->aging_category = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
                     $c->branch_debt = $c->total_debt;
+                    $c->delivered_debt = round($custDeliveredDebts[$c->id] ?? 0.0, 2);
+                    $c->installment_debt = round($custInstallmentDebts[$c->id] ?? 0.0, 2);
                     return $c;
                 });
         }
@@ -278,6 +301,29 @@ class ReportController extends Controller
             $p->stock_status = $p->total_physical_stock <= 0 ? 'OUT_OF_STOCK' : ($p->total_physical_stock <= $threshold ? 'LOW_STOCK' : 'IN_STOCK');
             return $p;
         });
+
+        // Quantity Threshold Filter (e.g. min_qty=1, 2, 5, or 0)
+        if ($request->filled('min_qty')) {
+            $minQty = (int) $request->min_qty;
+            $qtyOp = $request->get('qty_op', '>=');
+            $products = $products->filter(function ($p) use ($minQty, $qtyOp, $isBranchScoped, $authUser, $effectiveWh, $request) {
+                $checkQty = $p->total_physical_stock;
+                if ($isBranchScoped) {
+                    $checkQty = $p->branch_stocks[$authUser->warehouse_id] ?? 0;
+                } elseif (!empty($effectiveWh)) {
+                    $checkQty = $p->branch_stocks[$effectiveWh] ?? 0;
+                }
+
+                return match($qtyOp) {
+                    '>' => $checkQty > $minQty,
+                    '=' => $checkQty === $minQty,
+                    '<=' => $checkQty <= $minQty,
+                    '<' => $checkQty < $minQty,
+                    default => ($request->min_qty === '0') ? ($checkQty === 0) : ($checkQty >= $minQty),
+                };
+            })->values();
+        }
+
         $totalStockValuation = $products->sum('total_valuation');
         $totalPhysicalUnits = $products->sum('total_physical_stock');
 
@@ -341,7 +387,9 @@ class ReportController extends Controller
             'exchangeReport',
             'datePreset',
             'fromDate',
-            'toDate'
+            'toDate',
+            'isBranchScoped',
+            'effectiveWh'
         ));
     }
 
@@ -841,5 +889,540 @@ class ReportController extends Controller
         return response()->json($data, 200, [
             'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
         ], JSON_PRETTY_PRINT);
+    }
+
+    /**
+     * Export Executive Print-Ready PDF Report with Strict Tenant & Branch Isolation.
+     */
+    public function exportPdf(Request $request, $type)
+    {
+        $authUser = Auth::user();
+        if ($authUser && !$authUser->isExecutive() && empty($authUser->warehouse_id)) {
+            abort(403, '🔒 Access Restricted: You are not assigned to any branch location.');
+        }
+
+        // 1. Strict Tenant & Branch Isolation
+        $isBranchScoped = ($authUser && $authUser->isBranchScoped());
+        $rawWh = $request->get('warehouse_id');
+        $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
+        $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
+
+        // 2. Tenant Dynamic Branding
+        $settings = \App\Models\Setting::first();
+        $tenantId = $authUser->tenant_id ?? session('tenant_id') ?? 'primary';
+        $tenantObj = \App\Models\Tenant::find($tenantId);
+        $businessName = $settings->businessName ?? $tenantObj?->name ?? 'Hysam Ventures';
+        $currency = $settings->currency ?? 'NGN (₦)';
+        $reportFooter = $settings->reportFooter ?? 'Confidential Internal Record • Authorized Multi-Branch Ledger';
+
+        // 3. Resolve Active Human-Readable Filter Descriptions
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        $datePreset = $request->get('date_preset', 'ALL');
+        $fromDate = $request->get('from_date');
+        $toDate = $request->get('to_date');
+
+        $filters = array_merge(['date_preset' => $datePreset], $request->all());
+        if ($branchWarehouseId) {
+            $filters['warehouse_id'] = $branchWarehouseId;
+        } else {
+            unset($filters['warehouse_id']);
+        }
+
+        if ($fromDate && $toDate) {
+            $datePeriodDescription = Carbon::parse($fromDate)->format('M d, Y') . ' to ' . Carbon::parse($toDate)->format('M d, Y');
+        } elseif ($fromDate) {
+            $datePeriodDescription = 'From ' . Carbon::parse($fromDate)->format('M d, Y');
+        } else {
+            $datePeriodDescription = match(strtoupper($datePreset)) {
+                'TODAY' => 'Today (' . now('Africa/Lagos')->format('M d, Y') . ')',
+                'YESTERDAY' => 'Yesterday (' . now('Africa/Lagos')->subDay()->format('M d, Y') . ')',
+                'THIS_WEEK' => 'This Week',
+                'LAST_WEEK' => 'Last Week',
+                'THIS_MONTH' => 'This Month (' . now('Africa/Lagos')->format('F Y') . ')',
+                'LAST_MONTH' => 'Last Month (' . now('Africa/Lagos')->subMonth()->format('F Y') . ')',
+                'THIS_YEAR' => 'This Year (' . now('Africa/Lagos')->format('Y') . ')',
+                default => 'All Time (Consolidated)',
+            };
+        }
+
+        if ($branchWarehouseId) {
+            $whObj = Warehouse::find($branchWarehouseId);
+            $scopeDescription = $whObj ? ($whObj->name . ' (' . ($whObj->code ?? 'BR') . ')') : 'Branch #' . $branchWarehouseId;
+        } else {
+            $scopeDescription = 'All Branches (Consolidated)';
+        }
+
+        $cashierDescription = null;
+        if (!empty($request->user_id)) {
+            $staff = User::find($request->user_id);
+            $cashierDescription = $staff ? $staff->name : 'Staff #' . $request->user_id;
+        }
+
+        $paymentFilterDescription = !empty($request->payment_status) && $request->payment_status !== 'ALL'
+            ? strtoupper(str_replace('_', ' ', $request->payment_status))
+            : null;
+
+        $deliveryFilterDescription = !empty($request->delivery_status) && $request->delivery_status !== 'ALL'
+            ? strtoupper(str_replace('_', ' ', $request->delivery_status))
+            : null;
+
+        $minQtyFilterDescription = null;
+        if ($request->filled('min_qty')) {
+            $val = (int) $request->min_qty;
+            $op = $request->get('qty_op');
+            if ($request->min_qty === '0' && (empty($op) || $op === '=' || $op === '==')) {
+                $minQtyFilterDescription = 'Out of Stock (= 0 Units)';
+            } elseif ($request->min_qty === '1' && (empty($op) || $op === '>=')) {
+                $minQtyFilterDescription = 'In-Stock (≥ 1 Unit)';
+            } else {
+                $opSymbol = match($op) {
+                    '>' => '>',
+                    '<' => '<',
+                    '<=' => '≤',
+                    '=' => '=',
+                    default => '≥',
+                };
+                $minQtyFilterDescription = "Quantity {$opSymbol} {$val} Units";
+            }
+        }
+
+        $commonViewData = [
+            'businessName' => $businessName,
+            'tenantId' => $tenantId,
+            'currency' => $currency,
+            'reportFooter' => $reportFooter,
+            'scopeDescription' => $scopeDescription,
+            'datePeriodDescription' => $datePeriodDescription,
+            'cashierDescription' => $cashierDescription,
+            'paymentFilterDescription' => $paymentFilterDescription,
+            'deliveryFilterDescription' => $deliveryFilterDescription,
+            'minQtyFilterDescription' => $minQtyFilterDescription,
+            'generatedAt' => now('Africa/Lagos')->format('M d, Y • h:i A'),
+        ];
+
+        // 4. Render Target Report
+        switch (strtolower($type)) {
+            case 'inventory':
+            case 'stock':
+            case 'products':
+                $warehouses = $branchWarehouseId
+                    ? Warehouse::where('id', $branchWarehouseId)->get()
+                    : Warehouse::where('is_active', true)->orderBy('id')->get();
+
+                $products = Product::where('archived', false)
+                    ->with(['stockLevels' => function ($q) use ($warehouses) {
+                        $q->whereIn('warehouse_id', $warehouses->pluck('id'));
+                    }])
+                    ->orderBy('name')
+                    ->get();
+
+                $items = [];
+                $branchTotals = [];
+                foreach ($warehouses as $wh) {
+                    $branchTotals[$wh->id] = 0;
+                }
+
+                $grandTotalUnits = 0;
+                $grandTotalValuation = 0.0;
+                $inStockSkusCount = 0;
+
+                foreach ($products as $p) {
+                    $branches = [];
+                    $totalStock = 0;
+                    foreach ($warehouses as $wh) {
+                        $sl = $p->stockLevels->firstWhere('warehouse_id', $wh->id);
+                        $qty = $sl ? (int) $sl->physical_stock : 0;
+                        $branches[$wh->id] = $qty;
+                        $totalStock += $qty;
+                        $branchTotals[$wh->id] += $qty;
+                    }
+
+                    $unitPrice = (float) $p->unitPrice;
+                    $valuation = round($totalStock * $unitPrice, 2);
+                    $grandTotalUnits += $totalStock;
+                    $grandTotalValuation += $valuation;
+
+                    if ($totalStock > 0) {
+                        $inStockSkusCount++;
+                    }
+
+                    $items[] = [
+                        'sku' => $p->code ?: 'N/A',
+                        'name' => $p->name,
+                        'size' => $p->size,
+                        'brand' => $p->brand,
+                        'category' => $p->category,
+                        'unit_price' => $unitPrice,
+                        'branches' => $branches,
+                        'total_stock' => $totalStock,
+                        'min_stock' => (int) ($p->minStockLevel ?: 5),
+                        'valuation' => $valuation,
+                    ];
+                }
+
+                // Apply Quantity Threshold Filter if specified
+                if ($request->filled('min_qty')) {
+                    $minQtyVal = (int) $request->min_qty;
+                    $qtyOp = $request->get('qty_op', '>=');
+                    $items = array_values(array_filter($items, function ($item) use ($minQtyVal, $qtyOp, $branchWarehouseId, $request) {
+                        $checkQty = $branchWarehouseId ? ($item['branches'][$branchWarehouseId] ?? 0) : $item['total_stock'];
+                        return match($qtyOp) {
+                            '>' => $checkQty > $minQtyVal,
+                            '=' => $checkQty === $minQtyVal,
+                            '<=' => $checkQty <= $minQtyVal,
+                            '<' => $checkQty < $minQtyVal,
+                            default => ($request->min_qty === '0') ? ($checkQty === 0) : ($checkQty >= $minQtyVal),
+                        };
+                    }));
+
+                    $grandTotalUnits = 0;
+                    $grandTotalValuation = 0.0;
+                    $inStockSkusCount = 0;
+                    foreach ($warehouses as $wh) {
+                        $branchTotals[$wh->id] = 0;
+                    }
+                    foreach ($items as $item) {
+                        $grandTotalUnits += $item['total_stock'];
+                        $grandTotalValuation += $item['valuation'];
+                        if ($item['total_stock'] > 0) {
+                            $inStockSkusCount++;
+                        }
+                        foreach ($warehouses as $wh) {
+                            $branchTotals[$wh->id] += ($item['branches'][$wh->id] ?? 0);
+                        }
+                    }
+                }
+
+                $kpiCards = [
+                    ['label' => 'TOTAL TRACKED SKUS', 'value' => number_format(count($items)), 'sub' => $inStockSkusCount . ' In Stock'],
+                ];
+                foreach ($warehouses as $wh) {
+                    $kpiCards[] = [
+                        'label' => strtoupper($wh->name) . ' STOCK',
+                        'value' => number_format($branchTotals[$wh->id] ?? 0),
+                    ];
+                }
+                $kpiCards[] = ['label' => 'TOTAL UNITS ON GROUND', 'value' => number_format($grandTotalUnits)];
+                $kpiCards[] = ['label' => 'TOTAL STOCK VALUATION', 'value' => '₦' . number_format($grandTotalValuation, 2)];
+
+                return view('reports.pdf.inventory', array_merge($commonViewData, [
+                    'pageTitle' => 'Multi-Branch Physical Stock Report',
+                    'reportTitle' => 'Multi-Branch Physical Stock Report',
+                    'reportSubtitle' => 'Consolidated physical inventory audit across retail branches and central logistics warehouse',
+                    'kpiCards' => $kpiCards,
+                    'warehouses' => $warehouses,
+                    'items' => $items,
+                    'branchTotals' => $branchTotals,
+                    'grandTotalUnits' => $grandTotalUnits,
+                    'grandTotalValuation' => $grandTotalValuation,
+                    'allowInStockFilter' => true,
+                ]));
+
+            case 'sales':
+            case 'invoices':
+                $salesQuery = $accountingService->buildSalesQuery($filters);
+                $salesList = $salesQuery->get();
+                $balances = $accountingService->calculateInvoiceBalancesForSales($salesList);
+                $saleIds = $salesList->pluck('id');
+                $returnsMap = \App\Models\SalesReturn::whereIn('saleId', $saleIds)
+                    ->groupBy('saleId')
+                    ->selectRaw('saleId, SUM(refundAmount) as total_refund')
+                    ->pluck('total_refund', 'saleId');
+
+                $totalGrossRevenue = 0.0;
+                $totalPaidCollected = 0.0;
+                $totalOutstandingDebt = 0.0;
+                $cashCollected = 0.0;
+                $posCollected = 0.0;
+
+                $formattedSales = $salesList->map(function ($s) use ($balances, $returnsMap, &$totalGrossRevenue, &$totalPaidCollected, &$totalOutstandingDebt, &$cashCollected, &$posCollected) {
+                    $arr = $s->toArray();
+                    $debt = (float) ($balances[$s->id] ?? 0.0);
+                    $returnCredits = (float) ($returnsMap[$s->id] ?? 0.0);
+                    $gross = (float) $s->totalAmount;
+                    $paid = max(0.0, round($gross - $returnCredits - $debt, 2));
+
+                    $arr['paidAmount'] = $paid;
+                    $arr['invoice_balance'] = $debt;
+
+                    $totalGrossRevenue += $gross;
+                    $totalPaidCollected += $paid;
+                    $totalOutstandingDebt += $debt;
+
+                    $method = strtoupper($s->paymentMethod ?? 'CASH');
+                    if (str_contains($method, 'CASH')) {
+                        $cashCollected += $paid;
+                    } else {
+                        $posCollected += $paid;
+                    }
+
+                    return $arr;
+                });
+
+                $kpiCards = [
+                    ['label' => 'FILTERED REVENUE', 'value' => '₦' . number_format($totalGrossRevenue, 2), 'sub' => count($formattedSales) . ' Invoices'],
+                    ['label' => 'CASH COLLECTED', 'value' => '₦' . number_format($cashCollected, 2)],
+                    ['label' => 'POS / ELECTRONIC', 'value' => '₦' . number_format($posCollected, 2)],
+                    ['label' => 'NET REALIZED', 'value' => '₦' . number_format($totalPaidCollected, 2)],
+                    ['label' => 'NEW DEBT / OUTSTANDING', 'value' => '₦' . number_format($totalOutstandingDebt, 2)],
+                ];
+
+                return view('reports.pdf.sales', array_merge($commonViewData, [
+                    'pageTitle' => 'Sales & Revenue Analysis Report',
+                    'reportTitle' => 'Sales & Revenue Analysis Report',
+                    'reportSubtitle' => 'Itemized transaction ledger with authoritative payment settlement and debt balances',
+                    'kpiCards' => $kpiCards,
+                    'sales' => $formattedSales,
+                    'totalGrossRevenue' => $totalGrossRevenue,
+                    'totalPaidCollected' => $totalPaidCollected,
+                    'totalOutstandingDebt' => $totalOutstandingDebt,
+                ]));
+
+            case 'debtors':
+            case 'debts':
+                if ($branchWarehouseId) {
+                    $branchSales = Sale::where('warehouse_id', $branchWarehouseId)
+                        ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
+                        ->get();
+                    $saleBalances = $accountingService->calculateInvoiceBalancesForSales($branchSales);
+
+                    $customerBranchDebts = [];
+                    $custDeliveredDebts = [];
+                    $custInstallmentDebts = [];
+                    $oldestDebtDate = [];
+
+                    foreach ($branchSales as $bs) {
+                        $bal = $saleBalances[$bs->id] ?? 0.0;
+                        if ($bal > 0.01 && !empty($bs->customerId)) {
+                            $cId = $bs->customerId;
+                            $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                            $isUnsup = in_array(strtoupper($bs->deliveryStatus ?? ''), ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING']);
+                            if ($isUnsup) {
+                                $custInstallmentDebts[$cId] = ($custInstallmentDebts[$cId] ?? 0.0) + $bal;
+                            } else {
+                                $custDeliveredDebts[$cId] = ($custDeliveredDebts[$cId] ?? 0.0) + $bal;
+                            }
+                            if (!isset($oldestDebtDate[$cId])) {
+                                $oldestDebtDate[$cId] = $bs->createdAt ?: $bs->created_at;
+                            }
+                        }
+                    }
+
+                    $debtors = Customer::whereIn('id', array_keys($customerBranchDebts))
+                        ->get()
+                        ->map(function ($c) use ($customerBranchDebts, $custDeliveredDebts, $custInstallmentDebts, $oldestDebtDate) {
+                            $debtDate = $oldestDebtDate[$c->id] ?? ($c->created_at ?: $c->updated_at);
+                            $daysOld = $debtDate ? Carbon::parse($debtDate)->diffInDays(now()) : 0;
+                            $arr = $c->toArray();
+                            $arr['aging_category'] = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
+                            $arr['oldest_debt_date'] = $debtDate;
+                            $bDebt = round($customerBranchDebts[$c->id] ?? 0.0, 2);
+                            $arr['total_debt'] = $bDebt;
+                            $arr['branch_debt'] = $bDebt;
+                            $arr['delivered_debt'] = round($custDeliveredDebts[$c->id] ?? 0.0, 2);
+                            $arr['installment_debt'] = round($custInstallmentDebts[$c->id] ?? 0.0, 2);
+                            return $arr;
+                        })
+                        ->sortByDesc('total_debt')
+                        ->values();
+                } else {
+                    $debtors = Customer::where('total_debt', '>', 0)
+                        ->orderBy('total_debt', 'desc')
+                        ->get()
+                        ->map(function ($c) {
+                            $arr = $c->toArray();
+                            $daysOld = $c->updated_at ? Carbon::parse($c->updated_at)->diffInDays(now()) : 0;
+                            $arr['aging_category'] = $daysOld > 30 ? 'CRITICAL (30+ Days)' : ($daysOld > 7 ? 'DUE (8-30 Days)' : 'CURRENT (0-7 Days)');
+                            $arr['oldest_debt_date'] = $c->updated_at;
+                            $arr['delivered_debt'] = round((float) ($c->total_debt ?? 0), 2);
+                            $arr['installment_debt'] = 0.0;
+                            return $arr;
+                        });
+                }
+
+                $grandTotalDebt = $debtors->sum('total_debt');
+                $totalDeliveredDebt = $debtors->sum('delivered_debt');
+                $totalInstallmentDebt = $debtors->sum('installment_debt');
+                $criticalDebt = $debtors->filter(fn($d) => str_contains($d['aging_category'], 'CRITICAL'))->sum('total_debt');
+
+                $kpiCards = [
+                    ['label' => 'ACTIVE DEBTOR ACCOUNTS', 'value' => number_format(count($debtors))],
+                    ['label' => 'DELIVERED GOODS DEBT', 'value' => '₦' . number_format($totalDeliveredDebt, 2)],
+                    ['label' => 'INSTALLMENT / UNSUPPLIED', 'value' => '₦' . number_format($totalInstallmentDebt, 2)],
+                    ['label' => 'CRITICAL AGING (>30 DAYS)', 'value' => '₦' . number_format($criticalDebt, 2)],
+                    ['label' => 'TOTAL CREDIT EXPOSURE', 'value' => '₦' . number_format($grandTotalDebt, 2)],
+                ];
+
+                return view('reports.pdf.debtors', array_merge($commonViewData, [
+                    'pageTitle' => 'Debtors Ledger & Credit Exposure Statement',
+                    'reportTitle' => 'Debtors Ledger & Credit Exposure Statement',
+                    'reportSubtitle' => 'Complete customer accounts receivable aging and portfolio risk assessment',
+                    'kpiCards' => $kpiCards,
+                    'debtors' => $debtors,
+                    'grandTotalDebt' => $grandTotalDebt,
+                    'totalDeliveredDebt' => $totalDeliveredDebt,
+                    'totalInstallmentDebt' => $totalInstallmentDebt,
+                ]));
+
+            case 'daily_summary':
+            case 'day_book':
+            case 'daily':
+                $dayBookRaw = $accountingService->getDailyComprehensiveReport($filters);
+                $summary = $dayBookRaw['summary'] ?? [];
+                $logistics = $dayBookRaw['logistics'] ?? [];
+
+                $kpiCards = [
+                    ['label' => 'GROSS SALES INFLOW', 'value' => '₦' . number_format((float) ($summary['gross_sales'] ?? 0), 2)],
+                    ['label' => 'CASH IN DRAWER', 'value' => '₦' . number_format((float) ($summary['cash_collected'] ?? 0), 2)],
+                    ['label' => 'ELECTRONIC POS / BANK', 'value' => '₦' . number_format((float) ($summary['pos_collected'] ?? 0), 2)],
+                    ['label' => 'UNITS DISPATCHED', 'value' => number_format((int) ($logistics['sales_units_dispatched'] ?? 0))],
+                    ['label' => 'NET DRAWER BALANCE', 'value' => '₦' . number_format((float) ($summary['net_settlement'] ?? ($summary['net_drawer_cash'] ?? 0)), 2)],
+                ];
+
+                $dayBook = [
+                    'financials' => $summary,
+                    'logistics' => $logistics,
+                    'staff_breakdown' => $dayBookRaw['cashiers'] ?? [],
+                    'total_invoices' => count($dayBookRaw['sales'] ?? []),
+                    'total_units_sold' => (int) ($logistics['sales_units_dispatched'] ?? 0),
+                    'total_cash' => (float) ($summary['cash_collected'] ?? 0),
+                    'total_pos' => (float) ($summary['pos_collected'] ?? 0),
+                    'total_volume' => (float) ($summary['gross_sales'] ?? 0),
+                ];
+
+                return view('reports.pdf.day_book', array_merge($commonViewData, [
+                    'pageTitle' => 'Daily Operations & Day-Book Reconciliation One-Sheet',
+                    'reportTitle' => 'Daily Operations & Day-Book Reconciliation One-Sheet',
+                    'reportSubtitle' => 'Executive master summary of daily drawer cash, POS collections, and inventory turnover',
+                    'kpiCards' => $kpiCards,
+                    'dayBook' => $dayBook,
+                ]));
+
+            case 'transfers':
+            case 'waybills':
+                $transfersQuery = $accountingService->buildTransfersQuery($filters);
+                $transfers = $transfersQuery->with(['fromWarehouse', 'toWarehouse', 'senderUser', 'items.product'])->get();
+
+                $totalUnitsSent = $transfers->sum('quantity_sent');
+                $totalUnitsReceived = $transfers->sum('quantity_received');
+                $totalDiscrepancies = $transfers->sum('discrepancy');
+
+                $kpiCards = [
+                    ['label' => 'WAYBILLS DISPATCHED', 'value' => number_format(count($transfers))],
+                    ['label' => 'UNITS DISPATCHED', 'value' => number_format($totalUnitsSent)],
+                    ['label' => 'UNITS RECEIVED', 'value' => number_format($totalUnitsReceived)],
+                    ['label' => 'TRANSIT DISCREPANCIES', 'value' => number_format($totalDiscrepancies)],
+                ];
+
+                return view('reports.pdf.transfers', array_merge($commonViewData, [
+                    'pageTitle' => 'Inter-Branch Transfer Movements & Discrepancy Report',
+                    'reportTitle' => 'Inter-Branch Transfer Movements & Discrepancy Report',
+                    'reportSubtitle' => 'Complete multi-location logistics audit trail with inventory in-transit tracking',
+                    'kpiCards' => $kpiCards,
+                    'transfers' => $transfers,
+                    'totalUnitsSent' => $totalUnitsSent,
+                    'totalUnitsReceived' => $totalUnitsReceived,
+                    'totalDiscrepancies' => $totalDiscrepancies,
+                ]));
+
+            case 'exchanges':
+            case 'exchange':
+                $exchangeData = $accountingService->getExchangeReport($filters);
+                $exchangesList = $exchangeData['rows'] ?? [];
+                $totalReturnCredit = (float) ($exchangeData['total_exchange_credit'] ?? 0);
+                $totalReplacementValue = collect($exchangesList)->sum('replacement_total');
+                $totalDifferentialCollected = (float) ($exchangeData['total_differential'] ?? 0);
+
+                $kpiCards = [
+                    ['label' => 'TOTAL EXCHANGES', 'value' => number_format($exchangeData['exchange_count'] ?? count($exchangesList))],
+                    ['label' => 'RETURN VALUE CREDITED', 'value' => '₦' . number_format($totalReturnCredit, 2)],
+                    ['label' => 'REPLACEMENT VALUE', 'value' => '₦' . number_format($totalReplacementValue, 2)],
+                    ['label' => 'DIFFERENTIAL REALIZED', 'value' => '₦' . number_format($totalDifferentialCollected, 2)],
+                ];
+
+                return view('reports.pdf.exchanges', array_merge($commonViewData, [
+                    'pageTitle' => 'Customer Product Exchanges & Dual-SKU Ledger',
+                    'reportTitle' => 'Customer Product Exchanges & Dual-SKU Ledger',
+                    'reportSubtitle' => 'Audit ledger of customer mattress replacements, valuation credits, and differentials',
+                    'kpiCards' => $kpiCards,
+                    'exchanges' => $exchangesList,
+                    'totalReturnCredit' => $totalReturnCredit,
+                    'totalReplacementValue' => $totalReplacementValue,
+                    'totalDifferentialCollected' => $totalDifferentialCollected,
+                ]));
+
+            case 'pending_orders':
+            case 'pending':
+            case 'unsupplied':
+                $pendingAnalytics = $accountingService->getPendingOrdersAnalytics($branchWarehouseId, $filters);
+                $ordersList = $pendingAnalytics['backlog'] ?? [];
+                $totalUnitsBacklogged = (int) ($pendingAnalytics['total_units'] ?? 0);
+                $totalPendingOrderValue = (float) ($pendingAnalytics['total_value'] ?? 0);
+                $totalPendingPaid = (float) collect($ordersList)->sum('paid_amount');
+
+                $kpiCards = [
+                    ['label' => 'PENDING ORDERS', 'value' => number_format($pendingAnalytics['total_orders'] ?? count($ordersList))],
+                    ['label' => 'UNITS UNFULFILLED', 'value' => number_format($totalUnitsBacklogged)],
+                    ['label' => 'TOTAL ORDER VALUE', 'value' => '₦' . number_format($totalPendingOrderValue, 2)],
+                    ['label' => 'ADVANCE DEPOSIT PAID', 'value' => '₦' . number_format($totalPendingPaid, 2)],
+                ];
+
+                return view('reports.pdf.pending_orders', array_merge($commonViewData, [
+                    'pageTitle' => 'Pending Orders & Unsupplied Stock Backlog',
+                    'reportTitle' => 'Pending Orders & Unsupplied Stock Backlog',
+                    'reportSubtitle' => 'Customer paid and partial orders awaiting warehouse dispatch or factory arrival',
+                    'kpiCards' => $kpiCards,
+                    'orders' => $ordersList,
+                    'totalUnitsBacklogged' => $totalUnitsBacklogged,
+                    'totalPendingOrderValue' => $totalPendingOrderValue,
+                    'totalPendingPaid' => $totalPendingPaid,
+                ]));
+
+            case 'damages':
+            case 'stock_out':
+            case 'adjustments':
+            case 'deductions':
+                $adjustments = $accountingService->buildAdjustmentsQuery($filters)->with(['warehouse', 'product'])->get();
+                $totalDeductedUnits = abs((int) $adjustments->sum('quantity'));
+
+                $kpiCards = [
+                    ['label' => 'TOTAL DEDUCTION LOGS', 'value' => number_format(count($adjustments))],
+                    ['label' => 'TOTAL UNITS DEDUCTED', 'value' => number_format($totalDeductedUnits)],
+                ];
+
+                return view('reports.pdf.stock_out', array_merge($commonViewData, [
+                    'pageTitle' => 'Stock Out & Non-Sale Deductions Audit Trail',
+                    'reportTitle' => 'Stock Out & Non-Sale Deductions Audit Trail',
+                    'reportSubtitle' => 'Official audit log of written-off damaged goods, expirations, and stock corrections',
+                    'kpiCards' => $kpiCards,
+                    'adjustments' => $adjustments,
+                    'totalDeductedUnits' => $totalDeductedUnits,
+                ]));
+
+            case 'returns':
+            case 'refunds':
+                $returns = $accountingService->buildReturnsQuery($filters)->with(['sale.warehouse'])->get();
+                $totalReturnedUnits = (int) $returns->sum('quantity');
+                $totalRefundAmount = (float) $returns->sum('refundAmount');
+
+                $kpiCards = [
+                    ['label' => 'TOTAL RETURN LOGS', 'value' => number_format(count($returns))],
+                    ['label' => 'TOTAL UNITS RETURNED', 'value' => number_format($totalReturnedUnits)],
+                    ['label' => 'REFUND VALUE ISSUED', 'value' => '₦' . number_format($totalRefundAmount, 2)],
+                ];
+
+                return view('reports.pdf.returns', array_merge($commonViewData, [
+                    'pageTitle' => 'Customer Returns & Refunds Ledger',
+                    'reportTitle' => 'Customer Returns & Refunds Ledger',
+                    'reportSubtitle' => 'Itemized record of customer product returns, inspection conditions, and refund amounts',
+                    'kpiCards' => $kpiCards,
+                    'returns' => $returns,
+                    'totalReturnedUnits' => $totalReturnedUnits,
+                    'totalRefundAmount' => $totalRefundAmount,
+                ]));
+
+            default:
+                abort(404, 'Unknown report export type: ' . e($type));
+        }
     }
 }

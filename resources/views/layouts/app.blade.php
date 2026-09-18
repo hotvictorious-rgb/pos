@@ -1236,7 +1236,7 @@
         </div>
 
         @php
-            $currentRole = auth()->user()->role ?? $authUser->role ?? 'admin';
+            $currentRole = auth()->user()->role ?? session('user_role') ?? ($authUser->role ?? 'admin');
         @endphp
         <nav class="sidebar-menu">
             <div class="menu-category">Main Operations</div>
@@ -1283,7 +1283,7 @@
 
             @if(in_array($currentRole, ['admin', 'manager', 'branch_manager', 'cashier', 'staff', 'sales_officer', 'viewer', 'executive_readonly']))
                 <a href="{{ route('debts.index') }}" class="nav-item {{ request()->routeIs('debts.*') ? 'active' : '' }}">
-                    <span>💳</span> <span>Customer Debts</span>
+                    <span>💳</span> <span>Debts & Installments</span>
                 </a>
             @endif
 
@@ -1300,6 +1300,16 @@
                 @if(in_array($currentRole, ['admin', 'super_admin', 'owner', 'store_owner']))
                     <a href="{{ route('users.index') }}" class="nav-item {{ request()->routeIs('users.*') ? 'active' : '' }}">
                         <span>👥</span> <span>Workers & Roles</span>
+                    </a>
+                    <a href="{{ route('subscription.index') }}" class="nav-item {{ request()->routeIs('subscription.*') ? 'active' : '' }}" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span style="display: flex; align-items: center; gap: 0.6rem;">
+                            <span>⭐</span> <span>Subscription &amp; Plan</span>
+                        </span>
+                        @if(isset($tenantModel) && $tenantModel && $tenantModel->status === 'trial')
+                            <span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 4px; text-transform: uppercase;">Trial</span>
+                        @elseif(isset($tenantModel) && $tenantModel && $tenantModel->status === 'active')
+                            <span style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 4px; text-transform: uppercase;">Active</span>
+                        @endif
                     </a>
                     <a href="{{ route('settings.index') }}" class="nav-item {{ request()->routeIs('settings.*') ? 'active' : '' }}">
                         <span>⚙️</span> <span>System Settings</span>

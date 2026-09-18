@@ -214,4 +214,105 @@ class ReportTabsAndAiExportsExhaustiveTest extends TestCase
             $this->assertTrue(isset($json['data']) || isset($json['meta']) || isset($json['metadata']), "Failed JSON structure for type: {$t}");
         }
     }
+
+    public function test_all_pdf_exports_return_200_with_executive_styling_and_isolation(): void
+    {
+        $this->actingAs($this->admin);
+
+        $types = [
+            'inventory',
+            'sales',
+            'debtors',
+            'day_book',
+            'transfers',
+            'exchanges',
+            'pending_orders',
+            'damages',
+            'returns',
+        ];
+
+        foreach ($types as $t) {
+            $response = $this->get(route('reports.export.pdf', ['type' => $t, 'date_preset' => 'TODAY']));
+            $response->assertStatus(200);
+            $response->assertSee('executive-table');
+            $response->assertSee('#0c2340');
+            $response->assertSee('Print / Save as PDF');
+            $response->assertSee('Powered by');
+            $response->assertSee('Victorious Market');
+            $response->assertSee('Your Trusted Online Market');
+        }
+
+        // Test Multi-Branch Inventory PDF contains specific columns and product
+        $invResponse = $this->get(route('reports.export.pdf', ['type' => 'inventory']));
+        $invResponse->assertStatus(200);
+        $invResponse->assertSee('Multi-Branch Physical Stock Report');
+        $invResponse->assertSee($this->product->code);
+        $invResponse->assertSee($this->warehouse->name);
+        $invResponse->assertSee('TOTAL UNITS ON GROUND');
+    }
+
+    public function test_inventory_report_and_pdf_export_filter_by_quantity_threshold(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Create product with 1 unit
+        $prodSingle = Product::create([
+            'id' => (string) Str::uuid(),
+            'name' => 'Single Low Item',
+            'code' => 'LOW-01',
+            'category' => 'Test',
+            'unitPrice' => 1000,
+            'archived' => false,
+        ]);
+        StockLevel::create([
+            'product_id' => $prodSingle->id,
+            'warehouse_id' => $this->warehouse->id,
+            'physical_stock' => 1,
+        ]);
+
+        // Create product with 0 units
+        $prodZero = Product::create([
+            'id' => (string) Str::uuid(),
+            'name' => 'Out of Stock Item',
+            'code' => 'ZERO-00',
+            'category' => 'Test',
+            'unitPrice' => 5000,
+            'archived' => false,
+        ]);
+        StockLevel::create([
+            'product_id' => $prodZero->id,
+            'warehouse_id' => $this->warehouse->id,
+            'physical_stock' => 0,
+        ]);
+
+        // 1. Filter min_qty = 2 (Should only include Royal Sugar 50kg with stock 100)
+        $respQty2 = $this->get(route('reports.index', ['tab' => 'inventory', 'min_qty' => '2']));
+        $respQty2->assertStatus(200);
+        $respQty2->assertSee('RS-50');
+        $respQty2->assertDontSee('LOW-01');
+        $respQty2->assertDontSee('ZERO-00');
+
+        $pdfQty2 = $this->get(route('reports.export.pdf', ['type' => 'inventory', 'min_qty' => '2']));
+        $pdfQty2->assertStatus(200);
+        $pdfQty2->assertSee('RS-50');
+        $pdfQty2->assertDontSee('LOW-01');
+        $pdfQty2->assertDontSee('ZERO-00');
+        $pdfQty2->assertSee('Quantity ≥ 2 Units');
+
+        // 2. Filter min_qty = 1 (Should include RS-50 and LOW-01, but NOT ZERO-00)
+        $pdfQty1 = $this->get(route('reports.export.pdf', ['type' => 'inventory', 'min_qty' => '1']));
+        $pdfQty1->assertStatus(200);
+        $pdfQty1->assertSee('RS-50');
+        $pdfQty1->assertSee('LOW-01');
+        $pdfQty1->assertDontSee('ZERO-00');
+        $pdfQty1->assertSee('In-Stock (≥ 1 Unit)');
+
+        // 3. Filter min_qty = 0 (Should only include ZERO-00)
+        $pdfQty0 = $this->get(route('reports.export.pdf', ['type' => 'inventory', 'min_qty' => '0']));
+        $pdfQty0->assertStatus(200);
+        $pdfQty0->assertSee('ZERO-00');
+        $pdfQty0->assertDontSee('RS-50');
+        $pdfQty0->assertDontSee('LOW-01');
+        $pdfQty0->assertSee('Out of Stock (= 0 Units)');
+    }
 }

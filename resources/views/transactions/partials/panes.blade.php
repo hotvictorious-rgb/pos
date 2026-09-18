@@ -71,12 +71,22 @@
                             $returnedUnits = ($sale->returns && $sale->returns->isNotEmpty()) ? (int) $sale->returns->sum('quantity') : 0;
                             $returnedAmount = ($sale->returns && $sale->returns->isNotEmpty()) ? (float) $sale->returns->sum('refundAmount') : 0.0;
 
-                            $isFullyReturned = in_array(strtoupper($sale->status ?? ''), ['RETURNED', 'CANCELLED'])
-                                || in_array(strtoupper($sale->deliveryStatus ?? ''), ['RETURNED', 'CANCELLED'])
-                                || ($soldUnits > 0 && $returnedUnits >= $soldUnits)
-                                || ($sale->totalAmount > 0 && $returnedAmount >= $sale->totalAmount);
+                            $isCancelled = strtoupper($sale->status ?? '') === 'CANCELLED';
 
-                            $isPartiallyReturned = $hasReturns && !$isFullyReturned;
+                            $hasReturns = ($sale->returns && $sale->returns->isNotEmpty()) || (($sale->returns_count ?? 0) > 0);
+                            $allReturnsAreExchanges = $hasReturns && $sale->returns->every(function ($r) {
+                                return stripos($r->reason ?? '', 'Exchanged') !== false;
+                            });
+                            $hasSomeExchangedReturns = $hasReturns && $sale->returns->contains(function ($r) {
+                                return stripos($r->reason ?? '', 'Exchanged') !== false;
+                            });
+
+                            $isFullyReturned = !$isCancelled && (in_array(strtoupper($sale->status ?? ''), ['RETURNED'])
+                                || in_array(strtoupper($sale->deliveryStatus ?? ''), ['RETURNED'])
+                                || ($soldUnits > 0 && $returnedUnits >= $soldUnits)
+                                || ($sale->totalAmount > 0 && $returnedAmount >= $sale->totalAmount));
+
+                            $isPartiallyReturned = !$isCancelled && $hasReturns && !$isFullyReturned;
                             $partReturnLabel = $soldUnits > 0 ? "⚠️ PART-RETURN ({$returnedUnits}/{$soldUnits})" : "⚠️ PART-RETURN";
                         @endphp
                         <tr>
@@ -87,9 +97,21 @@
                                 <strong style="color: #93c5fd;">#{{ substr($sale->id, 0, 8) }}</strong>
                             </td>
                             <td>
-                                @if($isExchange)
-                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">
+                                @if($isCancelled)
+                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5);">
+                                        🚫 VOIDED / CANCELLED
+                                    </span>
+                                @elseif($isExchange)
+                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);" title="Purchase with trade-in exchange credit">
                                         🔄 EXCHANGE
+                                    </span>
+                                @elseif($allReturnsAreExchanges && $isFullyReturned)
+                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);" title="Original items were exchanged for replacement goods in another sale">
+                                        🔄 EXCHANGED (SWAPPED)
+                                    </span>
+                                @elseif($hasSomeExchangedReturns && $isPartiallyReturned)
+                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);" title="Items partially exchanged for replacement goods">
+                                        🔄 PART-EXCHANGED
                                     </span>
                                 @elseif($isFullyReturned)
                                     <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 800; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">
@@ -803,20 +825,24 @@
         </div>
 </div>
 
-<!-- PANE: DEBTS -->
+<!-- PANE: DEBTS & INSTALLMENTS -->
 <div id="pane-debts" class="ledger-tab-pane" style="{{ $activeTab === 'debts' ? '' : 'display: none;' }}">
-        <div class="summary-grid">
+        <div class="summary-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
             <div class="summary-card">
                 <h4>Total Repayments Collected</h4>
                 <div class="val" style="color: #4ade80;">₦{{ number_format($totalRepayments, 0) }}</div>
             </div>
             <div class="summary-card">
-                <h4>Credit / Debt Incurred</h4>
-                <div class="val" style="color: #fbbf24;">₦{{ number_format($totalDebtCreated, 0) }}</div>
+                <h4>Customer Debts (Goods Supplied)</h4>
+                <div class="val" style="color: #f87171;">₦{{ number_format($totalDeliveredDebt ?? 0, 0) }}</div>
             </div>
             <div class="summary-card">
-                <h4>Current Total Open Debt</h4>
-                <div class="val" style="color: #f87171;">₦{{ number_format($totalOpenDebt, 0) }}</div>
+                <h4>Active Installments (Goods in Shop)</h4>
+                <div class="val" style="color: #c084fc;">₦{{ number_format($totalInstallmentsInShop ?? 0, 0) }}</div>
+            </div>
+            <div class="summary-card">
+                <h4>Current Open Customer Debt</h4>
+                <div class="val" style="color: #fbbf24;">₦{{ number_format($totalOpenDebt, 0) }}</div>
             </div>
             <div class="summary-card">
                 <h4>Ledger Entries</h4>
@@ -842,7 +868,7 @@
                         <tr>
                             <th>Date & Time</th>
                             <th>Customer Name</th>
-                            <th>Transaction Type</th>
+                            <th>Transaction Type & Agreement</th>
                             <th>Amount</th>
                             <th>Balance Remaining After</th>
                             <th>Payment Method / Ref</th>
@@ -863,14 +889,40 @@
                                 @endif
                             </td>
                             <td>
+                                @php
+                                    $isSaleUnsupplied = $entry->sale && in_array($entry->sale->deliveryStatus, ['UNSUPPLIED', 'PENDING_PICKUP', 'NOT_SUPPLIED']);
+                                    $isSaleDelivered = !$entry->sale || in_array($entry->sale->deliveryStatus, ['DELIVERED', 'SUPPLIED']);
+                                @endphp
                                 @if($entry->type === 'PAYMENT')
-                                    <span class="badge badge-success">💵 Part Payment</span>
+                                    @if($isSaleUnsupplied)
+                                        <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">
+                                            💵 Installment Payment
+                                        </span>
+                                    @else
+                                        <span class="badge badge-success">
+                                            💵 Debt Repayment
+                                        </span>
+                                    @endif
                                 @elseif($entry->type === 'INVOICE')
-                                    <span class="badge badge-danger">💳 Debt Incurred</span>
+                                    @if($isSaleUnsupplied)
+                                        <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">
+                                            📦 INSTALLMENT (In Shop)
+                                        </span>
+                                    @else
+                                        <span class="badge badge-danger">
+                                            🚨 DEBT (Goods Supplied)
+                                        </span>
+                                    @endif
                                 @elseif($entry->type === 'RETURN_CREDIT')
                                     <span class="badge badge-info">🔄 Return Offset</span>
                                 @else
                                     <span class="badge badge-secondary">{{ $entry->type }}</span>
+                                @endif
+
+                                @if($entry->sale)
+                                    <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.25rem;">
+                                        Sale #{{ substr($entry->sale->id, 0, 8) }} · {{ $isSaleUnsupplied ? '⏳ In Shop' : '🟢 Collected' }}
+                                    </div>
                                 @endif
                             </td>
                             <td style="font-weight: 800; font-size: 1rem; color: {{ $entry->type === 'PAYMENT' ? '#4ade80' : '#f87171' }};">
@@ -883,12 +935,21 @@
                             <td>{{ $entry->recorded_by }}</td>
                             <td>
                                 <div class="action-btn-group">
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('CUSTOMER PAYMENT RECEIPT', 'REC-{{ substr(md5($entry->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($entry->created_at)) }}', 'Customer', '{{ addslashes($entry->customer->name ?? 'Customer') }}', '{{ $entry->type }}', '#22c55e', [{name: 'Payment via {{ $entry->payment_method ?: 'CASH' }} (Ref: {{ $entry->reference_no ?: 'Standard' }})', qty: '1 entry', note: 'New Balance Owed: ₦{{ number_format($entry->balance_after, 0) }}'}], 'Amount Paid: ₦{{ number_format($entry->amount, 0) }}', '{{ addslashes($entry->recorded_by) }}', 'Customer ledger balance updated.')">
-                                        📄 Print Receipt
-                                    </button>
-                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Customer Debtor Statement Entry', 'REC-{{ substr(md5($entry->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($entry->created_at)) }}', 'Customer Name', '{{ addslashes($entry->customer->name ?? 'Customer') }}', '{{ $entry->type }}', '#22c55e', [{label: 'Transaction Type', val: '{{ $entry->type }}'}, {label: 'Amount Paid', val: '₦{{ number_format($entry->amount, 0) }}', color: '{{ $entry->type === 'PAYMENT' ? '#4ade80' : '#f87171' }}'}, {label: 'Balance Remaining After', val: '₦{{ number_format($entry->balance_after, 0) }}', color: '#fbbf24'}, {label: 'Payment Method', val: '{{ $entry->payment_method ?: 'N/A' }}'}, {label: 'Cashier / Officer', val: '{{ addslashes($entry->recorded_by) }}'}, {label: 'Notes', val: '{{ addslashes($entry->notes ?: 'None') }}'}], 'Ledger balance recalculated automatically.')">
-                                        🔍 Details
-                                    </button>
+                                    @if($entry->sale)
+                                        <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewSaleDetails({{ json_encode($entry->sale) }})">
+                                            🔍 Details & Items
+                                        </button>
+                                        <a href="{{ route('pos.receipt', $entry->sale->id) }}" target="_blank" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">
+                                            📄 Receipt
+                                        </a>
+                                    @else
+                                        <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Customer Debtor Statement Entry', 'REC-{{ substr(md5($entry->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($entry->created_at)) }}', 'Customer Name', '{{ addslashes($entry->customer->name ?? 'Customer') }}', '{{ $entry->type }}', '#22c55e', [{label: 'Transaction Type', val: '{{ $entry->type }}'}, {label: 'Amount Paid', val: '₦{{ number_format($entry->amount, 0) }}', color: '{{ $entry->type === 'PAYMENT' ? '#4ade80' : '#f87171' }}'}, {label: 'Balance Remaining After', val: '₦{{ number_format($entry->balance_after, 0) }}', color: '#fbbf24'}, {label: 'Payment Method', val: '{{ $entry->payment_method ?: 'N/A' }}'}, {label: 'Cashier / Officer', val: '{{ addslashes($entry->recorded_by) }}'}, {label: 'Notes', val: '{{ addslashes($entry->notes ?: 'None') }}'}], 'Direct account balance payment.')">
+                                            🔍 Details
+                                        </button>
+                                        <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="printGenericVoucher('CUSTOMER PAYMENT RECEIPT', 'REC-{{ substr(md5($entry->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($entry->created_at)) }}', 'Customer', '{{ addslashes($entry->customer->name ?? 'Customer') }}', '{{ $entry->type }}', '#22c55e', [{name: 'Payment via {{ $entry->payment_method ?: 'CASH' }} (Ref: {{ $entry->reference_no ?: 'Standard' }})', qty: '1 entry', note: 'New Balance Owed: ₦{{ number_format($entry->balance_after, 0) }}'}], 'Amount Paid: ₦{{ number_format($entry->amount, 0) }}', '{{ addslashes($entry->recorded_by) }}', 'Customer ledger balance updated.')">
+                                            📄 Print Receipt
+                                        </button>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -906,5 +967,155 @@
                 {{ $debtLedgers->links() }}
             </div>
         </div>
-</div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 9: CUSTOMER EXCHANGES PANE -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div id="pane-exchanges" class="ledger-tab-pane" style="{{ $activeTab === 'exchanges' ? '' : 'display: none;' }}">
+        <!-- KPI Summary Cards -->
+        <div class="summary-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+            <div class="summary-card">
+                <h4>Total Exchanges Logged</h4>
+                <div class="val" style="color: #c084fc;">{{ number_format($exchangesCount) }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Customer product swaps</div>
+            </div>
+            <div class="summary-card">
+                <h4>Exchange Credits Allowed</h4>
+                <div class="val" style="color: #a855f7;">₦{{ number_format($totalExchangeCreditsValue, 0) }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Trade-in credit applied</div>
+            </div>
+            <div class="summary-card">
+                <h4>Total Replacement Sales Value</h4>
+                <div class="val" style="color: #38bdf8;">₦{{ number_format($exchangeSalesList->sum('totalAmount'), 0) }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Current page replacements value</div>
+            </div>
+            <div class="summary-card">
+                <h4>Additional Top-Up Collected</h4>
+                @php
+                    $currentPageTopUp = 0;
+                    foreach ($exchangeSalesList as $es) {
+                        $c = $es->payments->where('method', 'EXCHANGE_CREDIT')->sum('amount');
+                        $t = $es->payments->where('method', '!=', 'EXCHANGE_CREDIT')->where('amount', '>', 0)->sum('amount');
+                        $currentPageTopUp += $t;
+                    }
+                @endphp
+                <div class="val" style="color: #4ade80;">₦{{ number_format($currentPageTopUp, 0) }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Cash/POS top-up by customers</div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <div class="table-top-bar">
+                <div style="flex: 1; max-width: 320px;">
+                    <input type="text" placeholder="⚡ Live filter exchanges on this page..." onkeyup="filterTableRows('exchangesTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <a href="{{ route('transactions.export.csv', array_merge(request()->query(), ['tab' => 'exchanges'])) }}" class="btn btn-secondary" style="padding: 0.45rem 0.85rem; font-size: 0.75rem;">
+                        📥 Export CSV
+                    </a>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table id="exchangesTable">
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Invoice / Ref</th>
+                            <th>Customer</th>
+                            <th>Branch</th>
+                            <th>Trade-In Credit</th>
+                            <th>Replacement Value</th>
+                            <th>Top-Up Paid</th>
+                            <th>Status</th>
+                            <th>Operator</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($exchangeSalesList as $sale)
+                        @php
+                            $tradeInCredit = (float) $sale->payments->where('method', 'EXCHANGE_CREDIT')->sum('amount');
+                            $cashPosTopUp = (float) $sale->payments->where('method', '!=', 'EXCHANGE_CREDIT')->where('amount', '>', 0)->sum('amount');
+                            $isSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
+                            $itemsSummary = $sale->items->map(fn($it) => $it->productName . ' (×' . $it->quantity . ')')->implode(', ');
+
+                            $tradedInDesc = null;
+                            if (preg_match('/\[EXCHANGE RETURN: (.*?)(?: \| Total Credit:.*?)?\]/i', $sale->note ?? '', $m)) {
+                                $tradedInDesc = trim($m[1]);
+                            }
+                        @endphp
+                        <tr>
+                            <td style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">
+                                {{ date('d M Y, h:i A', strtotime($sale->createdAt)) }}
+                            </td>
+                            <td>
+                                <strong style="color: #c084fc;">#{{ substr($sale->id, 0, 8) }}</strong>
+                                <div style="font-size: 0.7rem; color: #a855f7; font-weight: 700;">🔄 EXCHANGE</div>
+                            </td>
+                            <td>
+                                <strong>{{ $sale->customerName ?: ($sale->customer->name ?? 'Walk-in Customer') }}</strong>
+                                @if($sale->customerPhone || ($sale->customer && $sale->customer->phone))
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $sale->customerPhone ?: $sale->customer->phone }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                <span class="badge badge-info">{{ $sale->warehouse->name ?? 'Main Store' }}</span>
+                            </td>
+                            <td style="font-weight: 800; font-size: 0.95rem; color: #c084fc;">
+                                ₦{{ number_format($tradeInCredit, 0) }}
+                                @if($tradedInDesc)
+                                    <div style="font-size: 0.72rem; color: #e9d5ff; font-weight: 600; margin-top: 0.25rem; background: rgba(168, 85, 247, 0.12); padding: 0.25rem 0.45rem; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.25); line-height: 1.3;" title="Customer Traded-In: {{ $tradedInDesc }}">
+                                        ↩️ {{ $tradedInDesc }}
+                                    </div>
+                                @endif
+                            </td>
+                            <td style="font-weight: 700; color: #f8fafc;">
+                                ₦{{ number_format($sale->totalAmount, 0) }}
+                                <div style="font-size: 0.72rem; color: var(--text-muted);" title="{{ $itemsSummary }}">
+                                    {{ count($sale->items ?? []) }} new item(s) taken
+                                </div>
+                            </td>
+                            <td style="font-weight: 700; color: {{ $cashPosTopUp > 0 ? '#4ade80' : 'var(--text-muted)' }};">
+                                @if($cashPosTopUp > 0)
+                                    +₦{{ number_format($cashPosTopUp, 0) }}
+                                @else
+                                    <span style="color: var(--text-muted); font-size: 0.8rem;">₦0 (Even Swap)</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($isSupplied)
+                                    <span class="badge badge-success">🟢 Handed Over</span>
+                                @else
+                                    <span class="badge badge-warning">⏳ Awaiting Pickup</span>
+                                @endif
+                            </td>
+                            <td style="font-size: 0.85rem; color: #cbd5e1;">{{ $sale->userName ?: 'Cashier' }}</td>
+                            <td>
+                                <div class="action-btn-group">
+                                    <a href="{{ route('pos.receipt', $sale->id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" target="_blank">
+                                        🖨️ Receipt
+                                    </a>
+                                    <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewSaleDetails({{ json_encode($sale) }})">
+                                        🔍 Details
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="10" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                                No customer exchange transactions found matching current filters.
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 1.25rem;">
+                {{ $exchangeSalesList->links() }}
+            </div>
+        </div>
+    </div>
 

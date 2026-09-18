@@ -240,6 +240,14 @@
             return;
         }
 
+        const cartGross = cart.reduce((sum, item) => sum + (item.qty * item.price), 0);
+        const totalCredit = selectedReturns.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
+
+        if (totalCredit > cartGross) {
+            alert(`⚠️ Exchange Credit (₦${Math.round(totalCredit).toLocaleString('en-US')}) exceeds replacement items total in cart (₦${Math.round(cartGross).toLocaleString('en-US')}).\n\nExchanges are strictly for items of equal or higher value.\n\n👉 If the customer wants to downgrade and receive a cash/transfer refund for the difference, please process a "Return / Refund" under Transactions first, then start a fresh sale.`);
+            return;
+        }
+
         exchangeReturns = selectedReturns;
 
         const receiptRefInput = document.getElementById('receiptRefInput');
@@ -250,7 +258,6 @@
         closeExchangeModal();
         renderCart();
 
-        const totalCredit = exchangeReturns.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
         alert(`✓ Exchange Credit Applied!\n\nReceipt: ${currentLookupSale.ref}\nReturned Items: ${exchangeReturns.length} product(s)\nTotal Credit Deducted: -₦${Math.round(totalCredit).toLocaleString('en-US')}`);
     }
 
@@ -372,8 +379,44 @@
             if (list) list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:2rem 0;" id="emptyCartMessage">Tap any item on the left to add to sale 👈</div>';
             const dispTotal = document.getElementById('displayTotal');
             const hidTotal = document.getElementById('hiddenTotal');
-            if (dispTotal) dispTotal.textContent = '₦0';
+            const dispGross = document.getElementById('displayGrossTotal');
+            if (dispTotal) dispTotal.textContent = '₦0.00';
             if (hidTotal) hidTotal.value = 0;
+            if (dispGross) dispGross.textContent = '₦0.00';
+
+            const hidPaid = document.getElementById('hiddenPaid');
+            const hidCash = document.getElementById('hiddenCash');
+            const hidPos = document.getElementById('hiddenPos');
+            if (hidPaid) hidPaid.value = 0;
+            if (hidCash) hidCash.value = 0;
+            if (hidPos) hidPos.value = 0;
+
+            const splitCashInp = document.getElementById('splitCashInput');
+            const splitPosInp = document.getElementById('splitPosInput');
+            if (splitCashInp) splitCashInp.value = '';
+            if (splitPosInp) splitPosInp.value = '';
+
+            const splitTotalEl = document.getElementById('splitTotalTenderedDisplay');
+            if (splitTotalEl) splitTotalEl.textContent = '₦0';
+            const splitChangeRow = document.getElementById('splitChangeRow');
+            if (splitChangeRow) splitChangeRow.style.display = 'none';
+            const splitBalanceRow = document.getElementById('splitBalanceRow');
+            if (splitBalanceRow) splitBalanceRow.style.display = 'none';
+            const splitNoticeEl = document.getElementById('splitIncompleteNotice');
+            if (splitNoticeEl) splitNoticeEl.style.display = 'none';
+
+            const partPayInput = document.getElementById('partPayInput');
+            if (partPayInput) partPayInput.value = '';
+            const partSplitCashInp = document.getElementById('partSplitCashInput');
+            if (partSplitCashInp) partSplitCashInp.value = '';
+            const partSplitPosInp = document.getElementById('partSplitPosInput');
+            if (partSplitPosInp) partSplitPosInp.value = '';
+            const partSplitSumEl = document.getElementById('partSplitSumDisplay');
+            if (partSplitSumEl) partSplitSumEl.textContent = 'Deposit: ₦0';
+
+            const remainingEl = document.getElementById('remainingDebtDisplay');
+            if (remainingEl) remainingEl.textContent = '₦0';
+
             const mobileCountEl = document.getElementById('mobileCartCount');
             const mobileTotalEl = document.getElementById('mobileCartTotal');
             if (mobileCountEl) mobileCountEl.textContent = '0';
@@ -384,6 +427,7 @@
                 btn.style.opacity = 0.5;
                 btn.style.cursor = 'not-allowed';
             }
+            updateCustomerRequirements();
             return;
         }
 
@@ -551,6 +595,18 @@
         partPayTender = tender;
         const btnPos = document.getElementById('btnPartPos');
         const btnCash = document.getElementById('btnPartCash');
+        const btnSplit = document.getElementById('btnPartSplit');
+        const partSplitSubBox = document.getElementById('partSplitSubBox');
+
+        [btnPos, btnCash, btnSplit].forEach(b => {
+            if (b) {
+                b.style.border = '1px solid #475569';
+                b.style.background = 'rgba(15,23,42,0.8)';
+                b.style.color = '#94a3b8';
+                b.style.boxShadow = 'none';
+            }
+        });
+
         if (tender === 'POS') {
             if (btnPos) {
                 btnPos.style.border = '2px solid #3b82f6';
@@ -558,26 +614,56 @@
                 btnPos.style.color = '#93c5fd';
                 btnPos.style.boxShadow = '0 0 10px rgba(59,130,246,0.3)';
             }
-            if (btnCash) {
-                btnCash.style.border = '1px solid #475569';
-                btnCash.style.background = 'rgba(15,23,42,0.8)';
-                btnCash.style.color = '#94a3b8';
-                btnCash.style.boxShadow = 'none';
-            }
-        } else {
+            if (partSplitSubBox) partSplitSubBox.style.display = 'none';
+        } else if (tender === 'CASH') {
             if (btnCash) {
                 btnCash.style.border = '2px solid #22c55e';
                 btnCash.style.background = 'rgba(34,197,94,0.25)';
                 btnCash.style.color = '#86efac';
                 btnCash.style.boxShadow = '0 0 10px rgba(34,197,94,0.3)';
             }
-            if (btnPos) {
-                btnPos.style.border = '1px solid #475569';
-                btnPos.style.background = 'rgba(15,23,42,0.8)';
-                btnPos.style.color = '#94a3b8';
-                btnPos.style.boxShadow = 'none';
+            if (partSplitSubBox) partSplitSubBox.style.display = 'none';
+        } else if (tender === 'SPLIT') {
+            if (btnSplit) {
+                btnSplit.style.border = '2px solid #a855f7';
+                btnSplit.style.background = 'rgba(168,85,247,0.25)';
+                btnSplit.style.color = '#d8b4fe';
+                btnSplit.style.boxShadow = '0 0 10px rgba(168,85,247,0.3)';
             }
+            if (partSplitSubBox) partSplitSubBox.style.display = 'block';
+
+            // Auto-initialize split inputs from partPayInput if available
+            const partPayInput = document.getElementById('partPayInput');
+            const cashInp = document.getElementById('partSplitCashInput');
+            const posInp = document.getElementById('partSplitPosInput');
+            const curPay = parseFloat(partPayInput ? partPayInput.value : 0) || 0;
+            if (cashInp && posInp && (!cashInp.value && !posInp.value) && curPay > 0) {
+                posInp.value = curPay;
+                cashInp.value = '';
+            }
+            updatePartSplitCalculation();
+            return;
         }
+        updateDebtCalculation();
+    }
+
+    function updatePartSplitCalculation() {
+        const cashInp = document.getElementById('partSplitCashInput');
+        const posInp = document.getElementById('partSplitPosInput');
+        const partCash = parseFloat(cashInp ? cashInp.value : 0) || 0;
+        const partPos = parseFloat(posInp ? posInp.value : 0) || 0;
+        const totalDeposit = partCash + partPos;
+
+        const partPayInput = document.getElementById('partPayInput');
+        if (partPayInput) {
+            partPayInput.value = totalDeposit > 0 ? totalDeposit : '';
+        }
+
+        const sumEl = document.getElementById('partSplitSumDisplay');
+        if (sumEl) {
+            sumEl.textContent = 'Deposit: ₦' + Math.round(totalDeposit).toLocaleString('en-US');
+        }
+
         updateDebtCalculation();
     }
 
@@ -628,18 +714,7 @@
 
     function updateCustomerRequirements() {
         const isSupplied = document.getElementById('radioYes') ? document.getElementById('radioYes').checked : true;
-        let isDebt = (paymentMode === 'DEBT');
-        if (paymentMode === 'SPLIT') {
-            const hidTotal = document.getElementById('hiddenTotal');
-            const grossTotal = parseFloat(hidTotal ? hidTotal.value : 0) || 0;
-            const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-            const netPayable = Math.max(0, grossTotal - totalExchangeCredit);
-            const cashVal = parseFloat(document.getElementById('splitCashInput')?.value || 0) || 0;
-            const posVal = parseFloat(document.getElementById('splitPosInput')?.value || 0) || 0;
-            if ((cashVal + posVal) < netPayable) {
-                isDebt = true;
-            }
-        }
+        const isDebt = (paymentMode === 'DEBT');
         const isStrict = isDebt || !isSupplied;
 
         const nameReq = document.getElementById('custNameReq');
@@ -679,18 +754,31 @@
         const hidPos = document.getElementById('hiddenPos');
 
         if (paymentMode === 'DEBT') {
-            const partPay = parseFloat(partPayInput ? partPayInput.value : 0) || 0;
-            const remaining = Math.max(0, netPayable - partPay);
-            if (remainingEl) {
-                remainingEl.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
-            }
-            if (hidPaid) hidPaid.value = partPay;
-            if (partPayTender === 'CASH') {
-                if (hidCash) hidCash.value = partPay;
-                if (hidPos) hidPos.value = 0;
+            if (partPayTender === 'SPLIT') {
+                const partCash = parseFloat(document.getElementById('partSplitCashInput')?.value || 0) || 0;
+                const partPos = parseFloat(document.getElementById('partSplitPosInput')?.value || 0) || 0;
+                const totalDeposit = partCash + partPos;
+                const remaining = Math.max(0, netPayable - totalDeposit);
+                if (remainingEl) {
+                    remainingEl.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
+                }
+                if (hidPaid) hidPaid.value = totalDeposit;
+                if (hidCash) hidCash.value = partCash;
+                if (hidPos) hidPos.value = partPos;
             } else {
-                if (hidPos) hidPos.value = partPay;
-                if (hidCash) hidCash.value = 0;
+                const partPay = parseFloat(partPayInput ? partPayInput.value : 0) || 0;
+                const remaining = Math.max(0, netPayable - partPay);
+                if (remainingEl) {
+                    remainingEl.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
+                }
+                if (hidPaid) hidPaid.value = partPay;
+                if (partPayTender === 'CASH') {
+                    if (hidCash) hidCash.value = partPay;
+                    if (hidPos) hidPos.value = 0;
+                } else {
+                    if (hidPos) hidPos.value = partPay;
+                    if (hidCash) hidCash.value = 0;
+                }
             }
         } else if (paymentMode === 'POS') {
             if (remainingEl) remainingEl.textContent = '₦0';
@@ -732,18 +820,20 @@
         const changeRow = document.getElementById('splitChangeRow');
         const remainingEl = document.getElementById('splitRemainingDisplay');
         const balanceRow = document.getElementById('splitBalanceRow');
+        const noticeEl = document.getElementById('splitIncompleteNotice');
 
         if (totalTendered >= netPayable) {
             const change = Math.max(0, cashVal - Math.max(0, netPayable - posVal));
             if (changeEl) changeEl.textContent = '₦' + Math.round(change).toLocaleString('en-US');
             if (changeRow) changeRow.style.display = change > 0 ? 'flex' : 'none';
-            if (remainingEl) remainingEl.textContent = '₦0 (Settled)';
             if (balanceRow) balanceRow.style.display = 'none';
+            if (noticeEl) noticeEl.style.display = 'none';
         } else {
-            const remaining = Math.max(0, netPayable - totalTendered);
+            const shortfall = Math.max(0, netPayable - totalTendered);
             if (changeRow) changeRow.style.display = 'none';
-            if (remainingEl) remainingEl.textContent = '₦' + Math.round(remaining).toLocaleString('en-US');
+            if (remainingEl) remainingEl.textContent = '-₦' + Math.round(shortfall).toLocaleString('en-US');
             if (balanceRow) balanceRow.style.display = 'flex';
+            if (noticeEl) noticeEl.style.display = 'block';
         }
 
         updateCustomerRequirements();
@@ -858,6 +948,72 @@
             const badge = document.getElementById('customerFinancialBadge');
             if (badge) badge.style.display = 'none';
         }
+    }
+
+    let receiptRefDuplicateError = null;
+    let receiptRefCheckTimeout = null;
+
+    function onReceiptRefInput(inputEl) {
+        if (!inputEl) inputEl = document.getElementById('receiptRefInput');
+        if (!inputEl) return;
+
+        const feedbackEl = document.getElementById('receiptRefFeedback');
+        const rawVal = inputEl.value.trim();
+
+        if (receiptRefCheckTimeout) {
+            clearTimeout(receiptRefCheckTimeout);
+        }
+
+        if (!rawVal) {
+            receiptRefDuplicateError = null;
+            inputEl.style.borderColor = '#475569';
+            inputEl.style.background = '#0b0f19';
+            if (feedbackEl) {
+                feedbackEl.style.display = 'none';
+                feedbackEl.innerHTML = '';
+            }
+            return;
+        }
+
+        const checkUrl = inputEl.getAttribute('data-check-url') || '/pos/check-receipt-ref';
+
+        receiptRefCheckTimeout = setTimeout(() => {
+            fetch(`${checkUrl}?ref=${encodeURIComponent(rawVal)}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (inputEl.value.trim() !== rawVal) return;
+
+                if (data.exists) {
+                    receiptRefDuplicateError = data.message || `Receipt slip #${rawVal} was already used on Sale #${data.saleId} by ${data.cashier} at this branch.`;
+                    inputEl.style.borderColor = '#ef4444';
+                    inputEl.style.background = 'rgba(239, 68, 68, 0.12)';
+                    if (feedbackEl) {
+                        feedbackEl.style.display = 'block';
+                        feedbackEl.innerHTML = `<span style="color: #fca5a5; font-weight: 700;">⚠️ Duplicate Receipt Slip:</span> <span style="color: #fecaca;">Already used on Sale #<strong>${data.saleId}</strong> by <strong>${data.cashier}</strong> (${data.date}). Users cannot reuse receipt numbers in this branch.</span>`;
+                        feedbackEl.style.background = 'rgba(239, 68, 68, 0.18)';
+                        feedbackEl.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+                    }
+                } else {
+                    receiptRefDuplicateError = null;
+                    inputEl.style.borderColor = '#22c55e';
+                    inputEl.style.background = 'rgba(34, 197, 94, 0.08)';
+                    if (feedbackEl) {
+                        feedbackEl.style.display = 'block';
+                        feedbackEl.innerHTML = `<span style="color: #4ade80; font-weight: 700;">✓ Available:</span> <span style="color: #86efac;">Receipt slip #<strong>${rawVal}</strong> is unique and valid for this branch.</span>`;
+                        feedbackEl.style.background = 'rgba(34, 197, 94, 0.12)';
+                        feedbackEl.style.border = '1px solid rgba(34, 197, 94, 0.3)';
+                    }
+                }
+            })
+            .catch(() => {
+                // Fail-safe network fallback: handled by server during checkout
+            });
+        }, 300);
     }
 
     function openQuickCustomerModal() {
@@ -1082,8 +1238,34 @@
             });
         }
 
-        // 4. Retail Payment Mode & Debt Validation
-        if (paymentMode === 'DEBT') {
+        // 4. Exchange Trade-In Value Boundary Check
+        const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        if (totalExchangeCredit > total) {
+            errors.push({
+                title: 'Exchange Credit Exceeds Cart Total',
+                desc: `Exchange trade-in credit (<strong>₦${Math.round(totalExchangeCredit).toLocaleString('en-US')}</strong>) cannot exceed the replacement cart total (<strong>₦${Math.round(total).toLocaleString('en-US')}</strong>).<br><span style="color:#fbbf24;font-size:0.78rem;">👉 Exchanges are strictly for items of equal or higher value. To downgrade and receive cash back, process a "Return / Refund" under Transactions first.</span>`,
+                focus: 'searchInput'
+            });
+        }
+
+        // 5. Retail Payment Mode & Debt Validation
+        if (paymentMode === 'SPLIT') {
+            const cashVal = parseFloat(document.getElementById('splitCashInput')?.value || 0) || 0;
+            const posVal = parseFloat(document.getElementById('splitPosInput')?.value || 0) || 0;
+            const totalTendered = cashVal + posVal;
+
+            const totalExchangeCredit = exchangeReturns.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+            const netDue = Math.max(0, total - totalExchangeCredit);
+
+            if (totalTendered < netDue) {
+                const shortfall = netDue - totalTendered;
+                errors.push({
+                    title: 'Split Payment Incomplete (Strict Full Settlement)',
+                    desc: `Split payment requires 100% full settlement of the net bill (<strong>₦${Math.round(netDue).toLocaleString('en-US')}</strong>).<br>You tendered <strong>₦${Math.round(totalTendered).toLocaleString('en-US')}</strong> (Shortfall: <strong>₦${Math.round(shortfall).toLocaleString('en-US')}</strong>).<br><span style="color:#fbbf24;font-size:0.78rem;">👉 If customer is paying a deposit and taking the rest on credit, switch to the <strong>"🤝 Part / Debt"</strong> tab.</span>`,
+                    focus: 'splitPosInput'
+                });
+            }
+        } else if (paymentMode === 'DEBT') {
             const partPayRaw = document.getElementById('partPayInput') ? document.getElementById('partPayInput').value : '0';
             const partPayInput = parseFloat(partPayRaw);
 
@@ -1102,6 +1284,20 @@
                     desc: `Amount paying now (₦${Math.round(partPayInput).toLocaleString('en-US')}) cannot be greater than the net bill (₦${Math.round(netDue).toLocaleString('en-US')}).`,
                     focus: 'partPayInput'
                 });
+            }
+
+            if (partPayTender === 'SPLIT') {
+                const partCash = parseFloat(document.getElementById('partSplitCashInput')?.value || 0) || 0;
+                const partPos = parseFloat(document.getElementById('partSplitPosInput')?.value || 0) || 0;
+                const splitDeposit = partCash + partPos;
+
+                if (splitDeposit > netDue) {
+                    errors.push({
+                        title: 'Deposit Amount Exceeds Net Bill',
+                        desc: `Split deposit (₦${Math.round(splitDeposit).toLocaleString('en-US')}) cannot be greater than the net bill (₦${Math.round(netDue).toLocaleString('en-US')}). For full payment, choose Cash, POS, or Split.`,
+                        focus: 'partSplitCashInput'
+                    });
+                }
             }
 
             const receiptRefVal = document.getElementById('receiptRefInput') ? document.getElementById('receiptRefInput').value.trim() : '';
@@ -1154,6 +1350,15 @@
                     });
                 }
             }
+        }
+
+        // 6. Strict Physical Receipt Uniqueness Check
+        if (receiptRefDuplicateError) {
+            errors.push({
+                title: 'Duplicate Receipt Slip Number',
+                desc: `${receiptRefDuplicateError}<br><span style="color:#fbbf24;font-size:0.78rem;">👉 Cashiers and users cannot enter an already existing receipt number again at this branch. Please check the paper booklet slip.</span>`,
+                focus: 'receiptRefInput'
+            });
         }
 
         if (errors.length > 0) {
@@ -1218,7 +1423,19 @@
 
         const confirmPayingEl = document.getElementById('confirmPayingNow');
         if (confirmPayingEl) {
-            confirmPayingEl.textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + (paymentMode === 'DEBT' ? (paid > 0 ? 'Part-Paid' : 'Not Paid') : (paymentMode === 'SPLIT' ? 'Split Tender' : 'Paid ' + paymentMode)) + ')';
+            let payMethodLabel = 'Paid ' + paymentMode;
+            if (paymentMode === 'DEBT') {
+                if (paid <= 0) {
+                    payMethodLabel = 'Fully Unpaid (Debt)';
+                } else if (partPayTender === 'SPLIT') {
+                    payMethodLabel = 'Part-Paid via Split Deposit';
+                } else {
+                    payMethodLabel = 'Part-Paid via ' + partPayTender;
+                }
+            } else if (paymentMode === 'SPLIT') {
+                payMethodLabel = 'Split Tender (Full Settle)';
+            }
+            confirmPayingEl.textContent = '₦' + Math.round(paid).toLocaleString('en-US') + ' (' + payMethodLabel + ')';
             confirmPayingEl.style.color = '#60a5fa';
         }
 
@@ -1230,11 +1447,11 @@
         const cashVal = parseFloat(document.getElementById('hiddenCash')?.value || 0) || 0;
         const posVal = parseFloat(document.getElementById('hiddenPos')?.value || 0) || 0;
 
-        if (paymentMode === 'SPLIT') {
+        if (paymentMode === 'SPLIT' || (paymentMode === 'DEBT' && partPayTender === 'SPLIT' && (cashVal > 0 || posVal > 0))) {
             if (confirmSplitRow) confirmSplitRow.style.display = 'flex';
             if (confirmSplitText) confirmSplitText.textContent = `💵 ₦${Math.round(cashVal).toLocaleString('en-US')} Cash + 💳 ₦${Math.round(posVal).toLocaleString('en-US')} POS`;
             const totalTender = cashVal + posVal;
-            if (totalTender > netDueAmt && cashVal > 0) {
+            if (totalTender > netDueAmt && cashVal > 0 && paymentMode === 'SPLIT') {
                 const change = Math.max(0, cashVal - Math.max(0, netDueAmt - posVal));
                 if (confirmChangeRow) confirmChangeRow.style.display = change > 0 ? 'flex' : 'none';
                 if (confirmChangeEl) confirmChangeEl.textContent = '₦' + Math.round(change).toLocaleString('en-US');
@@ -1446,15 +1663,18 @@
     window.switchPosTab = switchPosTab;
     window.selectHandover = selectHandover;
     window.selectPaymentMode = selectPaymentMode;
+    window.handlePayTabClick = selectPaymentMode;
     window.setPartPayTender = setPartPayTender;
     window.updateDebtCalculation = updateDebtCalculation;
     window.updateSplitCalculation = updateSplitCalculation;
+    window.updatePartSplitCalculation = updatePartSplitCalculation;
     window.fillRemainingToPos = fillRemainingToPos;
     window.fillRemainingToCash = fillRemainingToCash;
     window.onCustomerSelected = onCustomerSelected;
     window.validateNigerianPhone = validateNigerianPhone;
     window.onManualCustomerTyping = onManualCustomerTyping;
     window.onManualPhoneTyping = onManualPhoneTyping;
+    window.onReceiptRefInput = onReceiptRefInput;
     window.openQuickCustomerModal = openQuickCustomerModal;
     window.closeQuickCustomerModal = closeQuickCustomerModal;
     window.submitQuickCustomer = submitQuickCustomer;

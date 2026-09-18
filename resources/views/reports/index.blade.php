@@ -160,6 +160,20 @@
                     <input type="date" name="to_date" value="{{ request('to_date') }}">
                 </div>
 
+                @if(!($isBranchScoped ?? false) && count($warehouses ?? []) > 1)
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">🏢 Branch Location</label>
+                    <select name="warehouse_id">
+                        <option value="">-- All Branches (Consolidated) --</option>
+                        @foreach($warehouses as $wh)
+                            <option value="{{ $wh->id }}" {{ (request('warehouse_id') == $wh->id || (!request()->has('warehouse_id') && ($effectiveWh ?? session('active_warehouse_id')) == $wh->id)) ? 'selected' : '' }}>
+                                {{ $wh->name }} ({{ $wh->code }})
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 0.75rem;">Cashier / Staff</label>
                     <select name="user_name">
@@ -191,6 +205,19 @@
                         <option value="PAID_NOT_SUPPLIED" {{ request('delivery_status') === 'PAID_NOT_SUPPLIED' ? 'selected' : '' }}>🟠 Paid & Not Supplied</option>
                         <option value="PART_PAID_SUPPLIED" {{ request('delivery_status') === 'PART_PAID_SUPPLIED' ? 'selected' : '' }}>⚠️ Part-Paid & Supplied</option>
                         <option value="PART_PAID_NOT_SUPPLIED" {{ request('delivery_status') === 'PART_PAID_NOT_SUPPLIED' ? 'selected' : '' }}>⏳ Part-Paid & Not Supplied</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">📦 Stock Quantity</label>
+                    <select name="min_qty">
+                        <option value="">-- All Quantities --</option>
+                        <option value="1" {{ request('min_qty') === '1' ? 'selected' : '' }}>In-Stock (≥ 1 Unit)</option>
+                        <option value="2" {{ request('min_qty') === '2' ? 'selected' : '' }}>Qty ≥ 2 Units</option>
+                        <option value="5" {{ request('min_qty') === '5' ? 'selected' : '' }}>Qty ≥ 5 Units</option>
+                        <option value="10" {{ request('min_qty') === '10' ? 'selected' : '' }}>Qty ≥ 10 Units</option>
+                        <option value="20" {{ request('min_qty') === '20' ? 'selected' : '' }}>Qty ≥ 20 Units</option>
+                        <option value="0" {{ request('min_qty') === '0' ? 'selected' : '' }}>Out of Stock (= 0 Units)</option>
                     </select>
                 </div>
 
@@ -325,6 +352,9 @@
                     </a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'daily_summary'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 1rem; color: #93c5fd; display: inline-flex; align-items: center; gap: 0.4rem;">
                         🤖 Export JSON
+                    </a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'daily_summary'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 1rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155; display: inline-flex; align-items: center; gap: 0.4rem;">
+                        📑 Export PDF
                     </a>
                     <button onclick="window.print()" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">
                         🖨️ Print Day-Book
@@ -560,6 +590,7 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'sales'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Export PDF</a>
                 </div>
             </div>
 
@@ -568,11 +599,12 @@
                     <thead>
                         <tr>
                             <th>Invoice #</th>
+                            <th>Type</th>
                             <th>Date & Time</th>
                             <th>Customer Name</th>
                             <th>Items</th>
                             <th>Gross Total</th>
-                            <th>Paid (Cash/POS)</th>
+                            <th>Paid</th>
                             <th>Debt Balance</th>
                             <th>Handover</th>
                             <th>Cashier</th>
@@ -585,7 +617,25 @@
                             $debt = $s->debt_balance ?? max(0, $s->totalAmount - $paid);
                         @endphp
                         <tr>
-                            <td><strong>#{{ substr($s->id, 0, 8) }}</strong></td>
+                            <td>
+                                <strong>#{{ substr($s->id, 0, 8) }}</strong>
+                                @if(!empty($s->receipt_ref))
+                                    <div style="font-size: 0.72rem; color: #a78bfa; font-weight: 700; margin-top: 0.15rem;">
+                                        Slip: {{ $s->receipt_ref }}
+                                    </div>
+                                @endif
+                            </td>
+                            <td>
+                                @if(strtoupper($s->status ?? '') === 'RETURNED')
+                                    <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.72rem; font-weight: 800;">↩️ RETURNED</span>
+                                @elseif(($s->payments ?? collect())->contains('method', 'EXCHANGE_CREDIT') || str_contains(strtolower($s->sale_type ?? ''), 'exchange'))
+                                    <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 0.72rem; font-weight: 800;">🔄 EXCHANGE</span>
+                                @elseif(!empty($s->returnReason))
+                                    <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 0.72rem; font-weight: 800;">⚠️ PART-RETURN</span>
+                                @else
+                                    <span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-size: 0.72rem; font-weight: 800;">🛒 SALE</span>
+                                @endif
+                            </td>
                             <td style="font-size: 0.75rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($s->createdAt)) }}</td>
                             <td>
                                 <strong>{{ $s->customerName }}</strong>
@@ -593,7 +643,7 @@
                             </td>
                             <td>{{ $s->items->count() }} items</td>
                             <td style="font-weight: 800;">₦{{ number_format($s->totalAmount, 0) }}</td>
-                            <td style="color: #4ade80;">₦{{ number_format($paid, 0) }}</td>
+                            <td style="color: #4ade80; font-weight: 700;">₦{{ number_format($paid, 0) }}</td>
                             <td>
                                 @if($debt <= 0.01)
                                     <span class="badge badge-success">✓ Paid</span>
@@ -614,7 +664,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales match your active filters.</td>
+                            <td colspan="10" style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales match your active filters.</td>
                         </tr>
                         @endforelse
                     </tbody>
@@ -667,6 +717,7 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'pending_orders'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Export PDF</a>
                 </div>
             </div>
 
@@ -742,6 +793,7 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'inventory'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Export PDF</a>
                 </div>
             </div>
 
@@ -801,6 +853,7 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'transfers'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Export PDF</a>
                 </div>
             </div>
 
@@ -861,6 +914,7 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'debtors'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Export PDF</a>
                 </div>
             </div>
 
@@ -872,7 +926,9 @@
                             <th>Phone Number</th>
                             <th>Address / Shop</th>
                             <th>Debt Aging Status</th>
-                            <th style="color: #f87171;">Outstanding Balance</th>
+                            <th style="color: #f87171;">Total Debt</th>
+                            <th style="color: #fb923c;">Delivered (Goods Carried)</th>
+                            <th style="color: #38bdf8;">Installment (In Shop)</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -894,6 +950,12 @@
                             <td style="font-weight: 800; color: #f87171; font-size: 1.05rem;">
                                 ₦{{ number_format($d->total_debt, 0) }}
                             </td>
+                            <td style="font-weight: 700; color: #fb923c;">
+                                ₦{{ number_format($d->delivered_debt ?? 0, 0) }}
+                            </td>
+                            <td style="font-weight: 700; color: #38bdf8;">
+                                ₦{{ number_format($d->installment_debt ?? 0, 0) }}
+                            </td>
                             <td>
                                 <a href="{{ route('debts.index') }}" class="btn btn-success" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
                                     💰 Record Payment
@@ -901,7 +963,7 @@
                             </td>
                         </tr>
                         @empty
-                        <tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">No outstanding customer debts on record.</td></tr>
+                        <tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">No outstanding customer debts on record.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -919,6 +981,7 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'damages'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'damages'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'damages'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Export PDF</a>
                 </div>
             </div>
 
@@ -968,6 +1031,7 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV</a>
                     <a href="{{ route('reports.export.json', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'returns'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Export PDF</a>
                 </div>
             </div>
 
@@ -1056,9 +1120,12 @@
                         Item-for-item reconciliation matching returned shelf items against replacement items handed over.
                     </p>
                 </div>
-                <div>
+                <div style="display: flex; gap: 0.5rem;">
                     <a href="{{ route('reports.export.csv', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-secondary">
                         📥 Export Exchanges CSV
+                    </a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'exchanges'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="color: #f8fafc; background: #0c2340; border: 1px solid #334155;">
+                        📑 Export Exchanges PDF
                     </a>
                 </div>
             </div>
@@ -1164,81 +1231,90 @@
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(37,99,235,0.4); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #93c5fd; margin-bottom: 0.35rem;">📅 Daily Operations Day-Book</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">One-sheet consolidated shift reconciliation, total sales, drawer cash, new credit, debts recovered, and stock valuation.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'day_book'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'day_book'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(168,85,247,0.4); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #c084fc; margin-bottom: 0.35rem;">🔄 Customer Exchanges & Dual-SKU</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Paired item swaps, returned vs replacement SKU units, trade-in values, and price differentials.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'exchanges'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'exchanges'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #4ade80; margin-bottom: 0.35rem;">📊 Complete Sales Data</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">All customer transactions, payment methods, debt balances, and cashier records.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'sales'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'sales'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #60a5fa; margin-bottom: 0.35rem;">📦 Inventory & Branch Valuations</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">All catalog SKUs, shelf counts per branch, low stock warnings, and total ₦ asset values.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'inventory'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'inventory'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #fbbf24; margin-bottom: 0.35rem;">🚚 Logistics & In-Transit Transfers</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Transfer history, carrier driver tracking, and verified count discrepancy flags.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'transfers'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'transfers'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #f87171; margin-bottom: 0.35rem;">💳 Customer Debtors & Aging</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Complete debtor contact details, total debt exposure, and aging risk buckets.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'debtors'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'debtors'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #fca5a5; margin-bottom: 0.35rem;">🔄 Sales Returns & Refunds</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Complete logs of returned items, quantity, refund amounts, and reasons.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'returns'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'returns'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #fde047; margin-bottom: 0.35rem;">⏳ Pending Orders & Aging Backlog</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Unsupplied customer orders, pickup status, committed stock value, and aging buckets.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'pending_orders'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'pending_orders'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
                 <div style="background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;">
                     <h4 style="font-size: 1rem; font-weight: 800; color: #fb7185; margin-bottom: 0.35rem;">📉 Stock Out & Deductions</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Write-offs for damages, expiration, inventory losses, and manual admin adjustments.</p>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'stock_out'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">CSV (Excel)</a>
-                        <a href="{{ route('reports.export.json', array_merge(['type' => 'stock_out'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.8rem; background: #6366f1;">JSON (AI)</a>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <a href="{{ route('reports.export.csv', array_merge(['type' => 'stock_out'], request()->query())) }}" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem;">CSV</a>
+                        <a href="{{ route('reports.export.json', array_merge(['type' => 'stock_out'], request()->query())) }}" class="btn btn-primary" style="flex: 1; font-size: 0.75rem; background: #6366f1;">JSON</a>
+                        <a href="{{ route('reports.export.pdf', array_merge(['type' => 'stock_out'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="flex: 1; font-size: 0.75rem; background: #0c2340; color: #fff; border: 1px solid #334155;">PDF</a>
                     </div>
                 </div>
 
