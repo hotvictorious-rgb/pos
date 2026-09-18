@@ -252,17 +252,43 @@ class SubscriptionController extends Controller
         $secretKey = SaaSSetting::get('paystack_secret_key', '');
         $isVerified = false;
         $meta = [];
+        $amountPaidKobo = 0;
 
-        if (!empty($secretKey)) {
-            try {
-                $response = Http::withToken($secretKey)->get("https://api.paystack.co/transaction/verify/{$reference}");
-                if ($response->successful() && ($response->json()['data']['status'] ?? '') === 'success') {
+        if (empty($secretKey)) {
+            return redirect()->route('subscription.index')->with('error', '⚠️ Automated payment processing is temporarily offline (Gateway key unconfigured). Please submit your bank transfer notice below.');
+        }
+
+        try {
+            $response = Http::withToken($secretKey)->get("https://api.paystack.co/transaction/verify/{$reference}");
+            if ($response->successful()) {
+                $payData = $response->json()['data'] ?? [];
+                if (($payData['status'] ?? '') === 'success') {
                     $isVerified = true;
-                    $meta = $response->json()['data']['metadata'] ?? [];
+                    $meta = $payData['metadata'] ?? [];
+                    $amountPaidKobo = (int) ($payData['amount'] ?? 0);
                 }
-            } catch (\Exception $e) {
-                // Ignore API check error in local environment
             }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Paystack verification error for ref {$reference}: " . $e->getMessage());
+        }
+
+        if (!$isVerified) {
+            Activity::recordSecurityEvent(
+                'PAYSTACK_SUBSCRIPTION_VERIFICATION_FAILED',
+                "Failed or unconfirmed Paystack callback with reference '{$reference}'.",
+                ['reference' => $reference]
+            );
+            return redirect()->route('subscription.index')->with('error', '⚠️ Payment verification failed or transaction is incomplete. Please contact support if you were debited.');
+        }
+
+        // 🔒 Anti-Replay Protection: Ensure reference has not been fulfilled already
+        $alreadyFulfilled = Activity::withoutGlobalScopes()
+            ->where('action', 'PAYSTACK_SUBSCRIPTION_ACTIVATED')
+            ->where('metadata->reference', $reference)
+            ->exists();
+
+        if ($alreadyFulfilled) {
+            return redirect()->route('subscription.index')->with('error', '⚠️ Transaction reference already processed. Duplicate activation rejected.');
         }
 
         $authUser = Auth::user();
@@ -273,7 +299,7 @@ class SubscriptionController extends Controller
             return redirect()->route('subscription.index')->with('error', 'Tenant account not found.');
         }
 
-        $months = (int) ($meta['months'] ?? 1);
+        $months = max(1, (int) ($meta['months'] ?? 1));
         $planKey = $meta['plan'] ?? $tenant->plan;
 
         $plansConfig = config('saas.plans', []);
@@ -290,6 +316,19 @@ class SubscriptionController extends Controller
             'max_branches' => $targetPlan['max_branches'] ?? $tenant->max_branches,
             'max_users' => $targetPlan['max_users'] ?? $tenant->max_users,
         ]);
+
+        Activity::recordSecurityEvent(
+            'PAYSTACK_SUBSCRIPTION_ACTIVATED',
+            "Automated subscription payment verified via Paystack. Plan: {$planKey}, Duration: {$months} month(s), Amount: ₦" . number_format($amountPaidKobo / 100, 2) . " (Ref: {$reference}).",
+            [
+                'reference' => $reference,
+                'tenant_id' => $tenant->id,
+                'plan' => $planKey,
+                'months' => $months,
+                'amount_kobo' => $amountPaidKobo,
+                'new_expiry' => $newExpiry->toIso8601String(),
+            ]
+        );
 
         return redirect()->route('subscription.index')->with('success', "💳 Payment confirmed! Your {$tenant->name} subscription is active until " . $newExpiry->format('M d, Y') . ".");
     }

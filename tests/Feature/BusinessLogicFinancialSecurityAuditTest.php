@@ -319,7 +319,7 @@ class BusinessLogicFinancialSecurityAuditTest extends TestCase
 
         // Customer attempts to return both bags (worth ₦100,000) for a CASH refund of ₦100,000
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Maximum refundable cash for Sale #' . $sale->id . ' based on actual payments made is ₦20,000.00');
+        $this->expectExceptionMessage('Maximum refundable cash for Sale #' . $sale->id . ' based on cash payments made is ₦20,000.00');
 
         $this->stockService->recordSaleReturn(
             $sale->id,
