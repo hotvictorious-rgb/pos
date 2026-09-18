@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'Hysam Ventures') – Inventory & POS</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- PWA & Mobile Web Capabilities -->
+    <link rel="manifest" href="{{ asset('manifest.json') }}">
+    <meta name="theme-color" content="#0c2340">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Victorious POS">
+    <link rel="apple-touch-icon" href="{{ asset('icons/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('icons/icon-192x192.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -1129,6 +1137,183 @@
             }
         }
 
+        /* Mobile Bottom Navigation Bar (App Experience) */
+        .mobile-bottom-nav {
+            display: none;
+        }
+        .pwa-install-banner {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding-bottom: 76px;
+            }
+            .container {
+                padding-bottom: 5.5rem !important;
+            }
+            .mobile-bottom-nav {
+                display: flex;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 64px;
+                background: rgba(15, 23, 42, 0.96);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border-top: 1px solid rgba(255, 255, 255, 0.08);
+                box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.5);
+                z-index: 900;
+                align-items: center;
+                justify-content: space-around;
+                padding-bottom: max(6px, env(safe-area-inset-bottom));
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            .mobile-nav-tab {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 0.2rem;
+                text-decoration: none;
+                color: #94a3b8;
+                padding: 0.35rem 0.25rem;
+                border-radius: 10px;
+                transition: all 0.2s ease;
+                min-height: 48px;
+                position: relative;
+            }
+            .mobile-nav-tab .tab-icon {
+                font-size: 1.25rem;
+                line-height: 1;
+                transition: transform 0.2s ease;
+            }
+            .mobile-nav-tab .tab-label {
+                font-size: 0.68rem;
+                font-weight: 700;
+                letter-spacing: 0.01em;
+                line-height: 1;
+            }
+            .mobile-nav-tab:active {
+                transform: scale(0.92);
+            }
+            .mobile-nav-tab.active {
+                color: #38bdf8;
+            }
+            .mobile-nav-tab.active .tab-icon {
+                transform: translateY(-2px);
+                filter: drop-shadow(0 2px 8px rgba(56, 189, 248, 0.4));
+            }
+            .mobile-nav-tab.active::after {
+                content: '';
+                position: absolute;
+                bottom: 2px;
+                width: 18px;
+                height: 3px;
+                background: #38bdf8;
+                border-radius: 99px;
+                box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+            }
+            /* Quick POS Action Accent */
+            .mobile-nav-tab.pos-accent {
+                color: #f8fafc;
+            }
+            .mobile-nav-tab.pos-accent .tab-icon-wrap {
+                width: 38px;
+                height: 38px;
+                background: linear-gradient(135deg, #2563eb, #3b82f6);
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+                margin-top: -8px;
+            }
+            .mobile-nav-tab.pos-accent .tab-label {
+                color: #60a5fa;
+                font-weight: 800;
+            }
+
+            /* PWA Install Banner */
+            .pwa-install-banner {
+                position: fixed;
+                bottom: 74px;
+                left: 0.75rem;
+                right: 0.75rem;
+                background: linear-gradient(135deg, #0c2340, #1e3a8a);
+                border: 1px solid rgba(56, 189, 248, 0.35);
+                border-radius: 16px;
+                padding: 0.85rem 1rem;
+                box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6);
+                z-index: 890;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.75rem;
+                animation: pwaSlideUp 0.35s ease-out;
+            }
+            @keyframes pwaSlideUp {
+                from { transform: translateY(30px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
+            .pwa-banner-content {
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                flex: 1;
+                min-width: 0;
+            }
+            .pwa-banner-icon {
+                width: 38px;
+                height: 38px;
+                border-radius: 10px;
+                background: #0b0f19;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.25rem;
+                flex-shrink: 0;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            .pwa-banner-text h4 {
+                font-size: 0.82rem;
+                font-weight: 800;
+                color: #f8fafc;
+                margin-bottom: 0.1rem;
+            }
+            .pwa-banner-text p {
+                font-size: 0.72rem;
+                color: #93c5fd;
+                line-height: 1.2;
+            }
+            .pwa-banner-actions {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                flex-shrink: 0;
+            }
+            .pwa-btn-install {
+                background: #38bdf8;
+                color: #0c2340;
+                border: none;
+                padding: 0.45rem 0.85rem;
+                border-radius: 8px;
+                font-size: 0.76rem;
+                font-weight: 800;
+                cursor: pointer;
+            }
+            .pwa-btn-dismiss {
+                background: transparent;
+                color: #94a3b8;
+                border: none;
+                font-size: 1.1rem;
+                cursor: pointer;
+                padding: 0.25rem;
+            }
+        }
+
         /* Password Visibility Toggle */
         .password-field-wrapper {
             position: relative;
@@ -1587,8 +1772,111 @@
         </div>
     </div>
 
+    <!-- PWA Smart Install Prompt Banner -->
+    <div id="pwaInstallBanner" class="pwa-install-banner">
+        <div class="pwa-banner-content">
+            <div class="pwa-banner-icon">📱</div>
+            <div class="pwa-banner-text">
+                <h4>Install Victorious POS</h4>
+                <p>1-tap instant launch without browser controls</p>
+            </div>
+        </div>
+        <div class="pwa-banner-actions">
+            <button type="button" class="pwa-btn-install" id="btnPwaInstall" onclick="installPwaApp()">Install</button>
+            <button type="button" class="pwa-btn-dismiss" onclick="dismissPwaBanner()" title="Dismiss">✕</button>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Navigation Bar (5 Primary Tabs) -->
+    <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <!-- Tab 1: Dashboard -->
+        <a href="{{ route('dashboard') }}" class="mobile-nav-tab {{ request()->routeIs('dashboard*') ? 'active' : '' }}">
+            <span class="tab-icon">📊</span>
+            <span class="tab-label">Dashboard</span>
+        </a>
+
+        <!-- Tab 2: POS Checkout Counter (Accented) -->
+        <a href="{{ route('pos.index') }}" class="mobile-nav-tab pos-accent {{ request()->routeIs('pos.*') ? 'active' : '' }}">
+            <div class="tab-icon-wrap">
+                <span class="tab-icon" style="font-size: 1.25rem;">🛒</span>
+            </div>
+            <span class="tab-label">POS</span>
+        </a>
+
+        <!-- Tab 3: Products Catalog -->
+        @if(Route::has('products.index'))
+        <a href="{{ route('products.index') }}" class="mobile-nav-tab {{ request()->routeIs('products.*') ? 'active' : '' }}">
+            <span class="tab-icon">📦</span>
+            <span class="tab-label">Products</span>
+        </a>
+        @endif
+
+        <!-- Tab 4: Reports & Audits -->
+        @if(Route::has('reports.index'))
+        <a href="{{ route('reports.index') }}" class="mobile-nav-tab {{ request()->routeIs('reports.*') ? 'active' : '' }}">
+            <span class="tab-icon">📑</span>
+            <span class="tab-label">Reports</span>
+        </a>
+        @endif
+
+        <!-- Tab 5: More / Drawer Toggle -->
+        <button type="button" class="mobile-nav-tab" onclick="window.toggleMobileSidebar ? window.toggleMobileSidebar(true) : toggleMobileSidebar(true)" style="background: none; border: none; cursor: pointer;">
+            <span class="tab-icon">☰</span>
+            <span class="tab-label">Menu</span>
+        </button>
+    </nav>
+
     <!-- Unified Core UI Engine -->
     <script src="{{ asset('js/core-ui.js') }}"></script>
+
+    <!-- PWA Registration & Install Handler Script -->
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('{{ asset('sw.js') }}')
+                    .then(function(reg) {
+                        // SW registered successfully
+                    })
+                    .catch(function(err) {
+                        console.warn('VM POS SW registration failed:', err);
+                    });
+            });
+        }
+
+        // PWA Install Prompt Banner Logic
+        let deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            deferredPrompt = e;
+            // Only show if user hasn't dismissed in current session
+            if (!sessionStorage.getItem('pwa_banner_dismissed')) {
+                const banner = document.getElementById('pwaInstallBanner');
+                if (banner) {
+                    banner.style.display = 'flex';
+                }
+            }
+        });
+
+        function installPwaApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(function(choiceResult) {
+                    if (choiceResult.outcome === 'accepted') {
+                        const banner = document.getElementById('pwaInstallBanner');
+                        if (banner) banner.style.display = 'none';
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+
+        function dismissPwaBanner() {
+            const banner = document.getElementById('pwaInstallBanner');
+            if (banner) banner.style.display = 'none';
+            sessionStorage.setItem('pwa_banner_dismissed', 'true');
+        }
+    </script>
 
     @stack('scripts')
 </body>
