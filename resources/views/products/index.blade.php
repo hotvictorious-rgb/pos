@@ -204,10 +204,24 @@
                         </td>
                         <td>
                             @if($isAdmin)
-                                <button class="btn btn-secondary btn-edit-product" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;"
-                                        onclick="openEditModal('{{ $p->id }}', '{{ addslashes($p->name) }}', '{{ addslashes($p->category) }}', {{ $p->unitPrice }}, '{{ addslashes($p->brand ?? '') }}', '{{ addslashes($p->size ?? '') }}')">
-                                    ✏️ Edit
-                                </button>
+                                <div style="display: flex; gap: 0.35rem; align-items: center;">
+                                    <button class="btn btn-secondary btn-edit-product" style="padding: 0.4rem 0.7rem; font-size: 0.75rem;"
+                                            onclick="openEditModal('{{ $p->id }}', '{{ addslashes($p->name) }}', '{{ addslashes($p->category) }}', {{ $p->unitPrice }}, '{{ addslashes($p->brand ?? '') }}', '{{ addslashes($p->size ?? '') }}')">
+                                        ✏️ Edit
+                                    </button>
+                                    <form method="POST" action="{{ route('products.destroy', $p->id) }}" 
+                                          data-confirm-title="Confirm Product Deletion" 
+                                          data-confirm-subtitle="Archive & remove product from catalog:" 
+                                          data-confirm-button="🗑️ Yes, Delete Product" 
+                                          data-confirm-type="danger" 
+                                          style="display: inline; margin: 0;">
+                                        @csrf
+                                        <input type="hidden" name="product_name_preview" value="{{ $p->name }}">
+                                        <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.65rem; font-size: 0.75rem; background: #dc2626; border-color: #b91c1c;">
+                                            🗑️ Delete
+                                        </button>
+                                    </form>
+                                </div>
                             @else
                                 <a href="{{ route('stock.index') }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; color: #4ade80;">
                                     📥 +Stock

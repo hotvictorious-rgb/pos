@@ -768,6 +768,21 @@
                         ₦{{ number_format($debtRecoveredInPeriod, 0) }}
                     </div>
                 </div>
+
+                @if(!empty($exchangeCount) && $exchangeCount > 0)
+                <div class="panel-item">
+                    <div class="panel-item-left">
+                        <span class="panel-item-icon">🔄</span>
+                        <div>
+                            <div class="panel-item-name">Exchange Credits Tendered</div>
+                            <div class="panel-item-sub">{{ $exchangeCount }} customer exchange{{ $exchangeCount == 1 ? '' : 's' }} applied</div>
+                        </div>
+                    </div>
+                    <div class="panel-item-val" style="color: #c084fc;">
+                        ₦{{ number_format($totalExchangeCredit, 0) }}
+                    </div>
+                </div>
+                @endif
             </div>
         </div>
         @endif
@@ -787,7 +802,7 @@
                         <span class="panel-item-icon">📥</span>
                         <div>
                             <div class="panel-item-name">Stock In (Inflow)</div>
-                            <div class="panel-item-sub">Supplier deliveries & transfers received</div>
+                            <div class="panel-item-sub">Supplier restocks, returns, exchanges & transfers</div>
                         </div>
                     </div>
                     <div class="panel-item-val" style="color: #34d399;">
@@ -890,7 +905,13 @@
                         <span class="panel-item-icon">👥</span>
                         <div>
                             <div class="panel-item-name">Total Debt Portfolio</div>
-                            <div class="panel-item-sub">{{ $activeDebtorsCount }} customer debtor{{ $activeDebtorsCount == 1 ? '' : 's' }}</div>
+                            <div class="panel-item-sub">
+                                {{ $activeDebtorsCount }} customer debtor{{ $activeDebtorsCount == 1 ? '' : 's' }}
+                                @if(!empty($totalDeliveredDebt) || !empty($totalInstallmentDebt))
+                                    · <span style="color: #fb923c;">₦{{ number_format($totalDeliveredDebt ?? 0, 0) }} Carried</span>
+                                    · <span style="color: #38bdf8;">₦{{ number_format($totalInstallmentDebt ?? 0, 0) }} In-Shop</span>
+                                @endif
+                            </div>
                         </div>
                     </div>
                     <div class="panel-item-val" style="color: #c084fc;">

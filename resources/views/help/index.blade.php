@@ -4,13 +4,31 @@
 
 @push('styles')
 <style>
+    .role-header-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.85rem;
+        border-radius: 99px;
+        font-size: 0.85rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+    }
+    .role-badge-cashier { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.35); }
+    .role-badge-storekeeper { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+    .role-badge-manager { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.35); }
+    .role-badge-viewer { background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.35); }
+    .role-badge-admin { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35); }
+
     .role-tabs {
         display: flex;
         gap: 0.5rem;
         margin-bottom: 1.5rem;
         flex-wrap: wrap;
         border-bottom: 1px solid var(--border);
-        padding-bottom: 0.5rem;
+        padding-bottom: 0.75rem;
     }
 
     .role-tab-btn {
@@ -19,10 +37,18 @@
         border: 1px solid var(--border);
         border-radius: 12px;
         color: var(--text-muted);
-        font-size: 0.9rem;
+        font-size: 0.88rem;
         font-weight: 700;
         cursor: pointer;
         transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+    }
+    .role-tab-btn:hover {
+        background: rgba(30, 41, 59, 0.8);
+        border-color: #475569;
+        color: #f8fafc;
     }
     .role-tab-btn.active {
         background: var(--primary);
@@ -40,14 +66,24 @@
         border-radius: 18px;
         padding: 1.5rem;
         margin-bottom: 1.5rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
     }
 
     .step-box {
         background: rgba(11,15,25,0.7);
         border: 1px solid var(--border);
         border-radius: 12px;
-        padding: 1rem;
-        margin-bottom: 0.75rem;
+        padding: 1.15rem;
+        margin-bottom: 0.85rem;
+    }
+
+    .step-box h4 {
+        margin: 0 0 0.45rem 0;
+        font-size: 0.98rem;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
     }
 
     .faq-item {
@@ -61,7 +97,7 @@
     .faq-question {
         padding: 1rem 1.25rem;
         font-weight: 800;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         cursor: pointer;
         display: flex;
         justify-content: space-between;
@@ -72,7 +108,7 @@
 
     .faq-answer {
         padding: 1.25rem;
-        font-size: 0.9rem;
+        font-size: 0.88rem;
         color: #cbd5e1;
         line-height: 1.6;
         border-top: 1px solid var(--border);
@@ -86,417 +122,444 @@
 
 @section('content')
 
+@php
+    $currentUser = auth()->user();
+    $rawRole = $currentUser?->role ?? 'cashier';
+    $isAdmin = $currentUser?->isAdmin() ?? false;
+    $isManager = in_array($rawRole, ['manager', 'branch_manager'], true);
+    $isStorekeeper = ($rawRole === 'storekeeper');
+    $isViewer = in_array($rawRole, ['viewer', 'executive_readonly'], true);
+    $isCashier = ($rawRole === 'cashier') || (!$isAdmin && !$isManager && !$isStorekeeper && !$isViewer);
+@endphp
+
+    <!-- Header Section -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-            <h2 style="font-size: 1.6rem; font-weight: 800;">Role-Based Training & User Guides 📖</h2>
-            <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Select your job role below to view your daily duties, step-by-step guides, and anti-theft rules.
-            </p>
+            @if($isAdmin)
+                <span class="role-header-badge role-badge-admin">👑 Store Owner & Administrator</span>
+                <h2 style="font-size: 1.6rem; font-weight: 800; margin-top: 0.2rem;">Master Command & Staff Training Guides 📖</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Access master administrative operations or switch roles below to review, print, and train staff members on their exact duties.
+                </p>
+            @elseif($isStorekeeper)
+                <span class="role-header-badge role-badge-storekeeper">📦 Storekeeper & Inventory Specialist</span>
+                <h2 style="font-size: 1.6rem; font-weight: 800; margin-top: 0.2rem;">Warehouse & Inventory Operations Guide 📦</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Your assigned duties: physical receiving, delayed customer pickups, transfer piece-counting, and stock integrity.
+                </p>
+            @elseif($isManager)
+                <span class="role-header-badge role-badge-manager">🏢 Branch Operations Manager</span>
+                <h2 style="font-size: 1.6rem; font-weight: 800; margin-top: 0.2rem;">Branch Management & Supervision Guide 🏢</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Your managerial duties and supervisory guides for the Cashier and Storekeeper staff under your branch.
+                </p>
+            @elseif($isViewer)
+                <span class="role-header-badge role-badge-viewer">👁️ Executive Observer</span>
+                <h2 style="font-size: 1.6rem; font-weight: 800; margin-top: 0.2rem;">Executive Oversight & Business Health Guide 👁️</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Your assigned view: real-time business telemetry, inventory valuations, gross revenue, and anti-theft audits.
+                </p>
+            @else
+                <span class="role-header-badge role-badge-cashier">💰 Cashier & Sales Specialist</span>
+                <h2 style="font-size: 1.6rem; font-weight: 800; margin-top: 0.2rem;">Cashier Job Duties & POS Training Guide 💰</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Your assigned duties: barcode selling, price negotiations, paper receipt tracking, cash/POS tenders, and shift balancing.
+                </p>
+            @endif
         </div>
-        <a href="{{ route('pos.index') }}" class="btn btn-success">
-            🚀 Open POS
-        </a>
-    </div>
-
-    <!-- Role Selection Tabs -->
-    <div class="role-tabs">
-        <button class="role-tab-btn active" onclick="showRoleGuide('roleCashier', this)">💰 Cashier (Sales Only)</button>
-        <button class="role-tab-btn" onclick="showRoleGuide('roleSalesStock', this)">💼 Sales & Stock (Combined)</button>
-        <button class="role-tab-btn" onclick="showRoleGuide('roleStorekeeper', this)">📦 Storekeeper (Stock Only)</button>
-        <button class="role-tab-btn" onclick="showRoleGuide('roleManager', this)">🏢 Branch Manager</button>
-        <button class="role-tab-btn" onclick="showRoleGuide('roleAuditor', this)">🛡️ Auditor / Super Admin</button>
-        <button class="role-tab-btn" onclick="showRoleGuide('roleViewer', this)">👑 Executive Owner (View-Only)</button>
-    </div>
-
-    <!-- ========================================================================= -->
-    <!-- VIEW-ONLY: EXECUTIVE OWNER GUIDE -->
-    <!-- ========================================================================= -->
-    <div id="roleViewer" class="guide-section">
-        <div class="duty-card" style="border-left: 6px solid #eab308;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
-                <span style="font-size: 2rem;">👑</span>
-                <div>
-                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #facc15;">Executive Owner (View-Only / Silent Auditor)</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Designed for Business Owners and Investors who want full visibility into money, stock, and reports from their phone without altering data.</p>
-                </div>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #4ade80;">1. Live Remote Monitoring by Branch Location & Date Range</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    The main Executive Dashboard features a top <strong>Branch / Location Dropdown</strong> (switch between <em>All Branches (Consolidated)</em> or any specific shop branch) combined with fast date presets (<strong>Today</strong>, <strong>Yesterday</strong>, <strong>This Week</strong>, <strong>This Month</strong>, <strong>This Year</strong>, <strong>All-Time</strong>, or <strong>Custom Date Range</strong>). Instantly view isolated gross sales revenue, physical drawer cash collections, POS payments, new debt issued, and debt recoveries for any specific branch.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #60a5fa;">2. Multi-Branch Inventory Valuation & Stock Telemetry</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    View physical shelf stock counts, monetary valuations (₦), out-of-stock and low-stock SKU alerts, in-transit buffer shipments, and unsupplied order liabilities isolated per branch or consolidated across the entire enterprise.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #fbbf24;">3. Inter-Branch Logistics & In-Transit Tracking</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Monitor shipments moving between branches, verify driver names, and view official printable waybills with staff signatures.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #f87171;">4. Theft & Variance Radar</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Review any discrepancies in real-time — missing transfer goods, damaged stock write-offs, or cashier cash drawer shortages.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #c084fc;">5. Zero Risk of Accidental Edits</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    All action buttons (deleting, editing prices, creating users, changing stock) are safely disabled for this role, so you can browse freely from any mobile device without accidental clicks.
-                </p>
-            </div>
+        
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button type="button" class="btn btn-secondary" onclick="window.print()" style="padding: 0.55rem 1rem; font-size: 0.85rem;">
+                🖨️ Print Guide
+            </button>
+            <a href="{{ route('pos.index') }}" class="btn btn-success" style="padding: 0.55rem 1.1rem; font-size: 0.85rem; font-weight: 800;">
+                🚀 Open POS
+            </a>
         </div>
     </div>
 
-    <!-- ========================================================================= -->
-    <!-- COMBO: SALES & STOCK OFFICER GUIDE -->
-    <!-- ========================================================================= -->
-    <div id="roleSalesStock" class="guide-section">
-        <div class="duty-card" style="border-left: 6px solid #a855f7;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
-                <span style="font-size: 2rem;">💼</span>
-                <div>
-                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #c084fc;">Sales & Stock Officer (Solo Shop Attendant)</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Ideal for branches with 1 staff who handles POS selling, customer cash, and receiving stock deliveries on ground.</p>
-                </div>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #4ade80;">1. Selling & Price Bargaining on POS</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Tap products to cart $\rightarrow$ Edit unit price in cart for bargaining $\rightarrow$ Collect Cash/Transfer/Debt $\rightarrow$ Print Receipt.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #60a5fa;">2. Receiving Stock & Accepting Incoming Transfers</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    When supplier or depot driver arrives, go to <strong>🚚 Shop Transfers</strong> $\rightarrow$ Tap <strong>"✅ Accept & Count Goods"</strong> $\rightarrow$ Count physical cartons offloaded $\rightarrow$ Confirm into stock.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #fbbf24;">3. Customer Debt Recovery & Delayed Pickup Delivery</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Collect debt installments under <em>Customer Debts</em> and release delayed orders under <em>Pending Orders</em> when customer vehicle arrives.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #f87171;">4. Damaged Goods & Daily Review</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Record damaged or broken items under <em>Damaged Goods</em> and review daily sales and debt recovery totals in the <em>Reports Hub</em> at closing time.
-                </p>
-            </div>
+    @if($isAdmin)
+        <!-- Administrative Role Switcher Tabs (Visible to Store Owners / Admins Only) -->
+        <div class="role-tabs">
+            <button class="role-tab-btn active" onclick="showRoleGuide('roleAdmin', this)">👑 Store Owner / Master Guide</button>
+            <button class="role-tab-btn" onclick="showRoleGuide('roleCashier', this)">💰 Cashier Guide</button>
+            <button class="role-tab-btn" onclick="showRoleGuide('roleStorekeeper', this)">📦 Storekeeper Guide</button>
+            <button class="role-tab-btn" onclick="showRoleGuide('roleManager', this)">🏢 Branch Manager Guide</button>
+            <button class="role-tab-btn" onclick="showRoleGuide('roleViewer', this)">👁️ Executive Observer Guide</button>
+            <button class="role-tab-btn" onclick="showRoleGuide('roleScreens', this)">🖥️ All Tabs & Screens Reference</button>
         </div>
-    </div>
+    @elseif($isManager)
+        <!-- Branch Manager Switcher Tabs (Supervision access to Cashier & Storekeeper) -->
+        <div class="role-tabs">
+            <button class="role-tab-btn active" onclick="showRoleGuide('roleManager', this)">🏢 Branch Manager Guide</button>
+            <button class="role-tab-btn" onclick="showRoleGuide('roleCashier', this)">💰 Cashier Guide</button>
+            <button class="role-tab-btn" onclick="showRoleGuide('roleStorekeeper', this)">📦 Storekeeper Guide</button>
+        </div>
+    @endif
 
     <!-- ========================================================================= -->
-    <!-- 1. CASHIER & SALES OFFICER GUIDE -->
+    <!-- 1. CASHIER GUIDE -->
     <!-- ========================================================================= -->
-    <div id="roleCashier" class="guide-section active">
+    @if($isAdmin || $isManager || $isCashier)
+    <div id="roleCashier" class="guide-section {{ $isCashier ? 'active' : '' }}">
         <div class="duty-card" style="border-left: 6px solid #22c55e;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
-                <span style="font-size: 2rem;">💰</span>
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <span style="font-size: 2.2rem;">💰</span>
                 <div>
-                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #4ade80;">Cashier & Sales Officer Job Duties</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is selling products, collecting cash/POS payments, and handling customer debts.</p>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #4ade80; margin: 0;">Cashier & Sales Specialist Workflow</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.15rem 0 0 0;">Strict step-by-step duties for everyday counter sales, tender collection, and anti-theft rules.</p>
                 </div>
             </div>
 
             <div class="step-box">
-                <strong style="color: #86efac;">1. How to Make a POS Sale</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>💰 Sell Goods (POS)</strong> in the sidebar. Tap any product tile to add to cart. Use the <strong>+ / −</strong> buttons to change quantity.
+                <h4 style="color: #86efac;">1. Making a Sale & Scanning Items</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Navigate to <strong>💰 Sell Goods (POS)</strong> in the sidebar.<br>
+                    • Tap any product card or use a barcode scanner. Use <strong>+ / −</strong> buttons to change item quantities.<br>
+                    • <strong>Search Filter:</strong> Use the search box to search instantaneously by SKU code (e.g. <code>M10DE</code>), commercial product name, brand, or size.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #60a5fa;">2. Negotiating Prices (Editable Cart Price)</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    If a customer is buying in bulk or bargaining, click inside the <strong>Price (₦)</strong> box on the cart item and type the agreed negotiated unit price.
+                <h4 style="color: #60a5fa;">2. Negotiating Prices (Editable Cart Price Box)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • When a customer buys in bulk or negotiates a bargain price, <strong>click directly into the green Price (₦) box</strong> inside the cart item.<br>
+                    • Type the agreed selling price and press Enter. The bill automatically recalculates at the new unit price without affecting stored catalog prices.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #fbbf24;">3. Handling Part-Payments, Not Paid (Full Debt), and Customer Ledgers</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    When a customer is paying partially or buying on credit:
-                    <br>• Select <strong>🤝 Part-Paid / Not Paid</strong> payment mode.
-                    <br>• In <strong>Amount Paying Now (₦)</strong>, enter the deposit collected (e.g. ₦30,000 for a ₦50,000 bill), or type <strong>0</strong> if totally unpaid.
-                    <br>• The system instantly computes the <strong>Remaining Debt Balance</strong> (₦20,000).
-                    <br>• Enter the Customer's Name and Phone Number. The system automatically creates/updates their customer debt profile, logs the payment into today's revenue, posts the balance to the debt ledger, and prints <strong>PART-PAID</strong> with the remaining debt balance directly on their receipt.
+                <h4 style="color: #38bdf8;">3. Physical Receipt Slip No (Primary Customer Identifier)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • <strong>No Phone Number Required:</strong> For walk-in customers who do not provide a phone number, simply type the paper booklet number (e.g. <code>4082</code>) into the <strong>🧾 Physical Receipt Slip No</strong> box.<br>
+                    • The system automatically registers them as <code>Customer (Receipt #4082)</code>, allowing immediate checkout for credit, debt, and delayed pickups.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #f87171;">4. Goods Handover Matrix (Supplied vs. Not Supplied)</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Always confirm physical fulfillment at checkout:
-                    <br>• <strong>🟢 SUPPLIED:</strong> Select if the customer is physically carrying goods away right now. Shelf closing stock decrements immediately.
-                    <br>• <strong>🟠 NOT SUPPLIED:</strong> Select if the customer paid/part-paid but will send a vehicle tomorrow. Goods stay locked in your shop's stock buffer so your physical closing stock remains 100% accurate for the auditor!
+                <h4 style="color: #fbbf24;">4. Goods Handover Golden Law (🟢 SUPPLIED vs. 🟠 NOT SUPPLIED)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • <strong>🟢 SUPPLIED:</strong> Choose this <em>only</em> if the customer is carrying the goods away with them right now. Physical shelf stock is decremented immediately.<br>
+                    • <strong>🟠 NOT SUPPLIED:</strong> Choose this if the customer paid (or part-paid) but will return or send a driver to pick up later. Shelf stock is <strong>not decremented</strong>; units are safely locked in an allocated reservation buffer so shelf counts match physical stock on ground.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #93c5fd;">5. The 4 Main Sale State Combinations</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Every sale in the system is classified into one of these transparent states:
-                    <br>• <strong>🟢 Paid & Supplied:</strong> Full payment received, goods taken away immediately.
-                    <br>• <strong>🟠 Paid & Not Supplied:</strong> Full payment received, goods remain safely in shop for later pickup.
-                    <br>• <strong>⚠️ Part-Paid & Supplied:</strong> Deposit collected, customer owes debt, goods taken away.
-                    <br>• <strong>⏳ Part-Paid & Not Supplied:</strong> Deposit collected, customer owes debt, goods remain in shop until full collection.
-                    <br>• <strong>🔴 Not Paid & Supplied:</strong> Full credit sale (₦0 deposit), customer takes goods away.
-                    <br>• <strong>⏳ Not Paid & Not Supplied:</strong> Order reservation (₦0 deposit), goods remain in shop.
+                <h4 style="color: #f87171;">5. Handling Part-Payments & Debts</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Select <strong>🤝 Part-Paid / Not Paid</strong> payment tab.<br>
+                    • Enter the amount paid now in <strong>Amount Paying Now (₦)</strong> (or type <code>0</code> if completely unpaid).<br>
+                    • Select whether the deposit was paid via <strong>💳 POS</strong> or <strong>💵 Cash</strong>.<br>
+                    • The system computes the remaining balance and logs it to the customer debt ledger automatically.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #4ade80;">6. Daily Sales & Receipts Audit</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Review your completed sales and customer receipts anytime under <strong>📜 Sales History</strong> to verify your total daily revenue collected and outstanding customer debts.
+                <h4 style="color: #c084fc;">6. Multi-SKU Product Exchange & Swap</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • If a customer brings back past purchases to swap for different items, click <strong>🔄 Exchange / Return Item</strong> in the POS header.<br>
+                    • Search the authentic receipt by <strong>Receipt Slip #</strong> or customer phone.<br>
+                    • Check each returned product. The credit is <strong>locked to the original purchase unit price</strong>.<br>
+                    • Click <strong>Apply Exchange Credit</strong>: the credit is deducted from the new cart items, and the customer only pays the top-up difference.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #facc15;">7. End-of-Day Shift & Cash Drawer Balancing</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • At closing, count the physical banknotes in your cash drawer.<br>
+                    • Collect and sum all bank POS card terminal merchant settlement slips.<br>
+                    • Compare with the total recorded in your POS summary. Hand over cash to the manager or owner with the signed daily receipt sheet.
                 </p>
             </div>
         </div>
 
         <!-- Cashier FAQs -->
-        <h4 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem;">Cashier & Sales FAQs</h4>
+        <h4 style="font-size: 1.1rem; font-weight: 800; margin: 1.5rem 0 0.75rem 0;">💡 Cashier Frequently Asked Questions</h4>
+
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
-                <span>❓ How exactly are Part Payments (Part-Paid) handled in the system?</span>
+                <span>❓ Why does the Complete Sale button stay disabled when opening POS?</span>
                 <span class="faq-toggle">▼</span>
             </div>
             <div class="faq-answer">
-                When an order is completed as <strong>Part-Paid</strong> (e.g. ₦30,000 paid on a ₦50,000 invoice):
-                <ol style="margin-left: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;">
-                    <li><strong>Revenue Accounting:</strong> Only the actual cash/POS received (₦30,000) is counted in today's collected money.</li>
-                    <li><strong>Debtors Ledger:</strong> The remaining balance (₦20,000) is automatically posted to the customer's permanent ledger under <strong>💳 Customer Debts</strong>.</li>
-                    <li><strong>Customer Receipt:</strong> The printed receipt clearly states <code>TOTAL: ₦50,000</code>, <code>Amount Paid: ₦30,000 (PART-PAID)</code>, and <code>Debt Balance: ₦20,000</code>.</li>
-                    <li><strong>Debt Recovery:</strong> When the customer brings money later, staff records the repayment under <em>Customer Debts</em>, which reduces the balance and prints an installment recovery receipt.</li>
-                </ol>
+                The <strong>Complete Sale & Print</strong> button is intentionally protected by a safety interlock. It remains disabled until at least one product has been clicked and added to your active cart. Once items are in the cart, the button turns green and unlocks immediately.
             </div>
         </div>
+
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
-                <span>❓ What is the difference between "Paid & Supplied" vs "Paid & Not Supplied"?</span>
+                <span>❓ Why does the system block checkout saying "Physical Stock Handover Rule"?</span>
                 <span class="faq-toggle">▼</span>
             </div>
             <div class="faq-answer">
-                <strong>Paid & Supplied</strong> means the customer paid and carried their goods away immediately. The items are subtracted from physical shelf stock right away.<br><br>
-                <strong>Paid & Not Supplied</strong> means the customer paid in full, but left the cartons in your shop to send their transport vehicle later. The items <strong>remain counted in your shop's physical closing stock</strong>. When their driver arrives, the storekeeper goes to <strong>⏳ Pending Orders</strong> and taps <strong>"Mark as Supplied"</strong>. This prevents physical count discrepancies during audits!
+                If you select 🟢 <strong>SUPPLIED</strong>, the system checks whether the shop physically has those units on shelf. If physical stock is <code>0</code> or less than requested, you cannot hand over non-existent goods! If the customer is ordering in advance, switch handover to 🟠 <strong>NOT SUPPLIED</strong>.
             </div>
         </div>
+
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
-                <span>❓ What happens if a customer buys on 100% credit without paying any deposit?</span>
+                <span>❓ Can I void or delete a sale if I make a cashier mistake?</span>
                 <span class="faq-toggle">▼</span>
             </div>
             <div class="faq-answer">
-                Select <strong>🤝 Part-Paid / Not Paid</strong> and enter <strong>0</strong> in the <em>Amount Paying Now</em> box. The sale will be recorded as <strong>Not Paid (Full Debt)</strong>, the full bill will be added to the customer's debt ledger, and the receipt will state <code>NOT PAID & SUPPLIED</code> (or <code>NOT PAID & NOT SUPPLIED</code>).
-            </div>
-        </div>
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ Are past sales transactions editable? How are cashier mistakes handled?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                <strong>No. Invoices cannot be silently modified or deleted</strong> to prevent fraud and theft. If a cashier made a mistake or a customer returns items, go to <strong>🔄 Returns & Refunds</strong> in the sidebar. Select the invoice, choose the returned items, and refund the cash or deduct their debt balance. This restores physical stock and logs an immutable audit trail.
-            </div>
-        </div>
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ Who creates products, and who adds stock quantity?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Only the <strong>Auditor / Super Admin</strong> can create, edit, or bulk-import new products into the central catalog (this prevents rogue staff from introducing ghost items). However, <strong>Branch Managers</strong>, <strong>Storekeepers</strong>, and <strong>Sales & Stock Officers</strong> can add stock quantities at any time via <strong>📥 Stock In ➔ 📥 New Goods Arrived</strong>!
-            </div>
-        </div>
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ What if a customer brings money later to pay their debt?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Go to <strong>💳 Customer Debts</strong> in the sidebar. Click <strong>"💰 Record Payment"</strong> next to their name, type the amount received, and print their updated receipt.
-            </div>
-        </div>
-        <div class="faq-item" onclick="toggleFaq(this)">
-            <div class="faq-question">
-                <span>❓ Can I use the calculator while making a sale?</span>
-                <span class="faq-toggle">▼</span>
-            </div>
-            <div class="faq-answer">
-                Yes! Click the <strong>🧮 Calculator</strong> button in the top header at any time to open the keypad without leaving your POS screen.
+                Cashiers cannot delete or void sales for store security and audit compliance. If a mistake occurs, alert your <strong>Store Owner or Branch Manager</strong>. An Administrator can void the erroneous transaction from Universal History with a mandatory audit reason.
             </div>
         </div>
     </div>
+    @endif
 
     <!-- ========================================================================= -->
-    <!-- 2. STOREKEEPER & INVENTORY LEAD GUIDE -->
+    <!-- 2. STOREKEEPER GUIDE -->
     <!-- ========================================================================= -->
-    <div id="roleStorekeeper" class="guide-section">
-        <div class="duty-card" style="border-left: 6px solid #3b82f6;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
-                <span style="font-size: 2rem;">📦</span>
+    @if($isAdmin || $isManager || $isStorekeeper)
+    <div id="roleStorekeeper" class="guide-section {{ $isStorekeeper ? 'active' : '' }}">
+        <div class="duty-card" style="border-left: 6px solid #f59e0b;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <span style="font-size: 2.2rem;">📦</span>
                 <div>
-                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #60a5fa;">Storekeeper & Inventory Lead Job Duties</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is physical stock count accuracy, accepting transfers, releasing pickups, and logging damages.</p>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #fbbf24; margin: 0;">Storekeeper & Inventory Logistics Workflow</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.15rem 0 0 0;">Physical inventory counts, receiving goods, releasing customer pickup slips, and transfer piece-counting.</p>
                 </div>
             </div>
 
             <div class="step-box">
-                <strong style="color: #86efac;">1. Receiving New Goods from Suppliers (Stock In)</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>📥 Stock In</strong> in the sidebar. Click <strong>📥 New Goods Arrived</strong>, select the product, enter quantity offloaded from supplier truck, and save.
+                <h4 style="color: #86efac;">1. Receiving New Goods from Suppliers (Stock In)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Navigate to <strong>📥 Stock In</strong> in the sidebar.<br>
+                    • Click <strong>📥 New Goods Arrived</strong>, select the supplier, choose the product SKU, and enter the physical cartons offloaded.<br>
+                    • <strong>Strict Counting Rule:</strong> Count every piece physically before confirming. Never sign a supplier delivery note without counting!
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #60a5fa;">2. Accepting & Counting Inter-Branch Transfers</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    When a carrier arrives from another branch, go to <strong>🚚 Shop Transfers</strong> in the sidebar. Locate the shipment card and click <strong>"✅ Accept & Count Goods"</strong>. Physically count every carton before clicking confirm.
+                <h4 style="color: #60a5fa;">2. Fulfilling Customer Delayed Pickups (Pending Orders)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • When a customer or their transport driver arrives with a physical paper receipt slip, go to <strong>⏳ Pending Orders</strong>.<br>
+                    • Search the <strong>Physical Slip #</strong> (e.g. <code>4082</code>) or customer name.<br>
+                    • Verify the products listed against the physical paper booklet receipt.<br>
+                    • Click <strong>"✓ Handover Goods to Customer"</strong>. This formally marks the order as delivered and deducts the units from physical shelf stock.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #fbbf24;">3. Releasing Customer Pickups (Delayed Orders)</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    When a customer comes to carry goods they bought earlier, go to <strong>⏳ Pending Orders</strong> in the sidebar and tap <strong>"✓ Handover Goods to Customer"</strong>. This deducts the items from physical closing stock count.
+                <h4 style="color: #38bdf8;">3. Dispatching Inter-Branch Transfers</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Go to <strong>🚚 Shop Transfers</strong> and click <strong>Dispatch New Transfer</strong>.<br>
+                    • Choose the destination branch, enter the driver's name, vehicle number, and product quantities.<br>
+                    • Print the official Waybill and give a physical copy to the carrier driver. The items move to <em>IN-TRANSIT</em> status.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #f87171;">4. Logging Damaged or Expired Stock</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Never throw broken or expired items away without recording. Go to <strong>📉 Damaged Goods</strong> $\rightarrow$ Click <strong>Record Damaged Goods</strong> $\rightarrow$ Enter quantity and incident note.
+                <h4 style="color: #f87171;">4. Accepting Inbound Transfers (Mandatory Piece Count)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • When a delivery vehicle arrives from another branch, find the transfer under <strong>🚚 Shop Transfers</strong>.<br>
+                    • Click <strong>"✅ Accept & Count Goods"</strong>.<br>
+                    • <strong>Anti-Theft Protocol:</strong> Physically count every single carton in the presence of the driver. If any item is missing or damaged, record the variance immediately before accepting!
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #c084fc;">5. Logging Damaged or Expired Stock</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Broken, spoiled, or expired goods must never be discarded without logging.<br>
+                    • Go to <strong>📉 Damaged Goods</strong> $\rightarrow$ Click <strong>Record Damaged Goods</strong>.<br>
+                    • Enter the damaged quantity and a mandatory explanation (e.g. <em>"Crushed carton offloaded from truck"</em>).
                 </p>
             </div>
         </div>
 
-        <!-- Storekeeper FAQs -->
-        <h4 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem;">Storekeeper FAQs</h4>
+        <h4 style="font-size: 1.1rem; font-weight: 800; margin: 1.5rem 0 0.75rem 0;">💡 Storekeeper FAQs</h4>
         <div class="faq-item" onclick="toggleFaq(this)">
             <div class="faq-question">
-                <span>❓ What happens if 50 cartons were sent on transfer but only 48 cartons arrived?</span>
+                <span>❓ Can a storekeeper sell goods or change product prices on POS?</span>
                 <span class="faq-toggle">▼</span>
             </div>
             <div class="faq-answer">
-                In the Accept modal, enter the exact counted quantity: <strong>48</strong>. The system will add only 48 to your shop's stock and automatically raise a <strong>🚨 THEFT/DISCREPANCY ALERT</strong> for the Auditor showing that 2 units were lost in transit under the carrier's name.
+                No. Storekeeper accounts are strictly segregated from financial checkout to enforce anti-theft checks and balances. Storekeepers manage inventory movements, counts, and deliveries, while cashiers handle financial transactions.
             </div>
         </div>
     </div>
+    @endif
 
     <!-- ========================================================================= -->
     <!-- 3. BRANCH MANAGER GUIDE -->
     <!-- ========================================================================= -->
-    <div id="roleManager" class="guide-section">
-        <div class="duty-card" style="border-left: 6px solid #d97706;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
-                <span style="font-size: 2rem;">🏢</span>
+    @if($isAdmin || $isManager)
+    <div id="roleManager" class="guide-section {{ $isManager ? 'active' : '' }}">
+        <div class="duty-card" style="border-left: 6px solid #3b82f6;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <span style="font-size: 2.2rem;">🏢</span>
                 <div>
-                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #fbbf24;">Branch Manager Job Duties</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is branch oversight, managing local staff, approving returns, and dispatching transfers.</p>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #60a5fa; margin: 0;">Branch Operations Manager Workflow</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.15rem 0 0 0;">Branch oversight, cashier register balancing, customer returns verification, and debtor recovery tracking.</p>
                 </div>
             </div>
 
             <div class="step-box">
-                <strong style="color: #fbbf24;">1. Processing Customer Returns & Refunds</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>🔄 Returns & Refunds</strong>. Select the original invoice ref, choose items returned, and select whether to refund cash or deduct from customer's debt balance. Stock is automatically restored to shelves.
+                <h4 style="color: #86efac;">1. Daily Shift Balancing & Register Auditing</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Review each cashier's register totals under <strong>📜 Universal History</strong> at the close of every shift.<br>
+                    • Verify that physical cash handed over matches the Cash Inflow total, and bank card settlement slips match POS Card Inflows.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #60a5fa;">2. Sending Transfers to Other Branches</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>🚚 Shop Transfers</strong> $\rightarrow$ Click <strong>Dispatch New Transfer</strong> $\rightarrow$ Select destination branch, enter driver name, and specify product quantities.
+                <h4 style="color: #fbbf24;">2. Customer Returns & The Golden Restitution Rule</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Go to <strong>🔄 Returns & Refunds</strong> $\rightarrow$ Click <strong>Process Return</strong>.<br>
+                    • Search by <strong>Physical Slip #</strong> or Invoice ID.<br>
+                    • <strong>Supplied Return:</strong> Customer carried the goods away earlier $\rightarrow$ Restores physical shelf stock (+Q) and refunds money.<br>
+                    • <strong>Unsupplied Return (Buffer Order Cancellation):</strong> Customer paid but never collected goods $\rightarrow$ <strong>0 shelf units added</strong> (goods never left the shop!). The reservation is cancelled and money is refunded without creating phantom inventory.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #86efac;">3. Reviewing Branch Sales & Transactions</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>📑 Sales History</strong>. Filter by <em>Today</em>, <em>This Week</em>, or specific cashiers to monitor revenue, collected cash, and outstanding debts.
+                <h4 style="color: #38bdf8;">3. Debtor Follow-ups & Debt Recovery Recording</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Open <strong>🤝 Customer Debts</strong> to review outstanding credit balances.<br>
+                    • When a customer pays off past debt, click <strong>"Record Payment"</strong>, enter the recovered cash or transfer amount, and issue an official debt recovery receipt.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #f87171;">4. Unsupplied Buffer Oversight</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Regularly review <strong>⏳ Pending Orders</strong> to ensure stock allocated for delayed customer pickup is stored safely and never sold to walk-in buyers.
+                </p>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    <!-- ========================================================================= -->
+    <!-- 4. EXECUTIVE OBSERVER GUIDE -->
+    <!-- ========================================================================= -->
+    @if($isAdmin || $isViewer)
+    <div id="roleViewer" class="guide-section {{ $isViewer ? 'active' : '' }}">
+        <div class="duty-card" style="border-left: 6px solid #eab308;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <span style="font-size: 2.2rem;">👁️</span>
+                <div>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #facc15; margin: 0;">Executive Observer (Read-Only Silent Auditor)</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.15rem 0 0 0;">Comprehensive visibility into money, stock valuations, and audit reports without operational editing risks.</p>
+                </div>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #4ade80;">1. Remote Multi-Branch Monitoring</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Use the top <strong>Branch / Location Dropdown</strong> combined with date presets (<em>Today</em>, <em>This Week</em>, <em>This Month</em>, <em>Custom</em>) to analyze revenues, cash collections, and debtor balances across branches.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #60a5fa;">2. Stock Telemetry & Enterprise Valuation</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • View total physical shelf inventory count, monetary valuations (₦), low-stock warnings, and unsupplied order liabilities across the business.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #f87171;">3. Theft & Variance Radar</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Review discrepancy reports in real-time — damaged stock write-offs, transfer discrepancies, or drawer cash variations.
+                </p>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    <!-- ========================================================================= -->
+    <!-- 5. STORE OWNER & SUPER ADMIN GUIDE -->
+    <!-- ========================================================================= -->
+    @if($isAdmin)
+    <div id="roleAdmin" class="guide-section active">
+        <div class="duty-card" style="border-left: 6px solid #a855f7;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <span style="font-size: 2.2rem;">👑</span>
+                <div>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #c084fc; margin: 0;">Store Owner & Super Administrator Command Center</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.15rem 0 0 0;">Master administrative control: Option A clean voiding, user permissions, multi-branch settings, and profit auditing.</p>
+                </div>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #ef4444;">1. Option A: Clean Void Reconciliation (Error Reversals)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • If a sale was registered mistakenly or needs to be completely voided, open <strong>📜 Universal History</strong>.<br>
+                    • Click the red <strong>🗑️ Delete / Void</strong> button next to the transaction and provide a mandatory audit reason.<br>
+                    • <strong>Automated Clean Reconciliation (Option A):</strong><br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;✓ <strong>Physical Shelf Stock:</strong> Automatically restored to ground inventory.<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;✓ <strong>Stock Out Tab:</strong> Original outflow logs are deleted, removing ghost entries completely.<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;✓ <strong>Customer Debt Ledgers:</strong> Any invoice or debtor liability from the voided sale is erased.<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;✓ <strong>Tamper-Evident Security Log:</strong> An indelible audit trail is sealed in Activity Logs recording the Admin's identity, timestamp, and full product breakdown.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #38bdf8;">2. Staff Management & Anti-Theft Permission Barriers</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Navigate to <strong>👥 Staff & Roles</strong> to create workers and assign branch locations.<br>
+                    • <strong>Strict Separation of Powers:</strong> Keep Cashier roles separate from Storekeeper roles so no single staff member can both alter stock counts and collect sales cash.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #4ade80;">3. Multi-Branch Operations & Warehouse Isolation</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Under <strong>⚙️ Settings</strong>, create and manage branches (shops and warehouses).<br>
+                    • Non-admin staff are strictly branch-scoped: cashiers and storekeepers can only see and operate on inventory in their assigned shop.
+                </p>
+            </div>
+
+            <div class="step-box">
+                <h4 style="color: #fbbf24;">4. Day-Book Comprehensive Reconciliation (6 Audit Sections)</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    • Under <strong>📊 Reports ➔ Day-Book Tab</strong>, export the comprehensive daily audit report.<br>
+                    • Reconciles gross revenue, physical drawer cash, card receipts, new credit issued, debt recoveries, and carried unsupplied order backlogs.
                 </p>
             </div>
         </div>
     </div>
 
     <!-- ========================================================================= -->
-    <!-- 4. AUDITOR & SUPER ADMIN GUIDE -->
+    <!-- 6. MASTER OPERATIONS GUIDE ACROSS ALL SCREENS -->
     <!-- ========================================================================= -->
-    <div id="roleAuditor" class="guide-section">
-        <div class="duty-card" style="border-left: 6px solid #dc2626;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
-                <span style="font-size: 2rem;">🛡️</span>
+    <div id="roleScreens" class="guide-section">
+        <div class="duty-card" style="border-left: 6px solid #6366f1;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <span style="font-size: 2.2rem;">🖥️</span>
                 <div>
-                    <h3 style="font-size: 1.3rem; font-weight: 800; color: #f87171;">Auditor & Super Admin Job Duties</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Your main responsibility is anti-theft oversight, inventory reconciliation, staff access control, and system security.</p>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #818cf8; margin: 0;">Master Reference Across All Screens & Tabs</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.15rem 0 0 0;">Technical reference for every tab and screen to guarantee 100% data integrity and zero leakage.</p>
                 </div>
             </div>
 
             <div class="step-box">
-                <strong style="color: #f87171;">1. The Theft & Variance Radar</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>🚨 Auditor Control Hub</strong> in the sidebar. Review the Discrepancy Radar for missing transfer items, unaccounted write-offs, or cashier cash shortages.
+                <h4 style="color: #4ade80;">POS & Checkout Screen</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    Rapid barcode scanning, instant multi-attribute SKU search, inline bargaining price edits, paper slip number primary identification, Cash/POS/Debt tenders, and physical handover confirmation.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #60a5fa;">2. Multi-Branch Physical Closing Stock Valuation</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    In the Auditor Hub, view the complete stock matrix comparing physical on-ground counts against total inventory monetary value across all shops.
+                <h4 style="color: #60a5fa;">Universal History & 8 Ledger Hubs</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    Zero-reload tabs: Sales, Payments, Stock In, Stock Out / Damages, Logistics / In-Transit, Waybills, Returns & Refunds, and Debtors. Live filtered CSV and JSON export engines.
                 </p>
             </div>
 
             <div class="step-box">
-                <strong style="color: #86efac;">3. Creating Workers & Instant Anti-Theft Account Lock</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>👥 Workers & Roles</strong>. Create new staff with assigned roles and branch shops. If any staff is suspected of theft, click <strong>"🔒 Lock Access"</strong> to block their account immediately.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #fbbf24;">4. System Settings & Database Backups</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    Go to <strong>⚙️ System Settings</strong> to customize receipt footers, low stock alert limits, add new branch shops, and download one-click database backup snapshots.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #4ade80;">5. Universal History & AI Data Exports (CSV / JSON across all 8 Tabs)</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    In <strong>📜 Universal History & Ledgers</strong>, all 8 transaction tabs (<em>Sales, Stock In, Stock Out, In-Transit Buffer, Incoming Transfers, Returns, Refunds, and Customer Debts</em>) feature live filtered <strong>"📥 Export Filtered CSV"</strong> and <strong>"📄 Export JSON"</strong> buttons that stream only records matching your active filters for Excel, Google Sheets, or auditing.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #93c5fd;">6. Printable Transfer Waybills</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    In <strong>🚚 Shop Transfers</strong> or the Reports tab, click <strong>🖨️ Waybill</strong> next to any transfer to print an official delivery note with signature boxes for the dispatch officer, carrier driver, and storekeeper.
-                </p>
-            </div>
-
-            <div class="step-box">
-                <strong style="color: #f87171;">7. Secure Sign In & Topbar One-Click Log Out</strong>
-                <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.35rem;">
-                    All workers must sign in at <strong>/login</strong> using their work email and password. When closing shift or stepping away from the computer, click <strong>🚪 Log Out</strong> at the top right to lock the session and protect financial data.
+                <h4 style="color: #fbbf24;">Pending Orders Backlog</h4>
+                <p style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.6; margin: 0;">
+                    Unsupplied orders pending customer pickup with aging breakdown (&lt;24h, 24-48h, 3-7d, &gt;7d). Handover button to authoritatively deduct goods upon physical collection.
                 </p>
             </div>
         </div>
     </div>
+    @endif
 
 @endsection
 
@@ -506,8 +569,9 @@ function showRoleGuide(roleId, btn) {
     document.querySelectorAll('.role-tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.guide-section').forEach(s => s.classList.remove('active'));
 
-    btn.classList.add('active');
-    document.getElementById(roleId).classList.add('active');
+    if (btn) btn.classList.add('active');
+    const target = document.getElementById(roleId);
+    if (target) target.classList.add('active');
 }
 
 function toggleFaq(item) {

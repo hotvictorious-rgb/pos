@@ -178,6 +178,9 @@
                 <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
                     Invoice <strong style="color: #93c5fd;">#{{ substr($sale->id, 0, 8) }}</strong> · Purchased on: {{ date('d M Y, h:i A', strtotime($sale->createdAt)) }}
                     @if($sale->customerPhone) · Tel: {{ $sale->customerPhone }} @endif
+                    @if(preg_match('/\[RECEIPT REF:\s*#?([^\]]+)\]/i', $sale->note ?? '', $m))
+                        · <span style="background: rgba(56,189,248,0.15); color: #38bdf8; padding: 0.15rem 0.5rem; border-radius: 6px; font-weight: 800; border: 1px solid rgba(56,189,248,0.3);">🧾 Slip #{{ trim($m[1]) }}</span>
+                    @endif
                 </div>
 
                 <!-- Items list -->

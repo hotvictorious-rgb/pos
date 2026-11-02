@@ -18,7 +18,7 @@ class AuditorController extends Controller
     /**
      * Auditor Anti-Theft & Reconciliation Hub.
      */
-    public function index()
+    public function index(Request $request)
     {
         $authUser = Auth::user();
         $assignedWarehouseId = ($authUser && !empty($authUser->warehouse_id)) ? $authUser->warehouse_id : null;
@@ -94,8 +94,30 @@ class AuditorController extends Controller
         $unsuppliedSales = $unsuppliedQuery->get();
         $unsuppliedValue = $unsuppliedSales->sum('totalAmount');
 
-        // 5. Immutable Activity Audit Log
-        $recentActivities = Activity::orderBy('timestamp', 'desc')->take(25)->get();
+        // 5. Immutable Activity Audit Log (with activity type filter & branch scoping)
+        $activityQuery = Activity::orderBy('timestamp', 'desc');
+
+        $selectedType = (string) $request->query('activity_type', 'ALL');
+        if (!empty($selectedType) && $selectedType !== 'ALL') {
+            $activityQuery->where('type', $selectedType);
+        }
+
+        if ($assignedWarehouseId) {
+            $activityQuery->where(function ($q) use ($assignedWarehouseId) {
+                $q->whereNull('metadata->warehouse_id')
+                  ->orWhere('metadata->warehouse_id', $assignedWarehouseId)
+                  ->orWhere('metadata->warehouse_id', (string) $assignedWarehouseId);
+            });
+        }
+
+        $recentActivities = $activityQuery->take(50)->get();
+
+        $availableActivityTypes = Activity::select('type')
+            ->distinct()
+            ->pluck('type')
+            ->filter()
+            ->sort()
+            ->values();
 
         return view('auditor.index', compact(
             'warehouses',
@@ -105,7 +127,9 @@ class AuditorController extends Controller
             'debtors',
             'unsuppliedSales',
             'unsuppliedValue',
-            'recentActivities'
+            'recentActivities',
+            'selectedType',
+            'availableActivityTypes'
         ));
     }
 }

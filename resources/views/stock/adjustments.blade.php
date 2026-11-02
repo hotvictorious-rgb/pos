@@ -189,9 +189,9 @@
                         <th>Date & Time</th>
                         <th>Branch Shop</th>
                         <th>Product SKU</th>
-                        <th>Stock Out Category</th>
+                        <th>Type</th>
                         <th style="color: #f87171;">Qty Deducted</th>
-                        <th>Reason / Notes</th>
+                        <th>Reason / Justification</th>
                         <th>Staff Name</th>
                     </tr>
                 </thead>
@@ -209,6 +209,7 @@
                             @php
                                 $typeKey = strtoupper($adj->type);
                                 $badgeConfig = match($typeKey) {
+                                    'ADJUSTMENT' => ['class' => 'badge-danger', 'icon' => '📉', 'label' => 'Adjustment'],
                                     'DAMAGE' => ['class' => 'badge-danger', 'icon' => '💥', 'label' => 'Damage & Expiry'],
                                     'EXPIRED' => ['class' => 'badge-warning', 'icon' => '⏳', 'label' => 'Expired'],
                                     'INTERNAL_USE' => ['class' => 'badge-info', 'icon' => '🏢', 'label' => 'Internal Store Use'],
@@ -218,7 +219,7 @@
                                     'SUPPLIER_RETURN' => ['class' => 'badge-secondary', 'icon' => '🔄', 'label' => 'Supplier Return'],
                                     'CORRECTION' => ['class' => 'badge-info', 'icon' => '⚖️', 'label' => 'Count Correction'],
                                     'CUSTOMER_GOODWILL' => ['class' => 'badge-success', 'icon' => '🤝', 'label' => 'Replacement'],
-                                    default => ['class' => 'badge-secondary', 'icon' => '📝', 'label' => 'Deduction / Other'],
+                                    default => ['class' => 'badge-secondary', 'icon' => '📝', 'label' => 'Adjustment'],
                                 };
                             @endphp
                             <span class="badge {{ $badgeConfig['class'] }}">
@@ -278,15 +279,7 @@
                     <div id="adjStockBadge" style="display: none; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.82rem; font-weight: 700;"></div>
                 </div>
 
-                <div class="form-group">
-                    <label>Stock Out Category</label>
-                    <select name="type" id="adjType" required>
-                        <option value="DAMAGE">💥 Damage & Expiry (Broken, damaged, spoiled, or expired)</option>
-                        <option value="INTERNAL_USE">🏢 Internal Store Use & Samples (Staff consumption, cleaning, samples)</option>
-                        <option value="SHRINKAGE">🔍 Loss & Shrinkage (Missing shelf stock, theft, shortage)</option>
-                        <option value="CORRECTION">⚖️ Count Correction & Other (Audit reconciliation, supplier return, other)</option>
-                    </select>
-                </div>
+                <input type="hidden" name="type" id="adjType" value="ADJUSTMENT">
 
                 <div class="form-group">
                     <label>Quantity to Deduct (Units)</label>
@@ -294,8 +287,11 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Reason Note / Additional Details <span style="font-size: 0.78rem; font-weight: 500; color: var(--text-muted);">(Optional — leave blank to use category above)</span></label>
-                    <input type="text" name="reason" id="adjReason" placeholder="Optional: explain incident or leave blank">
+                    <label>Reason / Justification <span style="color: #ef4444; font-weight: 800;">* (Compulsory)</span></label>
+                    <input type="text" name="reason" id="adjReason" required minlength="3" placeholder="e.g. Broken carton during offloading, expired, lost, or audit correction">
+                    <small style="color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 0.25rem;">
+                        ⚠️ An authoritative reason is compulsory before deducting inventory.
+                    </small>
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
@@ -435,6 +431,15 @@ function confirmAdjustment() {
         }
     }
 
+    const reason = reasonInput ? reasonInput.value.trim() : '';
+    if (!reason || reason.length < 3) {
+        errors.push({
+            title: 'Compulsory Reason Required',
+            desc: 'Please enter a clear justification (at least 3 characters) explaining why this physical stock is being deducted.',
+            focus: 'adjReason'
+        });
+    }
+
     if (errors.length > 0) {
         showActionBlockedModal({
             title: 'Stock Out Cannot Be Authorized',
@@ -444,13 +449,7 @@ function confirmAdjustment() {
         return;
     }
 
-    const selectedTypeText = typeSelect.options[typeSelect.selectedIndex].text;
-    const cleanTypeLabel = selectedTypeText.replace(/^[\p{Emoji}\s]+/u, '').trim();
-    let reason = reasonInput.value.trim();
-    if (!reason) {
-        reason = cleanTypeLabel;
-        reasonInput.value = cleanTypeLabel; // populate default for form submission
-    }
+    const cleanTypeLabel = 'Stock Adjustment';
 
     const prodName = prodSelect.options[prodSelect.selectedIndex].text;
     const whName = whSelect ? whSelect.options[whSelect.selectedIndex].text : 'Branch Shop';
@@ -466,8 +465,8 @@ function confirmAdjustment() {
             { label: 'Branch Shop', value: whName, color: '#60a5fa' },
             { label: 'Product', value: prodName, color: '#f8fafc' },
             { label: 'Units to Deduct', value: '- ' + qty + ' units', color: '#f87171', size: '1.1rem' },
-            { label: 'Reason / Type', value: cleanTypeLabel, color: '#fbbf24' },
-            { label: 'Incident Notes', value: reason, color: '#cbd5e1' }
+            { label: 'Type', value: 'Adjustment', color: '#fbbf24' },
+            { label: 'Compulsory Reason', value: reason, color: '#cbd5e1' }
         ],
         impact: {
             text: '🛡️ INVENTORY REDUCTION: Deducts ' + qty + ' physical units from ' + whName + ' and writes an audit ledger entry.',

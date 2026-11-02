@@ -27,6 +27,7 @@ class Sale extends Model
         'posAmount',
         'transferAmount',
         'note',
+        'receipt_ref',
         'status',
         'sale_type',
         'customerId',
@@ -80,6 +81,11 @@ class Sale extends Model
     }
 
     public function returns()
+    {
+        return $this->hasMany(SalesReturn::class, 'saleId', 'id');
+    }
+
+    public function salesReturns()
     {
         return $this->hasMany(SalesReturn::class, 'saleId', 'id');
     }

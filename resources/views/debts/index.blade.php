@@ -81,15 +81,15 @@
         <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
                 <span style="font-size: 1.75rem;">💳</span>
-                <h2 style="font-size: 1.5rem; font-weight: 800;">Customer Debts & Part-Payments Hub</h2>
+                <h2 style="font-size: 1.5rem; font-weight: 800;">Customer Debts & Installments Hub</h2>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Real-time debtor ledger with part-payment collection and zero-decimal accounting.
+                Real-time accounts manager distinguishing delivered debts from store installment deposits.
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem;">
             <a href="{{ route('transactions.index', ['tab' => 'debts']) }}" class="btn btn-secondary">
-                📜 Full Debts Ledger
+                📜 Full Debts & Installments Ledger
             </a>
             <a href="{{ route('pos.index') }}" class="btn btn-primary">
                 💰 New Sale
@@ -98,14 +98,22 @@
     </div>
 
     <!-- Summary Overview Grid -->
-    <div class="summary-grid">
+    <div class="summary-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
         <div class="summary-card">
-            <h4>Total Outstanding Debt</h4>
-            <div class="val" style="color: #f87171;">₦{{ number_format($totalOutstandingDebt, 0) }}</div>
+            <h4>Total Outstanding Balance</h4>
+            <div class="val" style="color: #fbbf24;">₦{{ number_format($totalOutstandingDebt, 0) }}</div>
         </div>
         <div class="summary-card">
-            <h4>Active Debtors</h4>
-            <div class="val" style="color: #fbbf24;">{{ number_format($totalDebtorsCount) }} customers</div>
+            <h4>Customer Debts (Goods Supplied)</h4>
+            <div class="val" style="color: #f87171;">₦{{ number_format($totalDeliveredDebt ?? 0, 0) }}</div>
+        </div>
+        <div class="summary-card">
+            <h4>Active Installments (Goods in Shop)</h4>
+            <div class="val" style="color: #c084fc;">₦{{ number_format($totalInstallmentDebt ?? 0, 0) }}</div>
+        </div>
+        <div class="summary-card">
+            <h4>Active Accounts</h4>
+            <div class="val" style="color: #60a5fa;">{{ number_format($totalDebtorsCount) }} customers</div>
         </div>
         <div class="summary-card">
             <h4>High-Risk Accounts (≥ ₦100k)</h4>
@@ -116,13 +124,18 @@
     <!-- Multi-Criteria Filter Card -->
     <div class="filter-card">
         <form method="GET" action="{{ route('debts.index') }}">
-            <!-- Quick Debt Brackets -->
+            <!-- Quick Agreement Type & Debt Brackets -->
             <div style="display: flex; gap: 0.4rem; margin-bottom: 0.85rem; flex-wrap: wrap; align-items: center;">
-                <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Debt Bracket:</span>
-                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'ALL'])) }}" class="date-pill {{ $debtBracket === 'ALL' ? 'active' : '' }}">All Debtors</a>
-                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'HIGH'])) }}" class="date-pill {{ $debtBracket === 'HIGH' ? 'active' : '' }}" style="{{ $debtBracket === 'HIGH' ? 'background: #dc2626; border-color: #ef4444;' : '' }}">🔴 High Debt (≥ ₦100,000)</a>
-                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'MEDIUM'])) }}" class="date-pill {{ $debtBracket === 'MEDIUM' ? 'active' : '' }}">🟠 Medium Debt (₦20k - ₦100k)</a>
-                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'LOW'])) }}" class="date-pill {{ $debtBracket === 'LOW' ? 'active' : '' }}">🟢 Low Debt (< ₦20,000)</a>
+                <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Agreement:</span>
+                <a href="{{ route('debts.index', array_merge(request()->except('agreement_type'), ['agreement_type' => 'ALL'])) }}" class="date-pill {{ ($agreementType ?? 'ALL') === 'ALL' ? 'active' : '' }}">All Accounts</a>
+                <a href="{{ route('debts.index', array_merge(request()->except('agreement_type'), ['agreement_type' => 'GOODS_CARRIED'])) }}" class="date-pill {{ ($agreementType ?? '') === 'GOODS_CARRIED' ? 'active' : '' }}" style="{{ ($agreementType ?? '') === 'GOODS_CARRIED' ? 'background: #dc2626; border-color: #ef4444;' : '' }}">🚨 Goods Supplied (Debts)</a>
+                <a href="{{ route('debts.index', array_merge(request()->except('agreement_type'), ['agreement_type' => 'PAY_SMALL_SMALL'])) }}" class="date-pill {{ ($agreementType ?? '') === 'PAY_SMALL_SMALL' ? 'active' : '' }}" style="{{ ($agreementType ?? '') === 'PAY_SMALL_SMALL' ? 'background: #9333ea; border-color: #a855f7;' : '' }}">📦 Goods in Shop (Installments)</a>
+
+                <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-left: 0.75rem;">Bracket:</span>
+                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'ALL'])) }}" class="date-pill {{ $debtBracket === 'ALL' ? 'active' : '' }}">All</a>
+                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'HIGH'])) }}" class="date-pill {{ $debtBracket === 'HIGH' ? 'active' : '' }}" style="{{ $debtBracket === 'HIGH' ? 'background: #dc2626; border-color: #ef4444;' : '' }}">🔴 ≥ ₦100k</a>
+                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'MEDIUM'])) }}" class="date-pill {{ $debtBracket === 'MEDIUM' ? 'active' : '' }}">🟠 ₦20k - ₦100k</a>
+                <a href="{{ route('debts.index', array_merge(request()->except('debt_bracket'), ['debt_bracket' => 'LOW'])) }}" class="date-pill {{ $debtBracket === 'LOW' ? 'active' : '' }}">🟢 < ₦20k</a>
             </div>
 
             <div class="grid-2" style="gap: 0.75rem;">
@@ -196,21 +209,39 @@
                             ₦{{ number_format($effectiveDebt, 0) }}
                         </td>
                         <td>
-                            @if($effectiveDebt >= 100000)
-                                <span class="badge badge-danger">🔴 High Risk</span>
+                            @if(isset($debtor->agreement_category) && $debtor->agreement_category === 'PAY_SMALL_SMALL')
+                                <span class="badge" style="background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.3);">
+                                    📦 Installment (In Shop)
+                                </span>
+                            @elseif(isset($debtor->agreement_category) && $debtor->agreement_category === 'MIXED')
+                                <span class="badge" style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3);">
+                                    🔄 Mixed (Debt & Installments)
+                                </span>
                             @else
-                                <span class="badge badge-warning">⚠️ Owes Balance</span>
+                                <span class="badge badge-danger">
+                                    🚨 Debt (Goods Supplied)
+                                </span>
+                            @endif
+
+                            @if($effectiveDebt >= 100000)
+                                <div style="font-size: 0.7rem; color: #f87171; font-weight: 700; margin-top: 0.2rem;">🔴 High Balance</div>
                             @endif
                         </td>
                         <td>
-                            @if(auth()->user()?->role !== 'viewer')
-                                <button class="btn btn-success" style="padding: 0.5rem 1rem; font-size: 0.85rem;"
-                                        onclick="openPaymentModal({{ $debtor->id }}, '{{ addslashes($debtor->name) }}', {{ $effectiveDebt }})">
-                                    💵 Record Payment
-                                </button>
-                            @else
-                                <span style="font-size: 0.78rem; color: #facc15; font-weight: 700; background: rgba(234,179,8,0.1); padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid rgba(234,179,8,0.3);">👑 Read-Only</span>
-                            @endif
+                            <div style="display: flex; gap: 0.35rem; align-items: center;">
+                                @if(auth()->user()?->role !== 'viewer')
+                                    <button class="btn btn-success" style="padding: 0.45rem 0.8rem; font-size: 0.8rem;"
+                                            onclick="openPaymentModal({{ $debtor->id }}, '{{ addslashes($debtor->name) }}', {{ $effectiveDebt }})">
+                                        💵 Record Payment
+                                    </button>
+                                @else
+                                    <span style="font-size: 0.78rem; color: #facc15; font-weight: 700; background: rgba(234,179,8,0.1); padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid rgba(234,179,8,0.3);">👑 Read-Only</span>
+                                @endif
+
+                                <a href="{{ route('transactions.index', ['tab' => 'debts', 'search' => $debtor->phone ?: $debtor->name]) }}" class="btn btn-secondary" style="padding: 0.45rem 0.75rem; font-size: 0.8rem;" title="View all invoice items, history, and installment breakdown">
+                                    🔍 Ledger & Items
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     @empty
