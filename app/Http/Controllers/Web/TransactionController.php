@@ -51,7 +51,11 @@ class TransactionController extends Controller
      */
     public function getSalesQuery(Request $request)
     {
-        $query = Sale::with('items');
+        $query = Sale::with(['items', 'returns']);
+        // 🛡️ Remove voided/cancelled sales from active ledger by default
+        if (!$request->filled('include_voided') || !$request->boolean('include_voided')) {
+            $query->where('status', '!=', 'CANCELLED');
+        }
         $this->applyDateFilter($query, 'createdAt', $request);
 
         $effectiveWh = $this->getEffectiveWarehouseId($request);
@@ -73,7 +77,7 @@ class TransactionController extends Controller
             // When payment records exist for the sale, calculate net paid from payment events.
             // Otherwise, fall back to cached paidAmount for legacy/mock test records.
             $hasPaymentsSql = "(SELECT COUNT(*) FROM payments WHERE payments.saleId = sales.id)";
-            $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method != 'REFUND_CASH'), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method = 'REFUND_CASH'), 0)";
+            $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method NOT IN ('REFUND', 'REFUND_CASH')), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method IN ('REFUND', 'REFUND_CASH')), 0)";
             $netPaidSql = "CASE WHEN {$hasPaymentsSql} > 0 THEN ({$eventNetPaidSql}) ELSE sales.paidAmount END";
             $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
             $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$netPaidSql}))";
@@ -124,7 +128,7 @@ class TransactionController extends Controller
 
     public function getStockInQuery(Request $request)
     {
-        $query = InventoryLog::where('type', 'STOCK_IN');
+        $query = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
         $this->applyDateFilter($query, 'timestamp', $request);
 
         $effectiveWh = $this->getEffectiveWarehouseId($request);
@@ -142,11 +146,27 @@ class TransactionController extends Controller
         if ($request->filled('inflow_category')) {
             $cat = strtoupper($request->inflow_category);
             if ($cat === 'SUPPLIER') {
-                $query->where('description', 'not like', '%Initial%')->where('description', 'not like', '%Audit%');
+                $query->where('type', 'STOCK_IN')
+                      ->where('description', 'not like', '%Initial%')
+                      ->where('description', 'not like', '%Audit%');
+            } elseif ($cat === 'EXCHANGE') {
+                $query->where(function($q) {
+                    $q->where('type', 'EXCHANGE_IN')
+                      ->orWhere(function($sub) {
+                          $sub->where('type', 'SALES_RETURN')->where('description', 'like', '%Exchange%');
+                      });
+                });
+            } elseif ($cat === 'RETURN') {
+                $query->where(function($q) {
+                    $q->whereIn('type', ['RETURN', 'SALES_RETURN'])
+                      ->where('description', 'not like', '%Exchange%');
+                });
+            } elseif ($cat === 'TRANSFER') {
+                $query->where('type', 'TRANSFER_IN');
             } elseif ($cat === 'OPENING') {
-                $query->where('description', 'like', '%Initial%');
+                $query->where('type', 'STOCK_IN')->where('description', 'like', '%Initial%');
             } elseif ($cat === 'AUDIT') {
-                $query->where('description', 'like', '%Audit%');
+                $query->where('type', 'STOCK_IN')->where('description', 'like', '%Audit%');
             }
         }
 
@@ -176,14 +196,19 @@ class TransactionController extends Controller
         $query = InventoryLog::where(function ($q) {
             $q->whereIn('type', [
                 'SALE',
+                'EXCHANGE_OUT',
                 'DISPATCH_FULFILLED',
+                'STOCK_ADJUSTMENT',
                 'STOCK_ADJUSTMENT_DAMAGE',
                 'STOCK_ADJUSTMENT_EXPIRED',
                 'STOCK_ADJUSTMENT_LOST',
+                'STOCK_ADJUSTMENT_SHRINKAGE',
+                'STOCK_ADJUSTMENT_INTERNAL_USE',
+                'STOCK_ADJUSTMENT_CORRECTION',
                 'TRANSFER_OUT',
                 'STOCK_OUT'
             ])->orWhere(function ($sub) {
-                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+                $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
             });
         });
         $this->applyDateFilter($query, 'timestamp', $request);
@@ -200,21 +225,43 @@ class TransactionController extends Controller
             $query->where('warehouse_id', $effectiveWh);
         }
 
-        $outflowParam = $request->get('outflow_type') ?: $request->get('movement_type');
+        $outflowParam = $request->get('outflow_category') ?: $request->get('outflow_type') ?: $request->get('movement_type');
         if (!empty($outflowParam)) {
-            $oType = strtoupper($outflowParam);
-            if ($oType === 'CUSTOMER_PICKUP' || $oType === 'DISPATCH_FULFILLED') {
+            $oType = strtoupper(trim($outflowParam));
+            if ($oType === 'SALE' || $oType === 'RETAIL_SALE' || $oType === 'RETAIL') {
+                $query->where('type', 'SALE')
+                      ->where('description', 'not like', '%Exchange%')
+                      ->whereNotExists(function ($subQ) {
+                          $subQ->select(\Illuminate\Support\Facades\DB::raw(1))
+                               ->from('payments')
+                               ->where('payments.method', 'EXCHANGE_CREDIT')
+                               ->whereRaw("INSTR(inventory_logs.description, payments.saleId) > 0");
+                      });
+            } elseif ($oType === 'EXCHANGE' || $oType === 'EXCHANGE_OUT' || $oType === 'CUSTOMER_EXCHANGE') {
+                $query->where(function ($eq) {
+                    $eq->where('description', 'like', '%Exchange%')
+                       ->orWhere('type', 'EXCHANGE_OUT')
+                       ->orWhereExists(function ($subQ) {
+                           $subQ->select(\Illuminate\Support\Facades\DB::raw(1))
+                                ->from('payments')
+                                ->where('payments.method', 'EXCHANGE_CREDIT')
+                                ->whereRaw("INSTR(inventory_logs.description, payments.saleId) > 0");
+                       });
+                });
+            } elseif ($oType === 'CUSTOMER_PICKUP' || $oType === 'DISPATCH_FULFILLED' || $oType === 'PICKUP' || $oType === 'DISPATCH') {
                 $query->where('type', 'DISPATCH_FULFILLED');
-            } elseif ($oType === 'SALE' || $oType === 'RETAIL_SALE') {
-                $query->where('type', 'SALE');
             } elseif ($oType === 'TRANSFER' || $oType === 'TRANSFER_OUT') {
                 $query->where('type', 'TRANSFER_OUT');
-            } elseif (str_contains($oType, 'DAMAGE')) {
-                $query->where('type', 'like', '%DAMAGE%');
-            } elseif (str_contains($oType, 'EXPIRED')) {
-                $query->where('type', 'like', '%EXPIRED%');
-            } elseif (str_contains($oType, 'LOST')) {
-                $query->where('type', 'like', '%LOST%');
+            } elseif ($oType === 'ADJUSTMENT' || $oType === 'STOCK_ADJUSTMENT' || str_contains($oType, 'DAMAGE') || str_contains($oType, 'EXPIRED') || str_contains($oType, 'LOST') || str_contains($oType, 'SHRINKAGE')) {
+                $query->where(function ($aq) {
+                    $aq->where('type', 'like', 'STOCK_ADJUSTMENT%')
+                       ->orWhere('type', 'like', '%DAMAGE%')
+                       ->orWhere('type', 'like', '%EXPIRED%')
+                       ->orWhere('type', 'like', '%LOST%')
+                       ->orWhere('type', 'like', '%SHRINKAGE%')
+                       ->orWhere('type', 'like', '%CORRECTION%')
+                       ->orWhere('type', 'STOCK_OUT');
+                });
             }
         }
 
@@ -326,7 +373,10 @@ class TransactionController extends Controller
 
     public function getReturnsQuery(Request $request)
     {
-        $query = SalesReturn::query();
+        $query = SalesReturn::where(function ($q) {
+            $q->whereNull('reason')
+              ->orWhere('reason', 'not like', '%Exchanged for new purchase%');
+        });
         $this->applyDateFilter($query, 'createdAt', $request);
 
         $effectiveWh = $this->getEffectiveWarehouseId($request);
@@ -364,7 +414,11 @@ class TransactionController extends Controller
 
     public function getRefundsQuery(Request $request)
     {
-        $query = SalesReturn::where('refundAmount', '>', 0);
+        $query = SalesReturn::where('refundAmount', '>', 0)
+            ->where(function ($q) {
+                $q->whereNull('reason')
+                  ->orWhere('reason', 'not like', '%Exchanged for new purchase%');
+            });
         $this->applyDateFilter($query, 'createdAt', $request);
 
         $effectiveWh = $this->getEffectiveWarehouseId($request);
@@ -403,7 +457,7 @@ class TransactionController extends Controller
 
     public function getDebtsQuery(Request $request)
     {
-        $query = CustomerLedger::with('customer');
+        $query = CustomerLedger::with(['customer', 'sale.items', 'sale.payments', 'sale.returns']);
         $this->applyDateFilter($query, 'created_at', $request);
 
         // 🔒 Role & Branch Privacy Scoping
@@ -411,14 +465,36 @@ class TransactionController extends Controller
         if ($user && $user->isBranchScoped()) {
             $query->where(function ($q) use ($user) {
                 $q->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $user->warehouse_id))
-                  ->orWhereNull('sale_id');
+                  ->orWhere('warehouse_id', $user->warehouse_id);
             });
             if ($user->role === 'cashier') {
                 $query->where('recorded_by', $user->name);
             }
         } elseif ($request->filled('warehouse_id')) {
             $whId = (int) $request->warehouse_id;
-            $query->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId));
+            $query->where(function ($q) use ($whId) {
+                $q->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId))
+                  ->orWhere('warehouse_id', $whId);
+            });
+        }
+
+        // 📦 Goods Location / Agreement Filter (Customer Debt vs Installment in Shop)
+        if ($request->filled('goods_status')) {
+            $gs = strtoupper($request->goods_status);
+            if ($gs === 'GOODS_CARRIED') {
+                // Goods already supplied/delivered (or manual debt entries without a sale)
+                $query->where(function ($q) {
+                    $q->whereNull('sale_id')
+                      ->orWhereHas('sale', function ($sq) {
+                          $sq->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+                      });
+                });
+            } elseif ($gs === 'PAY_SMALL_SMALL') {
+                // Installments where goods are still in shop
+                $query->whereHas('sale', function ($sq) {
+                    $sq->whereIn('deliveryStatus', ['UNSUPPLIED', 'PENDING_PICKUP', 'NOT_SUPPLIED']);
+                });
+            }
         }
 
         if ($request->filled('ledger_type')) {
@@ -446,8 +522,43 @@ class TransactionController extends Controller
         return $query;
     }
 
+    public function getExchangesQuery(Request $request)
+    {
+        $query = Sale::with(['items.product', 'customer', 'payments', 'warehouse'])
+            ->whereHas('payments', function ($pq) {
+                $pq->where('method', 'EXCHANGE_CREDIT');
+            });
+        $this->applyDateFilter($query, 'createdAt', $request);
+
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
+        $user = Auth::user();
+        if ($user && $user->isBranchScoped()) {
+            $query->where('warehouse_id', $user->warehouse_id);
+            if ($user->role === 'cashier') {
+                $query->where('userId', $user->id);
+            }
+        } elseif (!empty($effectiveWh)) {
+            $query->where('warehouse_id', $effectiveWh);
+        }
+
+        if ($request->filled('user_name')) {
+            $query->where('userName', 'like', "%{$request->user_name}%");
+        }
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+            $query->where(function ($q) use ($search) {
+                $q->where('id', 'like', "%{$search}%")
+                  ->orWhere('customerName', 'like', "%{$search}%")
+                  ->orWhere('userName', 'like', "%{$search}%")
+                  ->orWhere('note', 'like', "%{$search}%");
+            });
+        }
+
+        return $query;
+    }
+
     /**
-     * Display searchable, filterable Universal 8-Tab History & Ledgers Hub.
+     * Display searchable, filterable Universal 9-Tab History & Ledgers Hub.
      */
     public function index(Request $request)
     {
@@ -476,16 +587,24 @@ class TransactionController extends Controller
         $saleIds = (clone $salesQuery)->pluck('id');
         $inflows = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
             ->where('amount', '>', 0)
-            ->where('method', '!=', 'REFUND_CASH')
+            ->whereNotIn('method', ['REFUND', 'REFUND_CASH'])
             ->sum('amount');
         $cashRefunds = abs((float) \App\Models\Payment::whereIn('saleId', $saleIds)
-            ->where('method', 'REFUND_CASH')
+            ->whereIn('method', ['REFUND', 'REFUND_CASH'])
             ->sum('amount'));
         $totalPaid = max(0.0, round($inflows - $cashRefunds, 2));
+        $totalCashPosPaid = max(0.0, round((float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->whereIn('method', ['CASH', 'POS'])
+            ->where('amount', '>', 0)
+            ->sum('amount') - $cashRefunds, 2));
+        $totalExchangeCredit = (float) \App\Models\Payment::whereIn('saleId', $saleIds)
+            ->where('method', 'EXCHANGE_CREDIT')
+            ->where('amount', '>', 0)
+            ->sum('amount');
         $returnCredits = (float) \App\Models\SalesReturn::whereIn('saleId', $saleIds)->sum('refundAmount');
         $netPayable = max(0.0, round($totalRevenue - $returnCredits, 2));
         $totalDebt = max(0.0, round($netPayable - $totalPaid, 2));
-        $sales = (clone $salesQuery)->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'sales_page')->withQueryString();
+        $sales = (clone $salesQuery)->with(['payments', 'returns', 'items.product'])->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'sales_page')->withQueryString();
 
         // TAB 2: STOCK IN
         $stockInQuery = $this->getStockInQuery($request);
@@ -501,6 +620,22 @@ class TransactionController extends Controller
         $stockOutProducts = (clone $stockOutQuery)->distinct('productId')->count('productId');
         $stockOutFulfilled = (clone $stockOutQuery)->where('type', 'DISPATCH_FULFILLED')->count();
         $stockOutLogs = (clone $stockOutQuery)->orderBy('timestamp', 'desc')->paginate(20, ['*'], 'stock_out_page')->withQueryString();
+
+        // Retroactive Exchange Detection for Stock Out items & Sales rows
+        $stockOutSaleUuids = [];
+        foreach ($stockOutLogs as $log) {
+            if (preg_match('/Sale #([a-f0-9\-]{36})/i', $log->description, $m)) {
+                $stockOutSaleUuids[] = $m[1];
+            } elseif (preg_match('/Sale #([a-zA-Z0-9\-]+)/i', $log->description, $m)) {
+                $stockOutSaleUuids[] = $m[1];
+            }
+        }
+        $exchangeSaleIds = !empty($stockOutSaleUuids)
+            ? \App\Models\Payment::whereIn('saleId', array_unique($stockOutSaleUuids))
+                ->where('method', 'EXCHANGE_CREDIT')
+                ->pluck('saleId')
+                ->toArray()
+            : [];
 
         // TAB 4: IN-TRANSIT
         $inTransitQuery = $this->getInTransitQuery($request);
@@ -532,11 +667,25 @@ class TransactionController extends Controller
         $totalRefundAmount = (clone $refundsQuery)->sum('refundAmount');
         $refundRecords = (clone $refundsQuery)->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'refunds_page')->withQueryString();
 
-        // TAB 8: DEBTS
+        // TAB 8: DEBTS & INSTALLMENTS
         $debtsQuery = $this->getDebtsQuery($request);
         $debtsEntryCount = (clone $debtsQuery)->count();
         $totalRepayments = (clone $debtsQuery)->where('type', 'PAYMENT')->sum('amount');
         $totalDebtCreated = (clone $debtsQuery)->where('type', 'INVOICE')->sum('amount');
+
+        // Distinct Breakdown: Customer Debts (Goods Supplied) vs Active Installments (Goods in Shop)
+        $totalDeliveredDebt = (float) (clone $debtsQuery)
+            ->where('type', 'INVOICE')
+            ->where(function ($q) {
+                $q->whereNull('sale_id')
+                  ->orWhereHas('sale', fn($sq) => $sq->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']));
+            })->sum('amount');
+
+        $totalInstallmentsInShop = (float) (clone $debtsQuery)
+            ->where('type', 'INVOICE')
+            ->whereHas('sale', fn($sq) => $sq->whereIn('deliveryStatus', ['UNSUPPLIED', 'PENDING_PICKUP', 'NOT_SUPPLIED']))
+            ->sum('amount');
+
         if ($authUser && $authUser->isBranchScoped()) {
             $openSalesBranch = Sale::where('warehouse_id', $authUser->warehouse_id)
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
@@ -552,6 +701,14 @@ class TransactionController extends Controller
         }
         $debtLedgers = (clone $debtsQuery)->orderBy('created_at', 'desc')->paginate(20, ['*'], 'debts_page')->withQueryString();
 
+        // TAB 9: EXCHANGES
+        $exchangesQuery = $this->getExchangesQuery($request);
+        $exchangesCount = (clone $exchangesQuery)->count();
+        $totalExchangeCreditsValue = (float) \App\Models\Payment::whereIn('saleId', (clone $exchangesQuery)->pluck('id'))
+            ->where('method', 'EXCHANGE_CREDIT')
+            ->sum('amount');
+        $exchangeSalesList = (clone $exchangesQuery)->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'exchanges_page')->withQueryString();
+
         $viewData = compact(
             'activeTab',
             'warehouses',
@@ -565,7 +722,7 @@ class TransactionController extends Controller
             'userName',
             'products',
             // Tab 1: Sales
-            'sales', 'totalSalesCount', 'totalRevenue', 'totalPaid', 'totalDebt',
+            'sales', 'totalSalesCount', 'totalRevenue', 'totalPaid', 'totalDebt', 'totalCashPosPaid', 'totalExchangeCredit', 'exchangeSaleIds',
             // Tab 2: Stock In
             'stockInLogs', 'stockInBatches', 'stockInUnits', 'stockInProducts',
             // Tab 3: Stock Out
@@ -578,8 +735,10 @@ class TransactionController extends Controller
             'salesReturns', 'returnsCount', 'returnedUnits', 'returnedValue',
             // Tab 7: Refunds
             'refundRecords', 'refundsCount', 'totalRefundAmount',
-            // Tab 8: Debts
-            'debtLedgers', 'debtsEntryCount', 'totalRepayments', 'totalDebtCreated', 'totalOpenDebt'
+            // Tab 8: Debts & Installments
+            'debtLedgers', 'debtsEntryCount', 'totalRepayments', 'totalDebtCreated', 'totalOpenDebt', 'totalDeliveredDebt', 'totalInstallmentsInShop',
+            // Tab 9: Customer Exchanges
+            'exchangeSalesList', 'exchangesCount', 'totalExchangeCreditsValue'
         );
 
         if ($request->ajax() || $request->header('X-Partial-Update') || $request->has('_partial')) {
@@ -595,6 +754,7 @@ class TransactionController extends Controller
                     'returns'      => number_format($returnsCount),
                     'refunds'      => number_format($refundsCount),
                     'debts'        => number_format($debtsEntryCount),
+                    'exchanges'    => number_format($exchangesCount),
                 ],
                 'panes_html' => view('transactions.partials.panes', $viewData)->render(),
             ]);
@@ -653,7 +813,7 @@ class TransactionController extends Controller
                 fputcsv($handle, ['Active Date Filter:', $dateDesc]);
                 fputcsv($handle, ['Branch / Warehouse Scope:', $whDesc]);
                 fputcsv($handle, ['Search Filter:', $searchDesc]);
-                fputcsv($handle, ['Included Modules (8):', 'Sales, Stock In, Stock Out, Transfers In-Transit, Transfers Received, Returns, Refunds, Debt Ledgers']);
+                fputcsv($handle, ['Included Modules (9):', 'Sales, Stock In, Stock Out, Transfers In-Transit, Transfers Received, Returns, Refunds, Debt Ledgers, Customer Exchanges']);
                 fputcsv($handle, ['====================================================================================================']);
                 fputcsv($handle, []);
 
@@ -702,12 +862,24 @@ class TransactionController extends Controller
                 foreach ($stockInQuery->cursor() as $l) {
                     $inCount++;
                     $inUnits += (float)$l->quantity;
+                    $inflowCategory = 'SUPPLIER';
+                    if ($l->type === 'EXCHANGE_IN' || ($l->type === 'SALES_RETURN' && stripos($l->description, 'Exchange') !== false)) {
+                        $inflowCategory = 'CUSTOMER EXCHANGE';
+                    } elseif ($l->type === 'SALES_RETURN' || $l->type === 'RETURN') {
+                        $inflowCategory = 'CUSTOMER RETURN';
+                    } elseif ($l->type === 'TRANSFER_IN') {
+                        $inflowCategory = 'TRANSFER IN';
+                    } elseif (stripos($l->description, 'Initial') !== false) {
+                        $inflowCategory = 'OPENING STOCK';
+                    } elseif (stripos($l->description, 'Audit') !== false) {
+                        $inflowCategory = 'STOCK AUDIT';
+                    }
                     fputcsv($handle, [
                         $l->id,
                         $l->timestamp,
                         $l->productCode,
                         $l->productName,
-                        $l->type,
+                        $inflowCategory,
                         $l->quantity,
                         $l->userName,
                         $l->description
@@ -885,6 +1057,36 @@ class TransactionController extends Controller
                 fputcsv($handle, ['[DEBTS SUMMARY]', "Total Entries: {$debtsCount}", '', '', '', "Total Volume: " . number_format($debtsVolume, 2), '', '', '', '', '']);
                 fputcsv($handle, []);
 
+                // ─────────────────────────────────────────────────────────────
+                // SECTION 9: CUSTOMER EXCHANGES & PRODUCT SWAPS
+                // ─────────────────────────────────────────────────────────────
+                fputcsv($handle, ['>>> SECTION 9: CUSTOMER EXCHANGES & PRODUCT SWAPS']);
+                fputcsv($handle, ['Sale Ref / Invoice', 'Date & Time', 'Customer Name', 'Branch', 'Items Taken', 'Total Value (NGN)', 'Exchange Trade-In Credit (NGN)', 'Top-up Paid (NGN)', 'Status', 'Cashier / Operator']);
+                $exchangesQuery = $this->getExchangesQuery($request)->orderBy('createdAt', 'desc');
+                $exchangesExportCount = 0;
+                $totalExchangeCreditSum = 0;
+                foreach ($exchangesQuery->cursor() as $sale) {
+                    $exchangesExportCount++;
+                    $exchangeCredit = $sale->payments->where('method', 'EXCHANGE_CREDIT')->sum('amount');
+                    $totalExchangeCreditSum += $exchangeCredit;
+                    $topUp = $sale->payments->where('method', '!=', 'EXCHANGE_CREDIT')->where('amount', '>', 0)->sum('amount');
+                    $itemsList = $sale->items->map(fn($it) => $it->productName . ' (x' . $it->quantity . ')')->implode('; ');
+                    fputcsv($handle, [
+                        $sale->id,
+                        $sale->createdAt,
+                        $sale->customerName ?? ($sale->customer->name ?? 'Walk-in'),
+                        $sale->warehouse->name ?? 'Main',
+                        $itemsList,
+                        $sale->totalAmount,
+                        $exchangeCredit,
+                        $topUp,
+                        $sale->status,
+                        $sale->userName
+                    ]);
+                }
+                fputcsv($handle, ['[EXCHANGES SUMMARY]', "Total Exchanges: {$exchangesExportCount}", '', '', '', '', "Total Trade-In Credit: " . number_format($totalExchangeCreditSum, 2), '', '', '']);
+                fputcsv($handle, []);
+
                 fputcsv($handle, ['====================================================================================================']);
                 fputcsv($handle, ['END OF REPORT - HYSAM VMPOS UNIVERSAL LEDGERS MASTER AUDIT']);
                 fputcsv($handle, ['====================================================================================================']);
@@ -913,12 +1115,24 @@ class TransactionController extends Controller
                 fputcsv($handle, ['Log ID', 'Date & Time', 'SKU / Barcode', 'Product Name', 'Inflow Type', 'Quantity (Units)', 'Received By Staff', 'Supplier & Notes']);
                 $query = $this->getStockInQuery($request)->orderBy('timestamp', 'desc');
                 foreach ($query->cursor() as $l) {
+                    $inflowCategory = 'SUPPLIER';
+                    if ($l->type === 'EXCHANGE_IN' || ($l->type === 'SALES_RETURN' && stripos($l->description, 'Exchange') !== false)) {
+                        $inflowCategory = 'CUSTOMER EXCHANGE';
+                    } elseif ($l->type === 'SALES_RETURN' || $l->type === 'RETURN') {
+                        $inflowCategory = 'CUSTOMER RETURN';
+                    } elseif ($l->type === 'TRANSFER_IN') {
+                        $inflowCategory = 'TRANSFER IN';
+                    } elseif (stripos($l->description, 'Initial') !== false) {
+                        $inflowCategory = 'OPENING STOCK';
+                    } elseif (stripos($l->description, 'Audit') !== false) {
+                        $inflowCategory = 'STOCK AUDIT';
+                    }
                     fputcsv($handle, [
                         $l->id,
                         $l->timestamp,
                         $l->productCode,
                         $l->productName,
-                        $l->type,
+                        $inflowCategory,
                         $l->quantity,
                         $l->userName,
                         $l->description
@@ -1023,6 +1237,26 @@ class TransactionController extends Controller
                         $d->notes ?? ''
                     ]);
                 }
+            } elseif ($tab === 'exchanges') {
+                fputcsv($handle, ['Sale Ref / Invoice', 'Date & Time', 'Customer Name', 'Branch', 'Items Taken', 'Total Value (NGN)', 'Exchange Trade-In Credit (NGN)', 'Top-up Paid (NGN)', 'Status', 'Cashier / Operator']);
+                $query = $this->getExchangesQuery($request)->orderBy('createdAt', 'desc');
+                foreach ($query->cursor() as $sale) {
+                    $exchangeCredit = $sale->payments->where('method', 'EXCHANGE_CREDIT')->sum('amount');
+                    $topUp = $sale->payments->where('method', '!=', 'EXCHANGE_CREDIT')->where('amount', '>', 0)->sum('amount');
+                    $itemsList = $sale->items->map(fn($it) => $it->productName . ' (x' . $it->quantity . ')')->implode('; ');
+                    fputcsv($handle, [
+                        $sale->id,
+                        $sale->createdAt,
+                        $sale->customerName ?? ($sale->customer->name ?? 'Walk-in'),
+                        $sale->warehouse->name ?? 'Main',
+                        $itemsList,
+                        $sale->totalAmount,
+                        $exchangeCredit,
+                        $topUp,
+                        $sale->status,
+                        $sale->userName
+                    ]);
+                }
             }
 
             fclose($handle);
@@ -1033,7 +1267,7 @@ class TransactionController extends Controller
     }
 
     /**
-     * Export Filtered Dataset for any of the 8 Tabs to Structured JSON.
+     * Export Filtered Dataset for any of the 9 Tabs to Structured JSON.
      */
     public function exportJson(Request $request, string $tab)
     {
@@ -1059,6 +1293,7 @@ class TransactionController extends Controller
                     'returns' => $this->getReturnsQuery($request)->orderBy('createdAt', 'desc')->get(),
                     'refunds' => $this->getRefundsQuery($request)->orderBy('createdAt', 'desc')->get(),
                     'debts' => $this->getDebtsQuery($request)->orderBy('created_at', 'desc')->get(),
+                    'exchanges' => $this->getExchangesQuery($request)->orderBy('createdAt', 'desc')->get(),
                 ],
             ];
 
@@ -1076,6 +1311,7 @@ class TransactionController extends Controller
             'returns' => $this->getReturnsQuery($request)->orderBy('createdAt', 'desc')->get(),
             'refunds' => $this->getRefundsQuery($request)->orderBy('createdAt', 'desc')->get(),
             'debts' => $this->getDebtsQuery($request)->orderBy('created_at', 'desc')->get(),
+            'exchanges' => $this->getExchangesQuery($request)->orderBy('createdAt', 'desc')->get(),
             default => [],
         };
 
@@ -1092,5 +1328,86 @@ class TransactionController extends Controller
         return response()->json($data, 200, [
             'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
         ], JSON_PRETTY_PRINT);
+    }
+
+    /**
+     * Void Sale and rollback inventory, reservations, debts.
+     */
+    public function voidSale(Request $request, string $saleId, \App\Services\TransactionVoidService $voidService)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        $actor = Auth::user();
+        try {
+            $result = $voidService->voidSale($saleId, $request->reason, $actor);
+
+            if ($request->wantsJson()) {
+                return response()->json($result);
+            }
+
+            return back()->with('success', "✓ " . $result['message']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 403);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 422);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Void Stock In entry and reverse stock count.
+     */
+    public function voidStockIn(Request $request, string $logId, \App\Services\TransactionVoidService $voidService)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        $actor = Auth::user();
+        try {
+            $result = $voidService->voidStockIn($logId, $request->reason, $actor);
+
+            if ($request->wantsJson()) {
+                return response()->json($result);
+            }
+
+            return back()->with('success', "✓ " . $result['message']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 403);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 422);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Void Stock Out or Adjustment entry and restore stock count.
+     */
+    public function voidStockOutOrAdjustment(Request $request, string $id, \App\Services\TransactionVoidService $voidService)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        $actor = Auth::user();
+        try {
+            $result = $voidService->voidStockOutOrAdjustment($id, $request->reason, $actor);
+
+            if ($request->wantsJson()) {
+                return response()->json($result);
+            }
+
+            return back()->with('success', "✓ " . $result['message']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 403);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 422);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
     }
 }

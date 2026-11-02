@@ -275,13 +275,22 @@
             <span class="badge-pill" id="badge-refunds">{{ number_format($refundsCount) }}</span>
         </button>
 
-        <!-- 8. Debts -->
+        <!-- 8. Debts & Installments -->
         <button type="button" 
            onclick="switchLedgerTab('debts')" 
            id="tab-btn-debts"
            class="tab-btn {{ $activeTab === 'debts' ? 'active' : '' }}">
-            <span>💳 Debts Ledger</span>
+            <span>💳 Debts & Installments</span>
             <span class="badge-pill" id="badge-debts">{{ number_format($debtsEntryCount) }}</span>
+        </button>
+
+        <!-- 9. Customer Exchanges -->
+        <button type="button" 
+           onclick="switchLedgerTab('exchanges')" 
+           id="tab-btn-exchanges"
+           class="tab-btn {{ $activeTab === 'exchanges' ? 'active' : '' }}">
+            <span>🔄 Customer Exchanges</span>
+            <span class="badge-pill" id="badge-exchanges" style="background: rgba(147, 51, 234, 0.4); color: #d8b4fe;">{{ number_format($exchangesCount) }}</span>
         </button>
     </div>
 
@@ -345,10 +354,31 @@
                             <option value="UNSUPPLIED" {{ request('delivery_status') === 'UNSUPPLIED' ? 'selected' : '' }}>⏳ Not Supplied (Awaiting Pickup)</option>
                         </select>
                     </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.75rem;">Status Filter</label>
+                        <select name="include_voided" onchange="this.form.submit()">
+                            <option value="0" {{ !request('include_voided') ? 'selected' : '' }}>✅ Active Sales Only (Clean)</option>
+                            <option value="1" {{ request('include_voided') == '1' ? 'selected' : '' }}>🛡️ Include Voided / Cancelled (Audit)</option>
+                        </select>
+                    </div>
                 </div>
 
                 <!-- TAB 2: STOCK IN FILTERS -->
                 <div id="tab-filters-stock_in" class="tab-filter-section" style="{{ $activeTab === 'stock_in' ? 'display: contents;' : 'display: none;' }}">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.75rem;">Inflow Category / Source</label>
+                        <select name="inflow_category">
+                            <option value="">-- All Inflow Sources --</option>
+                            <option value="SUPPLIER" {{ request('inflow_category') === 'SUPPLIER' ? 'selected' : '' }}>📥 Supplier Restock</option>
+                            <option value="EXCHANGE" {{ request('inflow_category') === 'EXCHANGE' ? 'selected' : '' }}>🔄 Customer Exchange Restock</option>
+                            <option value="RETURN" {{ request('inflow_category') === 'RETURN' ? 'selected' : '' }}>↩️ Customer Return Restock</option>
+                            <option value="TRANSFER" {{ request('inflow_category') === 'TRANSFER' ? 'selected' : '' }}>🚚 Transfer In</option>
+                            <option value="OPENING" {{ request('inflow_category') === 'OPENING' ? 'selected' : '' }}>📦 Opening / Initial Stock</option>
+                            <option value="AUDIT" {{ request('inflow_category') === 'AUDIT' ? 'selected' : '' }}>⚖️ Stock Audit Correction</option>
+                        </select>
+                    </div>
+
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Product SKU</label>
                         <select name="product_id">
@@ -373,14 +403,14 @@
                 <!-- TAB 3: STOCK OUT FILTERS -->
                 <div id="tab-filters-stock_out" class="tab-filter-section" style="{{ $activeTab === 'stock_out' ? 'display: contents;' : 'display: none;' }}">
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-size: 0.75rem;">Outflow Event Type</label>
-                        <select name="movement_type">
-                            <option value="">-- All Outflow Types --</option>
-                            <option value="DISPATCH" {{ request('movement_type') === 'DISPATCH' ? 'selected' : '' }}>📦 Customer Pickup Handover</option>
-                            <option value="TRANSFER_OUT" {{ request('movement_type') === 'TRANSFER_OUT' ? 'selected' : '' }}>🚚 Transfer Out</option>
-                            <option value="DAMAGE" {{ request('movement_type') === 'DAMAGE' ? 'selected' : '' }}>📉 Damaged Goods Write-off</option>
-                            <option value="EXPIRED" {{ request('movement_type') === 'EXPIRED' ? 'selected' : '' }}>⏰ Expired Stock</option>
-                            <option value="LOST" {{ request('movement_type') === 'LOST' ? 'selected' : '' }}>🔍 Lost / Audit Adjustment</option>
+                        <label style="font-size: 0.75rem;">Outflow Category / Source</label>
+                        <select name="outflow_category">
+                            <option value="">-- All Outflow Sources --</option>
+                            <option value="SALE" {{ request('outflow_category') === 'SALE' ? 'selected' : '' }}>🛒 Retail POS Sales</option>
+                            <option value="EXCHANGE" {{ request('outflow_category') === 'EXCHANGE' ? 'selected' : '' }}>🔄 Customer Exchange Outflow</option>
+                            <option value="DISPATCH" {{ in_array(request('outflow_category'), ['DISPATCH', 'PICKUP']) ? 'selected' : '' }}>📦 Customer Pickup / Dispatch</option>
+                            <option value="TRANSFER" {{ request('outflow_category') === 'TRANSFER' ? 'selected' : '' }}>🚚 Transfer Out</option>
+                            <option value="ADJUSTMENT" {{ request('outflow_category') === 'ADJUSTMENT' ? 'selected' : '' }}>📉 Stock Adjustments & Write-Offs</option>
                         </select>
                     </div>
 
@@ -483,14 +513,23 @@
                     </div>
                 </div>
 
-                <!-- TAB 8: DEBTS FILTERS -->
+                <!-- TAB 8: DEBTS & INSTALLMENTS FILTERS -->
                 <div id="tab-filters-debts" class="tab-filter-section" style="{{ $activeTab === 'debts' ? 'display: contents;' : 'display: none;' }}">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.75rem;">Type / Agreement</label>
+                        <select name="goods_status" onchange="this.form.submit()">
+                            <option value="">-- All Debts & Installments --</option>
+                            <option value="GOODS_CARRIED" {{ request('goods_status') === 'GOODS_CARRIED' ? 'selected' : '' }}>🚨 Customer Debts (Goods Supplied)</option>
+                            <option value="PAY_SMALL_SMALL" {{ request('goods_status') === 'PAY_SMALL_SMALL' ? 'selected' : '' }}>📦 Installments (Goods in Shop)</option>
+                        </select>
+                    </div>
+
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.75rem;">Ledger Entry Type</label>
                         <select name="ledger_type">
                             <option value="">-- All Entry Types --</option>
-                            <option value="PAYMENT" {{ request('ledger_type') === 'PAYMENT' ? 'selected' : '' }}>💵 Part Payment Received</option>
-                            <option value="INVOICE" {{ request('ledger_type') === 'INVOICE' ? 'selected' : '' }}>💳 Debt Incurred</option>
+                            <option value="PAYMENT" {{ request('ledger_type') === 'PAYMENT' ? 'selected' : '' }}>💵 Payment Received</option>
+                            <option value="INVOICE" {{ request('ledger_type') === 'INVOICE' ? 'selected' : '' }}>💳 Balance Incurred</option>
                             <option value="RETURN_CREDIT" {{ request('ledger_type') === 'RETURN_CREDIT' ? 'selected' : '' }}>🔄 Return Credit Offset</option>
                         </select>
                     </div>
@@ -503,6 +542,10 @@
                             <option value="POS" {{ request('payment_method') === 'POS' ? 'selected' : '' }}>POS Terminal</option>
                         </select>
                     </div>
+                </div>
+
+                <!-- Tab 9: Customer Exchanges Filter (Inherits search, dates, branch, cashier) -->
+                <div id="tab-filters-exchanges" class="tab-filter-section" style="{{ $activeTab === 'exchanges' ? 'display: contents;' : 'display: none;' }}">
                 </div>
             </div>
 
@@ -570,19 +613,49 @@
                     <span style="color: var(--text-muted);">Delivery Status:</span>
                     <strong id="dtlDelivery"></strong>
                 </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-top: 0.35rem;">
+                    <span style="color: var(--text-muted);">Agreement Type:</span>
+                    <strong id="dtlAgreementType"></strong>
+                </div>
+            </div>
+
+            <!-- Traded-in Exchange Items (Dynamic if this is an exchange sale) -->
+            <div id="dtlExchangeContainer" style="display: none; background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                <label style="font-size: 0.75rem; font-weight: 800; color: #c084fc; text-transform: uppercase; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.35rem;">
+                    <span>🔁 Traded-In Product(s) Brought Back:</span>
+                </label>
+                <div id="dtlExchangeProductText" style="font-size: 0.85rem; color: #f3e8ff; font-weight: 600; line-height: 1.4;"></div>
             </div>
 
             <!-- Items Table -->
             <label style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem; display: block;">Purchased Items:</label>
-            <div id="dtlItemsList" style="max-height: 220px; overflow-y: auto; margin-bottom: 1.25rem;">
+            <div id="dtlItemsList" style="max-height: 220px; overflow-y: auto; margin-bottom: 1rem;">
                 <!-- Dynamically populated -->
+            </div>
+
+            <!-- Returns Table (Dynamic if any returns processed) -->
+            <div id="dtlReturnsContainer" style="display: none; margin-bottom: 1rem;">
+                <label style="font-size: 0.75rem; font-weight: 800; color: #f59e0b; text-transform: uppercase; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.35rem;">
+                    <span>↩️ Processed Returns & Restock:</span>
+                </label>
+                <div id="dtlReturnsList" style="max-height: 160px; overflow-y: auto;">
+                    <!-- Dynamically populated returns -->
+                </div>
             </div>
 
             <!-- Totals -->
             <div style="border-top: 1px solid var(--border); padding-top: 1rem;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.95rem; margin-bottom: 0.35rem;">
-                    <span>Total Amount:</span>
+                    <span>Original Gross Invoice:</span>
                     <strong id="dtlTotal" style="font-size: 1.15rem; color: #f8fafc;"></strong>
+                </div>
+                <div id="dtlReturnRow" style="display: none; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.35rem; color: #f59e0b;">
+                    <span>Less Return Deductions:</span>
+                    <strong id="dtlReturnCredits"></strong>
+                </div>
+                <div id="dtlNetRow" style="display: none; justify-content: space-between; font-size: 0.95rem; margin-bottom: 0.35rem; color: #38bdf8;">
+                    <span style="font-weight: 700;">Net Final Bill:</span>
+                    <strong id="dtlNetBill" style="font-weight: 800;"></strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.35rem;">
                     <span style="color: #4ade80;">Amount Paid:</span>
@@ -591,6 +664,9 @@
                 <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
                     <span style="color: #f87171;">Remaining Debt:</span>
                     <strong id="dtlDebt" style="color: #f87171;"></strong>
+                </div>
+                <div id="dtlTenderBreakdown" style="margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed rgba(255,255,255,0.1); font-size: 0.8rem; color: #94a3b8; display: none;">
+                    <!-- Dynamically populated payments breakdown -->
                 </div>
             </div>
 
@@ -627,11 +703,61 @@
         </div>
     </div>
 
+    <!-- Modal 3: Admin Transaction Void & Rollback Modal -->
+    <div id="modalVoidTransaction" class="modal-backdrop" style="display: none;">
+        <div class="modal" style="max-width: 520px; border-color: #ef4444;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.5rem;">⚠️</span>
+                    <h3 style="font-size: 1.25rem; font-weight: 800; color: #f87171;">Void Transaction & Reversal</h3>
+                </div>
+                <button type="button" onclick="closeModal('modalVoidTransaction')" style="background: none; border: none; color: #9ca3af; font-size: 1.25rem; cursor: pointer;">✕</button>
+            </div>
+
+            <p style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 1rem;">
+                You are about to <strong style="color: #f87171;">permanently void</strong> <span id="voidTargetName" style="font-weight: 700; color: #fff;"></span>.
+            </p>
+
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 10px; padding: 0.85rem; font-size: 0.8rem; color: #fca5a5; margin-bottom: 1.25rem;">
+                🛡️ <strong>Immutable Audit Guarantee:</strong> All stock items will be automatically rolled back to their respective branch shelves, debt ledgers will be reversed, and an indelible security event will be logged with your identity.
+            </div>
+
+            <form id="voidTransactionForm" method="POST" action=""
+                  data-confirm-title="Confirm Permanent Void & Reversal"
+                  data-confirm-subtitle="Review irreversible audit reversal details:"
+                  data-confirm-button="🗑️ Yes, Void Transaction"
+                  data-confirm-type="danger">
+                @csrf
+                <div class="form-group">
+                    <label style="color: #f87171; font-weight: 700; font-size: 0.8rem; text-transform: uppercase;">
+                        Mandatory Audit Reason for Voiding:
+                    </label>
+                    <input type="text" name="reason" id="voidReasonInput" required minlength="3" placeholder="e.g. Mistaken entry by cashier, customer product exchange, test entry..." style="width: 100%; border-color: rgba(239, 68, 68, 0.5);">
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalVoidTransaction')">Cancel</button>
+                    <button type="submit" class="btn btn-danger" style="flex: 1; background: #dc2626; border-color: #b91c1c;">✓ Confirm & Void</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 @endsection
 
 @push('scripts')
 <script>
 let currentAbortController = null;
+
+function openVoidModal(actionUrl, targetName) {
+    const form = document.getElementById('voidTransactionForm');
+    const nameSpan = document.getElementById('voidTargetName');
+    const reasonInput = document.getElementById('voidReasonInput');
+    if (form) form.action = actionUrl;
+    if (nameSpan) nameSpan.textContent = targetName;
+    if (reasonInput) reasonInput.value = '';
+    openModal('modalVoidTransaction');
+}
 
 /**
  * Instant Client-Side Zero-Reload Tab Switching (0ms)
@@ -891,7 +1017,30 @@ function viewSaleDetails(sale) {
     document.getElementById('dtlCashier').textContent = sale.userName || 'Cashier';
     const isSupplied = (sale.deliveryStatus === 'DELIVERED' || sale.deliveryStatus === 'SUPPLIED');
     document.getElementById('dtlDelivery').textContent = isSupplied ? '🟢 Supplied & Collected' : '⏳ Goods in Shop (Awaiting Pickup)';
+    const agreementEl = document.getElementById('dtlAgreementType');
+    if (agreementEl) {
+        if (!isSupplied) {
+            agreementEl.innerHTML = '<span style="color: #c084fc; font-weight: 800;">📦 Installment (Goods in Shop)</span>';
+        } else if (parseFloat(sale.paidAmount) < parseFloat(sale.totalAmount)) {
+            agreementEl.innerHTML = '<span style="color: #f87171; font-weight: 800;">🚨 Customer Debt (Goods Supplied)</span>';
+        } else {
+            agreementEl.innerHTML = '<span style="color: #4ade80; font-weight: 800;">✅ Fully Settled Direct Sale</span>';
+        }
+    }
     document.getElementById('dtlReceiptBtn').href = '/pos/receipt/' + sale.id;
+
+    // Check if this sale is an exchange (contains [EXCHANGE RETURN: ...])
+    const exMatch = (sale.note || '').match(/\[EXCHANGE RETURN:\s*(.*?)(?:\s*\|\s*Total Credit:.*?)?\]/i);
+    const exBox = document.getElementById('dtlExchangeContainer');
+    const exText = document.getElementById('dtlExchangeProductText');
+    if (exBox && exText) {
+        if (exMatch && exMatch[1]) {
+            exText.textContent = exMatch[1].trim();
+            exBox.style.display = 'block';
+        } else {
+            exBox.style.display = 'none';
+        }
+    }
 
     let itemsHtml = '';
     (sale.items || []).forEach(item => {
@@ -911,12 +1060,74 @@ function viewSaleDetails(sale) {
     });
 
     document.getElementById('dtlItemsList').innerHTML = itemsHtml;
+
+    // Dynamically calculate returns
+    let returnCredits = 0;
+    let returnsHtml = '';
+    const returnsList = sale.returns || [];
+    if (returnsList.length > 0) {
+        returnsList.forEach(r => {
+            const rAmt = parseFloat(r.refundAmount) || 0;
+            returnCredits += rAmt;
+            returnsHtml += `
+            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:0.35rem;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <strong style="font-size:0.85rem;color:#fde68a;">${r.productName || 'Returned Item'}</strong>
+                    <div style="font-size:0.72rem;color:#d97706;">Returned: ${r.quantity} units ${r.reason ? '· ' + r.reason : ''}</div>
+                </div>
+                <div style="text-align:right;">
+                    <span style="font-weight:800;font-size:0.85rem;color:#fbbf24;">-₦${Math.round(rAmt).toLocaleString('en-US')}</span>
+                </div>
+            </div>
+            `;
+        });
+        document.getElementById('dtlReturnsContainer').style.display = 'block';
+        document.getElementById('dtlReturnsList').innerHTML = returnsHtml;
+        document.getElementById('dtlReturnRow').style.display = 'flex';
+        document.getElementById('dtlReturnCredits').textContent = '-₦' + Math.round(returnCredits).toLocaleString('en-US');
+        document.getElementById('dtlNetRow').style.display = 'flex';
+        const netBill = Math.max(0, (parseFloat(sale.totalAmount) || 0) - returnCredits);
+        document.getElementById('dtlNetBill').textContent = '₦' + Math.round(netBill).toLocaleString('en-US');
+    } else {
+        document.getElementById('dtlReturnsContainer').style.display = 'none';
+        document.getElementById('dtlReturnRow').style.display = 'none';
+        document.getElementById('dtlNetRow').style.display = 'none';
+    }
+
     document.getElementById('dtlTotal').textContent = '₦' + Math.round(sale.totalAmount).toLocaleString('en-US');
     document.getElementById('dtlPaid').textContent = '₦' + Math.round(sale.paidAmount).toLocaleString('en-US');
 
-    const debt = Math.max(0, sale.totalAmount - sale.paidAmount);
+    // Authoritative dynamic remaining debt
+    const netBill = Math.max(0, (parseFloat(sale.totalAmount) || 0) - returnCredits);
+    let debt = (sale.invoice_balance !== undefined && sale.invoice_balance !== null)
+        ? parseFloat(sale.invoice_balance)
+        : Math.max(0, netBill - (parseFloat(sale.paidAmount) || 0));
+
     document.getElementById('dtlDebt').textContent = debt > 0 ? '₦' + Math.round(debt).toLocaleString('en-US') : '₦0 (Fully Settled)';
     document.getElementById('dtlDebt').style.color = debt > 0 ? '#f87171' : '#4ade80';
+
+    const tenderDiv = document.getElementById('dtlTenderBreakdown');
+    if (tenderDiv) {
+        if (sale.payments && sale.payments.length > 0) {
+            let pHtml = '<div style="font-weight:700;margin-bottom:0.35rem;color:#cbd5e1;text-transform:uppercase;font-size:0.72rem;letter-spacing:0.03em;">Settlement Tender Breakdown:</div>';
+            sale.payments.forEach(p => {
+                const isExch = p.method === 'EXCHANGE_CREDIT';
+                const isCash = p.method === 'CASH';
+                const isPos = p.method === 'POS';
+                const isRefund = p.method === 'REFUND_CASH';
+                const mName = isExch ? '🔄 Customer Exchange Credit' : (isCash ? '💵 Cash Received' : (isPos ? '💳 POS Card' : (isRefund ? '↩️ Cash Refund Paid' : p.method)));
+                const pColor = isExch ? '#c084fc' : (isCash ? '#4ade80' : (isRefund ? '#f87171' : '#60a5fa'));
+                pHtml += `<div style="display:flex;justify-content:space-between;margin-bottom:0.25rem;">
+                    <span style="color:${pColor};font-weight:600;">${mName}:</span>
+                    <strong style="color:${pColor};">${isRefund ? '-' : ''}₦${Math.round(Math.abs(p.amount)).toLocaleString('en-US')}</strong>
+                </div>`;
+            });
+            tenderDiv.innerHTML = pHtml;
+            tenderDiv.style.display = 'block';
+        } else {
+            tenderDiv.style.display = 'none';
+        }
+    }
 
     openModal('modalSaleDetails');
 }

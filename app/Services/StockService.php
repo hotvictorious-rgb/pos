@@ -233,20 +233,30 @@ class StockService
                 'timestamp' => now()->toIso8601String(),
             ]);
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'STOCK_IN',
-                'description' => "{$userName} added {$quantity} units of {$product->name} at warehouse #{$warehouseId}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-                'metadata' => json_encode([
-                    'product_id' => $productId,
+            try {
+                Activity::recordSecurityEvent('STOCK_IN', "{$userName} added {$quantity} units of {$product->name} ({$product->code}) at warehouse #{$warehouseId}", [
+                    'product_id'   => $productId,
+                    'sku'          => $product->code,
+                    'product_code' => $product->code,
+                    'product_name' => $product->name,
                     'warehouse_id' => $warehouseId,
-                    'quantity' => $quantity,
-                    'supplier' => $supplierName,
-                ]),
-            ]);
+                    'quantity'     => $quantity,
+                    'stock_before' => (int) ($stock->physical_stock - $quantity),
+                    'stock_after'  => (int) $stock->physical_stock,
+                    'supplier'     => $supplierName,
+                    'notes'        => $notes,
+                    'items'        => [
+                        [
+                            'sku'        => $product->code,
+                            'name'       => $product->name,
+                            'quantity'   => $quantity,
+                            'unit_price' => (float) ($product->costPrice ?? $product->cost_price ?? 0),
+                        ]
+                    ]
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("STOCK_IN audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $stock;
         });
@@ -355,6 +365,34 @@ class StockService
                 $salePayload['customerPhone'] = $saleData['customerPhone'];
             }
 
+            if (!empty($saleData['receipt_ref'])) {
+                $rawRef = trim($saleData['receipt_ref']);
+                $cleanRef = ltrim($rawRef, '#');
+                $dupQuery = Sale::where('warehouse_id', $warehouseId)
+                    ->whereNotIn('status', ['CANCELLED', 'VOIDED'])
+                    ->where(function ($q) use ($cleanRef, $rawRef) {
+                        $q->where('receipt_ref', $cleanRef)
+                          ->orWhere('receipt_ref', $rawRef)
+                          ->orWhere('note', 'like', "%[RECEIPT REF: #{$cleanRef}]%")
+                          ->orWhere('note', 'like', "%[RECEIPT REF: {$cleanRef}]%")
+                          ->orWhere('note', 'like', "%[RECEIPT REF: #{$rawRef}]%");
+                    });
+                if (isset($saleData['id'])) {
+                    $dupQuery->where('id', '!=', $saleData['id']);
+                }
+                $existingDup = $dupQuery->first();
+                if ($existingDup) {
+                    $cashier = $existingDup->userName ?: 'Cashier';
+                    $dateStr = date('d M Y, h:i A', strtotime($existingDup->createdAt));
+                    $saleShort = substr($existingDup->id, 0, 8);
+                    throw new \InvalidArgumentException("⚠️ Duplicate Receipt Number: Receipt slip '#{$rawRef}' was already used on Sale #{$saleShort} by {$cashier} on {$dateStr} at this branch. Users cannot enter an already existing receipt number again.");
+                }
+
+                if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'receipt_ref')) {
+                    $salePayload['receipt_ref'] = $cleanRef;
+                }
+            }
+
             $sale = Sale::create($salePayload);
 
             // Sort line items deterministically by product ID to guarantee monotonic lock acquisition and eliminate database deadlocks
@@ -403,6 +441,11 @@ class StockService
                     $product->currentStock = StockLevel::where('product_id', $product->id)->sum('physical_stock');
                     $product->save();
 
+                    $isExchangeSale = !empty($saleData['exchange_returns']) || !empty($saleData['exchange_credit']) || (isset($saleData['tender']['exchange_credit']) && (float)$saleData['tender']['exchange_credit'] > 0);
+                    $logDesc = $isExchangeSale
+                        ? "Sale #{$saleId} (Exchange Replacement for {$customerName})"
+                        : "Sale #{$saleId} (Supplied to {$customerName})";
+
                     InventoryLog::create([
                         'id' => (string) Str::uuid(),
                         'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
@@ -414,7 +457,7 @@ class StockService
                         'userName' => $userName,
                         'productCode' => $product->code,
                         'productName' => $product->name,
-                        'description' => "Sale #{$saleId} (Supplied to {$customerName})",
+                        'description' => $logDesc,
                         'timestamp' => now()->toIso8601String(),
                     ]);
                 } else {
@@ -458,6 +501,125 @@ class StockService
                 }
             }
 
+            // Optional: Process Exchange Returned Items (Restock returned items to physical shelf & record SalesReturn)
+            if (!empty($saleData['exchange_returns']) && is_array($saleData['exchange_returns'])) {
+                foreach ($saleData['exchange_returns'] as $exRet) {
+                    $retProductId = $exRet['productId'] ?? $exRet['product_id'] ?? null;
+                    $retQty = (int) ($exRet['quantity'] ?? $exRet['qty'] ?? 0);
+                    $retUnitPrice = (float) ($exRet['unitPrice'] ?? 0);
+                    $retCredit = (float) ($exRet['creditAmount'] ?? ($retQty * $retUnitPrice));
+                    $origSaleId = $exRet['saleId'] ?? null;
+
+                    if ($retProductId && $retQty > 0) {
+                        $retProduct = Product::find($retProductId);
+                        $retStock = $this->ensureStockLevelForAuthorizedMutation($retProductId, $warehouseId, true);
+
+                        // Enforce Unsupplied Return Invariant:
+                        // If the original sale was unsupplied/delayed pickup, customer never took physical goods.
+                        // Goods are already sitting on the shop shelf! DO NOT increment physical_stock!
+                        $origSale = $origSaleId ? Sale::find($origSaleId) : null;
+                        $origWasDelivered = $origSale ? in_array(strtoupper($origSale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']) : true;
+
+                        $unitsRestoredToShelf = 0;
+                        if ($origWasDelivered) {
+                            $retStock->physical_stock += $retQty;
+                            $unitsRestoredToShelf = $retQty;
+                        } else {
+                            $retStock->allocated_stock = max(0, $retStock->allocated_stock - $retQty);
+
+                            $origRes = \App\Models\StockReservation::where('sale_id', $origSaleId)
+                                ->where('product_id', $retProductId)
+                                ->first();
+                            if ($origRes) {
+                                $origRes->cancelled_qty += $retQty;
+                                if ($origRes->outstanding_qty <= 0) {
+                                    $origRes->status = 'CANCELLED';
+                                }
+                                $origRes->save();
+                            }
+                        }
+                        $retStock->save();
+
+                        if ($retProduct) {
+                            $retProduct->currentStock = StockLevel::where('product_id', $retProductId)->sum('physical_stock');
+                            $retProduct->save();
+                        }
+
+                        $logDesc = $origWasDelivered
+                            ? "Exchange return restock for Sale #{$saleId} (Ref: " . ($exRet['origSaleRef'] ?? 'Prior Sale') . "). +{$retQty} units returned to shelf."
+                            : "Exchange cancellation for unsupplied Sale #{$saleId} (Ref: " . ($exRet['origSaleRef'] ?? 'Prior Sale') . "). Released {$retQty} units from reservation buffer. Zero physical stock added.";
+
+                        InventoryLog::create([
+                            'id' => (string) Str::uuid(),
+                            'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                            'productId' => $retProductId,
+                            'warehouse_id' => $warehouseId,
+                            'type' => 'EXCHANGE_IN',
+                            'quantity' => $unitsRestoredToShelf,
+                            'userId' => $userId,
+                            'userName' => $userName,
+                            'productCode' => $retProduct?->code ?? 'EXCHANGE',
+                            'productName' => $retProduct?->name ?? 'Exchanged Item',
+                            'description' => $logDesc,
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+
+                        if ($unitsRestoredToShelf > 0) {
+                            try {
+                                \App\Models\Activity::recordSecurityEvent(
+                                    'STOCK_IN',
+                                    "Restocked {$unitsRestoredToShelf}x " . ($retProduct?->name ?? 'Exchanged Item') . " via Customer Exchange for Sale #{$saleId} (Ref: " . ($exRet['origSaleRef'] ?? 'Prior Sale') . ")",
+                                    [
+                                        'inflow_type'   => 'CUSTOMER_EXCHANGE',
+                                        'sale_id'       => $saleId,
+                                        'orig_sale_id'  => $origSaleId,
+                                        'product_id'    => $retProductId,
+                                        'sku'           => $retProduct?->code ?? 'EXCHANGE',
+                                        'product_name'  => $retProduct?->name ?? 'Exchanged Item',
+                                        'quantity'      => $unitsRestoredToShelf,
+                                        'warehouse_id'  => $warehouseId,
+                                        'items'         => [
+                                            [
+                                                'sku'       => $retProduct?->code ?? 'EXCHANGE',
+                                                'name'      => $retProduct?->name ?? 'Exchanged Item',
+                                                'quantity'  => $unitsRestoredToShelf,
+                                                'unit_cost' => (float) ($retProduct?->costPrice ?? 0),
+                                                'amount'    => (float) $retCredit,
+                                            ]
+                                        ]
+                                    ]
+                                );
+                            } catch (\Throwable $e) {
+                                \Illuminate\Support\Facades\Log::warning("Exchange stock-in audit logging isolated failure: " . $e->getMessage());
+                            }
+                        }
+
+                        // Authoritative SalesReturn record to prevent duplicate future returns of the original sale line item
+                        if ($origSaleId) {
+                            \App\Models\SalesReturn::create([
+                                'id' => (string) Str::uuid(),
+                                'tenant_id' => session('tenant_id') ?? $sale->tenant_id ?? null,
+                                'saleId' => $origSaleId,
+                                'customerName' => $sale->customerName,
+                                'code' => $retProduct?->code ?? 'EXCHANGE',
+                                'productId' => $retProductId,
+                                'productName' => $retProduct?->name ?? 'Exchanged Item',
+                                'quantity' => $retQty,
+                                'refundAmount' => $retCredit,
+                                'reason' => "Exchanged for new purchase in Sale #{$saleId} (Ref: #" . substr($saleId, 0, 8) . ")",
+                                'createdAt' => now()->toIso8601String(),
+                                'userId' => $userId,
+                                'userName' => $userName,
+                                'timestamp' => now()->toIso8601String(),
+                                'productCode' => $retProduct?->code ?? 'EXCHANGE',
+                                'wasDelivered' => true,
+                                'deliveryStatus' => 'DELIVERED',
+                            ]);
+                        }
+                    }
+                }
+            }
+
             // Record granular Payment records for each tender method used in mixed/split payments
             $tenantId = session('tenant_id') ?? $sale->tenant_id ?? null;
 
@@ -483,6 +645,21 @@ class StockService
                     'saleId' => $saleId,
                     'amount' => $posAmount,
                     'method' => 'POS',
+                    'timestamp' => now()->toIso8601String(),
+                    'recordedBy' => $userName,
+                    'createdAt' => now()->toIso8601String(),
+                ]);
+            }
+
+            // 3. Authorized Exchange Credit
+            $retainedExchange = (float) ($calc['retainedExchange'] ?? ($saleData['exchange_credit'] ?? 0));
+            if ($retainedExchange > 0) {
+                Payment::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'saleId' => $saleId,
+                    'amount' => $retainedExchange,
+                    'method' => 'EXCHANGE_CREDIT',
                     'timestamp' => now()->toIso8601String(),
                     'recordedBy' => $userName,
                     'createdAt' => now()->toIso8601String(),
@@ -606,14 +783,26 @@ class StockService
             $sale->deliveredBy = $userName;
             $sale->save();
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'DISPATCH_FULFILLED',
-                'description' => "{$userName} dispatched previously unsupplied goods for Sale #{$saleId} ({$sale->customerName})",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $dispatchedItems = $sale->items->map(function ($it) {
+                    return [
+                        'sku' => $it->code ?? $it->productCode ?? 'N/A',
+                        'name' => $it->productName ?? 'Item',
+                        'quantity' => (int) $it->quantity,
+                    ];
+                })->values()->all();
+
+                Activity::recordSecurityEvent('DISPATCH_FULFILLED', "{$userName} dispatched previously unsupplied goods for Sale #{$saleId} ({$sale->customerName})", [
+                    'sale_id' => $saleId,
+                    'customer_name' => $sale->customerName,
+                    'customer_phone' => $sale->customerPhone,
+                    'warehouse_id' => $warehouseId,
+                    'items_count' => count($dispatchedItems),
+                    'items' => $dispatchedItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("DISPATCH_FULFILLED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $sale;
         });
@@ -706,6 +895,27 @@ class StockService
                 'description' => "Reservation fulfilled ({$qty} units) for Sale #{$saleId} to {$sale->customerName}",
                 'timestamp' => now()->toIso8601String(),
             ]);
+
+            try {
+                Activity::recordSecurityEvent('RESERVATION_FULFILLED', "Reservation fulfilled ({$qty} units of {$product?->name}) for Sale #{$saleId} to {$sale->customerName}", [
+                    'sale_id' => $saleId,
+                    'product_id' => $productId,
+                    'sku' => $product?->code ?? 'N/A',
+                    'product_name' => $product?->name ?? 'Unknown Item',
+                    'quantity' => $qty,
+                    'warehouse_id' => $warehouseId,
+                    'customer_name' => $sale->customerName,
+                    'items' => [
+                        [
+                            'sku' => $product?->code ?? 'N/A',
+                            'name' => $product?->name ?? 'Unknown Item',
+                            'quantity' => $qty,
+                        ]
+                    ]
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("RESERVATION_FULFILLED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $reservation;
         });
@@ -862,15 +1072,27 @@ class StockService
                 ]);
             }
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'type' => 'TRANSFER_DISPATCHED',
-                'description' => "Transfer #{$transferNo} dispatched from Shop #{$sourceWarehouseId} to Shop #{$destWarehouseId} by {$userName}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $transfer->loadMissing('items');
+                $transferItems = $transfer->items->map(function ($it) {
+                    return [
+                        'sku' => $it->product_code ?? 'N/A',
+                        'name' => $it->product_name ?? 'Transfer Item',
+                        'quantity' => (int) $it->dispatched_qty,
+                    ];
+                })->values()->all();
+
+                Activity::recordSecurityEvent('TRANSFER_DISPATCHED', "Transfer #{$transferNo} dispatched from Shop #{$sourceWarehouseId} to Shop #{$destWarehouseId} by {$userName}", [
+                    'transfer_no' => $transferNo,
+                    'source_warehouse_id' => $sourceWarehouseId,
+                    'destination_warehouse_id' => $destWarehouseId,
+                    'carrier_name' => $carrierName,
+                    'items_count' => count($transferItems),
+                    'items' => $transferItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("TRANSFER_DISPATCHED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $transfer;
         });
@@ -952,21 +1174,37 @@ class StockService
             $transfer->save();
 
             // Log activity & trigger Auditor alert if discrepancy exists
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => $hasDiscrepancy ? 'THEFT_ALERT_DISCREPANCY' : 'TRANSFER_RECEIVED',
-                'description' => $hasDiscrepancy
+            try {
+                $transfer->loadMissing('items');
+                $receivedItems = $transfer->items->map(function ($tItem) {
+                    return [
+                        'sku' => $tItem->product_code ?? 'N/A',
+                        'name' => $tItem->product_name ?? 'Transfer Item',
+                        'dispatched_qty' => (int) $tItem->dispatched_qty,
+                        'received_qty' => (int) $tItem->received_qty,
+                        'discrepancy_qty' => (int) $tItem->discrepancy_qty,
+                    ];
+                })->values()->all();
+
+                $evtType = $hasDiscrepancy ? 'THEFT_ALERT_DISCREPANCY' : 'TRANSFER_RECEIVED';
+                $evtDesc = $hasDiscrepancy
                     ? "🚨 THEFT/VARIANCE ALERT: Transfer #{$transfer->transfer_no} received with {$totalDiscrepancy} missing units! Carrier: {$transfer->carrier_name}, Counted by: {$userName}"
-                    : "Transfer #{$transfer->transfer_no} successfully received and verified with 0 discrepancies by {$userName}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-                'metadata' => json_encode([
+                    : "Transfer #{$transfer->transfer_no} successfully received and verified with 0 discrepancies by {$userName}";
+
+                Activity::recordSecurityEvent($evtType, $evtDesc, [
                     'transfer_no' => $transfer->transfer_no,
+                    'source_warehouse_id' => $transfer->source_warehouse_id,
+                    'destination_warehouse_id' => $transfer->destination_warehouse_id,
+                    'carrier_name' => $transfer->carrier_name,
                     'has_discrepancy' => $hasDiscrepancy,
                     'missing_units' => $totalDiscrepancy,
-                ]),
-            ]);
+                    'discrepancy_notes' => $discrepancyNotes,
+                    'items_count' => count($receivedItems),
+                    'items' => $receivedItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("TRANSFER_RECEIVED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $transfer;
         });
@@ -1022,14 +1260,27 @@ class StockService
             $transfer->notes = trim(($transfer->notes ?? '') . " [Recalled by {$userName}: " . ($reason ?? 'Delivery cancelled') . "]");
             $transfer->save();
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'TRANSFER_CANCELLED',
-                'description' => "Transfer #{$transfer->transfer_no} cancelled by {$userName}. Stock restored to " . ($transfer->source->name ?? 'Source') . ".",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $transfer->loadMissing('items');
+                $cancelledItems = $transfer->items->map(function ($it) {
+                    return [
+                        'sku' => $it->product_code ?? 'N/A',
+                        'name' => $it->product_name ?? 'Transfer Item',
+                        'quantity' => (int) $it->dispatched_qty,
+                    ];
+                })->values()->all();
+
+                Activity::recordSecurityEvent('TRANSFER_CANCELLED', "Transfer #{$transfer->transfer_no} cancelled by {$userName}. Stock restored to " . ($transfer->source->name ?? 'Source') . ".", [
+                    'transfer_no' => $transfer->transfer_no,
+                    'source_warehouse_id' => $transfer->source_warehouse_id,
+                    'destination_warehouse_id' => $transfer->destination_warehouse_id,
+                    'reason' => $reason,
+                    'items_count' => count($cancelledItems),
+                    'items' => $cancelledItems,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("TRANSFER_CANCELLED audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $transfer;
         });
@@ -1200,14 +1451,24 @@ class StockService
                 'notes' => $notes ?? "Part-payment of ₦" . number_format($amount, 2) . " received via {$cleanMethod}. New balance: ₦" . number_format($customer->total_debt, 2),
             ]);
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'DEBT_PAYMENT',
-                'description' => "{$userName} recorded debt payment of ₦" . number_format($amount, 2) . " via {$cleanMethod} for {$customer->name}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $oldDebtNaira = \App\Services\Accounting\AccountingReportService::toNaira($currentCustDebtKobo);
+                Activity::recordSecurityEvent('DEBT_PAYMENT', "{$userName} recorded debt payment of ₦" . number_format($amount, 2) . " via {$cleanMethod} for {$customer->name} (Prev: ₦" . number_format($oldDebtNaira, 2) . ", New: ₦" . number_format($customer->total_debt, 2) . ")", [
+                    'customer_id'        => $customer->id,
+                    'customer_name'      => $customer->name,
+                    'customer_phone'     => $customer->phone,
+                    'amount_paid'        => (float) $amount,
+                    'payment_method'     => $cleanMethod,
+                    'previous_debt'      => (float) $oldDebtNaira,
+                    'new_balance'        => (float) $customer->total_debt,
+                    'reference_no'       => $refNo,
+                    'allocated_sale_ids' => $allocatedSaleIds,
+                    'warehouse_id'       => $targetWarehouseId,
+                    'ledger_id'          => $ledger->id,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("DEBT_PAYMENT audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $ledger;
         });
@@ -1260,12 +1521,16 @@ class StockService
                 'status' => 'APPROVED',
             ]);
 
+            $adjLogType = (strtoupper($type) === 'ADJUSTMENT' || str_starts_with(strtoupper($type), 'STOCK_ADJUSTMENT'))
+                ? 'STOCK_ADJUSTMENT'
+                : 'STOCK_ADJUSTMENT_' . strtoupper($type);
+
             InventoryLog::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => session('tenant_id') ?? $product->tenant_id ?? null,
                 'productId' => $productId,
                 'warehouse_id' => $warehouseId,
-                'type' => 'STOCK_ADJUSTMENT_' . strtoupper($type),
+                'type' => $adjLogType,
                 'quantity' => -$quantity,
                 'userId' => $userId,
                 'userName' => $userName,
@@ -1275,14 +1540,30 @@ class StockService
                 'timestamp' => now()->toIso8601String(),
             ]);
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'STOCK_ADJUSTMENT',
-                'description' => "{$userName} wrote off {$quantity} units of {$product->name} ({$type}) at Shop #{$warehouseId}. Reason: {$reason}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                Activity::recordSecurityEvent('STOCK_ADJUSTMENT', "{$userName} wrote off {$quantity} units of {$product->name} ({$product->code}, {$type}) at Shop #{$warehouseId}. Reason: {$reason}", [
+                    'product_id'      => $productId,
+                    'sku'             => $product->code,
+                    'product_code'    => $product->code,
+                    'product_name'    => $product->name,
+                    'adjustment_type' => strtoupper($type),
+                    'quantity'        => $quantity,
+                    'reason'          => $reason,
+                    'warehouse_id'    => $warehouseId,
+                    'stock_before'    => (int) ($stock->physical_stock + $quantity),
+                    'stock_after'     => (int) $stock->physical_stock,
+                    'items'           => [
+                        [
+                            'sku'        => $product->code,
+                            'name'       => $product->name,
+                            'quantity'   => -$quantity,
+                            'unit_price' => (float) ($product->unitPrice ?? 0),
+                        ]
+                    ]
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("STOCK_ADJUSTMENT audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $adjustment;
         });
@@ -1296,8 +1577,8 @@ class StockService
         $this->assertUserCapability('returns.process', $userId);
         $this->assertUserWarehouseAuthority($warehouseId);
 
-        if (!in_array($refundMethod, ['CASH_REFUND', 'DEBT_REDUCTION'], true)) {
-            throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: CASH_REFUND, DEBT_REDUCTION.");
+        if (!in_array($refundMethod, ['REFUND', 'CASH_REFUND', 'POS_TRANSFER_REFUND', 'DEBT_REDUCTION', 'STORE_CREDIT'], true)) {
+            throw new \InvalidArgumentException("Invalid refund method '{$refundMethod}'. Allowed methods are: REFUND, CASH_REFUND, POS_TRANSFER_REFUND, DEBT_REDUCTION, STORE_CREDIT.");
         }
 
         return DB::transaction(function () use ($saleId, $returnItems, $warehouseId, $refundMethod, $reason, $userId, $userName) {
@@ -1306,9 +1587,9 @@ class StockService
             }
 
             // Canonical Lock Hierarchy Enforcement (Level 2: Customer):
-            // If debt reduction is requested, lock Customer *before* Sale (Level 3) to prevent AB-BA deadlock with recordCustomerPayment
+            // If refund or debt reduction is requested, lock Customer *before* Sale (Level 3) to prevent AB-BA deadlock with recordCustomerPayment
             $customer = null;
-            if ($refundMethod === 'DEBT_REDUCTION') {
+            if (in_array($refundMethod, ['REFUND', 'DEBT_REDUCTION', 'STORE_CREDIT'], true)) {
                 $saleMeta = Sale::select('id', 'customerId', 'customerName')->where('id', $saleId)->first();
                 if ($saleMeta) {
                     $cId = $saleMeta->customerId;
@@ -1389,10 +1670,29 @@ class StockService
                     ->lockForUpdate()
                     ->first();
 
+                $isSaleSupplied = in_array(strtoupper($sale->deliveryStatus ?? ''), ['DELIVERED', 'SUPPLIED']);
+
                 $physicalUnitsRestored = 0;
                 $allocatedUnitsReleased = 0;
 
-                if ($reservation) {
+                if (!$isSaleSupplied) {
+                    // HARD INVARIANT: The sale was unsupplied / not delivered!
+                    // The goods NEVER left the shop shelves. DO NOT return qty to physical_stock!
+                    // Only release the reservation allocation and refund the money.
+                    $physicalUnitsRestored = 0;
+                    $allocatedUnitsReleased = $qty;
+
+                    $stock->allocated_stock = max(0, $stock->allocated_stock - $allocatedUnitsReleased);
+                    $stock->save();
+
+                    if ($reservation) {
+                        $reservation->cancelled_qty += $allocatedUnitsReleased;
+                        if ($reservation->outstanding_qty <= 0) {
+                            $reservation->status = 'CANCELLED';
+                        }
+                        $reservation->save();
+                    }
+                } elseif ($reservation) {
                     $heldUnits = $reservation->held_by_customer_qty;
                     $outstandingUnits = $reservation->outstanding_qty;
 
@@ -1437,9 +1737,20 @@ class StockService
                     } else {
                         $reservation->status = ($reservation->fulfilled_qty > 0) ? 'PARTIALLY_FULFILLED' : 'ACTIVE';
                     }
-                    $reservation->save();
+                    try {
+                        $reservation->save();
+                    } catch (\Throwable $e) {
+                        // Fallback: If live database is still running legacy strict ENUM before migration execution, fallback to 'CANCELLED'
+                        if ($reservation->status === 'RETURNED') {
+                            $reservation->status = 'CANCELLED';
+                            $reservation->save();
+                        } else {
+                            throw $e;
+                        }
+                    }
                 } else {
                     $physicalUnitsRestored = $qty;
+                    $allocatedUnitsReleased = 0;
                     $stock->physical_stock += $qty;
                     $stock->save();
                 }
@@ -1472,6 +1783,36 @@ class StockService
                     'description' => "Customer Return for Sale #{$saleId} ({$movementDesc}). Reason: {$reason}",
                     'timestamp' => now()->toIso8601String(),
                 ]);
+
+                if ($physicalUnitsRestored > 0) {
+                    try {
+                        \App\Models\Activity::recordSecurityEvent(
+                            'STOCK_IN',
+                            "Restocked {$physicalUnitsRestored}x {$product->name} via Customer Return for Sale #{$saleId} ({$movementDesc})",
+                            [
+                                'inflow_type'   => 'CUSTOMER_RETURN',
+                                'sale_id'       => $saleId,
+                                'product_id'    => $product->id,
+                                'sku'           => $product->code,
+                                'product_name'  => $product->name,
+                                'quantity'      => $physicalUnitsRestored,
+                                'warehouse_id'  => $warehouseId,
+                                'reason'        => $reason,
+                                'items'         => [
+                                    [
+                                        'sku'       => $product->code,
+                                        'name'      => $product->name,
+                                        'quantity'  => $physicalUnitsRestored,
+                                        'unit_cost' => (float) ($product->costPrice ?? 0),
+                                        'amount'    => (float) ($qty * $unitPrice),
+                                    ]
+                                ]
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("Customer return stock-in audit logging isolated failure: " . $e->getMessage());
+                    }
+                }
             }
 
             // Update sale delivery status if all reservations are resolved
@@ -1494,19 +1835,134 @@ class StockService
 
             $wasDelivered = ($sale->deliveryStatus === 'DELIVERED');
 
-            // Financial integrity: Cash refund cannot exceed actual money customer paid!
-            if ($refundMethod === 'CASH_REFUND') {
-                $cashPaid = (float) Payment::where('saleId', $saleId)->where('method', 'CASH')->where('amount', '>', 0)->sum('amount');
-                if ($cashPaid <= 0 && (float) ($sale->cashAmount ?? 0) > 0) {
-                    $cashPaid = (float) $sale->cashAmount;
-                }
-                $priorCashRefunds = abs((float) Payment::where('saleId', $saleId)->where('method', 'REFUND_CASH')->sum('amount'));
-                $maxCashRefundable = max(0.0, round($cashPaid - $priorCashRefunds, 2));
+            // Intelligent Unified Restitution: 'REFUND'
+            // Invariant: Exact item price math. No store credit. No bank account prompt.
+            // Part-payment rule: min(Return Value, Debt) cancels debt, excess is refunded as real money.
+            // Cash drawer protection: Payment is recorded with method 'REFUND' (100% isolating cashier daily cash drawer).
+            if ($refundMethod === 'REFUND') {
+                $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+                $invoiceOutstanding = $accountingService->calculateInvoiceBalance($sale);
 
-                if ($totalRefundAmount > $maxCashRefundable) {
-                    throw new \InvalidArgumentException(
-                        "Cannot issue cash refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable cash for Sale #{$saleId} based on actual payments made is ₦" . number_format($maxCashRefundable, 2) . ". Use DEBT_REDUCTION for unpaid/credit balance."
-                    );
+                // Compute split: Cancel debt first, refund remaining cash to customer
+                $debtReduction = min($totalRefundAmount, $invoiceOutstanding);
+                $actualMoneyRefund = max(0.0, round($totalRefundAmount - $debtReduction, 2));
+
+                // Guard: Actual money refunded cannot exceed actual money paid across this sale
+                $totalActualPaid = (float) Payment::where('saleId', $saleId)->where('amount', '>', 0)->sum('amount');
+                if ($totalActualPaid <= 0) {
+                    $totalActualPaid = (float) ($sale->paidAmount ?? 0);
+                }
+                $priorRefunds = abs((float) Payment::where('saleId', $saleId)
+                    ->whereIn('method', ['REFUND_CASH', 'REFUND', 'REFUND_POS', 'REFUND_TRANSFER'])
+                    ->sum('amount'));
+                $maxRefundableMoney = max(0.0, round($totalActualPaid - $priorRefunds, 2));
+
+                if ($actualMoneyRefund > $maxRefundableMoney) {
+                    $actualMoneyRefund = $maxRefundableMoney;
+                }
+
+                // 1. Debt Cancellation (Customer Ledger)
+                if ($debtReduction > 0) {
+                    if (!$customer) {
+                        $cId = $sale->customerId ?? $sale->customer_id ?? null;
+                        $customer = $cId ? Customer::find($cId) : null;
+                        if (!$customer && $sale->customerName && $sale->customerName !== 'Walk-in Customer') {
+                            $customer = Customer::where('name', $sale->customerName)->first();
+                        }
+                    }
+
+                    if ($customer) {
+                        $currentDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                        $reductionKobo = \App\Services\Accounting\AccountingReportService::toKobo($debtReduction);
+                        $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira(max(0, $currentDebtKobo - $reductionKobo));
+                        $customer->save();
+
+                        CustomerLedger::create([
+                            'tenant_id' => $sale->tenant_id,
+                            'customer_id' => $customer->id,
+                            'sale_id' => $saleId,
+                            'warehouse_id' => $sale->warehouse_id,
+                            'type' => 'RETURN_CREDIT',
+                            'amount' => $debtReduction,
+                            'balance_after' => $customer->total_debt,
+                            'payment_method' => 'RETURN_CREDIT',
+                            'reference_no' => 'RET-' . strtoupper(Str::random(6)),
+                            'recorded_by' => $userName,
+                            'notes' => "Debt reduced by ₦" . number_format($debtReduction, 2) . " due to Sales Return on Sale #{$saleId}",
+                        ]);
+                    }
+                }
+
+                // 2. Real Money Refund (Negative Payment with method 'REFUND' to isolate cashier drawer)
+                if ($actualMoneyRefund > 0) {
+                    $sale->paidAmount = max(0, (float) $sale->paidAmount - $actualMoneyRefund);
+                    $sale->save();
+
+                    Payment::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
+                        'saleId' => $saleId,
+                        'amount' => -$actualMoneyRefund,
+                        'method' => 'REFUND',
+                        'timestamp' => now()->toIso8601String(),
+                        'recordedBy' => $userName,
+                        'createdAt' => now()->toIso8601String(),
+                    ]);
+                }
+
+                // Update Sale Status
+                $balanceAfterReturn = max(0.0, round($invoiceOutstanding - $debtReduction, 2));
+                $allOriginalQty = (int) $sale->items->sum('quantity');
+                $allReturnedQty = (int) \App\Models\SalesReturn::where('saleId', $saleId)->sum('quantity') + (int) array_sum(array_column($returnItems, 'quantity'));
+
+                if ($allReturnedQty >= $allOriginalQty) {
+                    $sale->status = 'RETURNED';
+                } elseif ($balanceAfterReturn <= 0.01 && $sale->paidAmount > 0) {
+                    $sale->status = 'COMPLETED';
+                } else {
+                    $sale->status = ($sale->paidAmount <= 0) ? 'RETURNED' : 'PARTIAL';
+                }
+                $sale->save();
+            }
+
+            // Financial integrity: Cash or Electronic (POS/Transfer) Refund
+            if ($refundMethod === 'CASH_REFUND' || $refundMethod === 'POS_TRANSFER_REFUND') {
+                $isCash = ($refundMethod === 'CASH_REFUND');
+                
+                // For cash, check physical cash paid; allow admin override if authorized
+                if ($isCash) {
+                    $cashPaid = (float) Payment::where('saleId', $saleId)->where('method', 'CASH')->where('amount', '>', 0)->sum('amount');
+                    if ($cashPaid <= 0 && (float) ($sale->cashAmount ?? 0) > 0) {
+                        $cashPaid = (float) $sale->cashAmount;
+                    }
+                    $priorCashRefunds = abs((float) Payment::where('saleId', $saleId)->where('method', 'REFUND_CASH')->sum('amount'));
+                    $maxCashRefundable = max(0.0, round($cashPaid - $priorCashRefunds, 2));
+
+                    $isAdminActor = Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin());
+                    $totalActualPaid = (float) Payment::where('saleId', $saleId)->where('amount', '>', 0)->sum('amount');
+                    if ($totalActualPaid <= 0) {
+                        $totalActualPaid = (float) ($sale->paidAmount ?? 0);
+                    }
+
+                    if ($totalRefundAmount > $maxCashRefundable && !($isAdminActor && $totalRefundAmount <= $totalActualPaid)) {
+                        throw new \InvalidArgumentException(
+                            "Cannot issue cash refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable cash for Sale #{$saleId} based on cash payments made is ₦" . number_format($maxCashRefundable, 2) . ". For POS/Card payments, select 'POS / Bank Transfer Reversal' or 'Customer Store Credit'."
+                        );
+                    }
+                } else {
+                    // POS/Transfer refund: Check against total actual money paid for this sale
+                    $totalPaid = (float) Payment::where('saleId', $saleId)->where('amount', '>', 0)->sum('amount');
+                    if ($totalPaid <= 0) {
+                        $totalPaid = (float) ($sale->paidAmount ?? 0);
+                    }
+                    $priorRefunds = abs((float) Payment::where('saleId', $saleId)->whereIn('method', ['REFUND_CASH', 'REFUND_POS', 'REFUND_TRANSFER'])->sum('amount'));
+                    $maxRefundable = max(0.0, round($totalPaid - $priorRefunds, 2));
+
+                    if ($totalRefundAmount > $maxRefundable) {
+                        throw new \InvalidArgumentException(
+                            "Cannot issue electronic refund of ₦" . number_format($totalRefundAmount, 2) . ". Maximum refundable amount for Sale #{$saleId} based on total payments made is ₦" . number_format($maxRefundable, 2) . "."
+                        );
+                    }
                 }
 
                 // Balance financial ledger: reduce sale paidAmount and create negative payment record
@@ -1516,16 +1972,49 @@ class StockService
                 }
                 $sale->save();
 
+                $refundPaymentMethod = $isCash ? 'REFUND_CASH' : 'REFUND_POS';
                 Payment::create([
                     'id' => (string) Str::uuid(),
                     'tenant_id' => (Auth::check() && Auth::user()->tenant_id) ? Auth::user()->tenant_id : ($sale->tenant_id ?? session('tenant_id')),
                     'saleId' => $saleId,
                     'amount' => -$totalRefundAmount,
-                    'method' => 'REFUND_CASH',
+                    'method' => $refundPaymentMethod,
                     'timestamp' => now()->toIso8601String(),
                     'recordedBy' => $userName,
                     'createdAt' => now()->toIso8601String(),
                 ]);
+            }
+
+            // Customer Store Credit: increases customer balance or reduces debt
+            if ($refundMethod === 'STORE_CREDIT') {
+                if (!$customer) {
+                    $cId = $sale->customerId ?? $sale->customer_id ?? null;
+                    $customer = $cId ? Customer::find($cId) : null;
+                    if (!$customer && $sale->customerName && $sale->customerName !== 'Walk-in Customer') {
+                        $customer = Customer::where('name', $sale->customerName)->first();
+                    }
+                }
+
+                if ($customer) {
+                    $currentDebtKobo = \App\Services\Accounting\AccountingReportService::toKobo($customer->total_debt);
+                    $refundKobo = \App\Services\Accounting\AccountingReportService::toKobo($totalRefundAmount);
+                    $customer->total_debt = \App\Services\Accounting\AccountingReportService::toNaira(max(0, $currentDebtKobo - $refundKobo));
+                    $customer->save();
+
+                    CustomerLedger::create([
+                        'tenant_id' => $sale->tenant_id,
+                        'customer_id' => $customer->id,
+                        'sale_id' => $saleId,
+                        'warehouse_id' => $sale->warehouse_id,
+                        'type' => 'STORE_CREDIT',
+                        'amount' => $totalRefundAmount,
+                        'balance_after' => $customer->total_debt,
+                        'payment_method' => 'STORE_CREDIT',
+                        'reference_no' => 'CRD-' . strtoupper(Str::random(6)),
+                        'recorded_by' => $userName,
+                        'notes' => "Store credit of ₦" . number_format($totalRefundAmount, 2) . " granted for Return on Sale #{$saleId}",
+                    ]);
+                }
             }
 
             // Financial integrity: Debt reduction applies against outstanding invoice debt and customer debt balance.
@@ -1610,14 +2099,38 @@ class StockService
 
             $salesReturn = $primaryReturn;
 
-            Activity::create([
-                'id' => (string) Str::uuid(),
-                'type' => 'SALES_RETURN',
-                'description' => "{$userName} processed Sales Return for Sale #{$saleId} (₦" . number_format($totalRefundAmount, 2) . " refund). Reason: {$reason}",
-                'userId' => $userId,
-                'userName' => $userName,
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            try {
+                $returnItemsMeta = [];
+                $allReturns = \App\Models\SalesReturn::where('saleId', $saleId)
+                    ->where('code', $salesReturn->code ?? ($primaryReturn->code ?? ''))
+                    ->get();
+                if ($allReturns->isEmpty() && $primaryReturn) {
+                    $allReturns = collect([$primaryReturn]);
+                }
+                foreach ($allReturns as $ret) {
+                    $prod = Product::find($ret->productId);
+                    $returnItemsMeta[] = [
+                        'sku' => $prod?->code ?? $ret->code ?? 'N/A',
+                        'name' => $ret->productName,
+                        'quantity' => (int) $ret->quantity,
+                        'refund_amount' => (float) $ret->refundAmount,
+                    ];
+                }
+
+                Activity::recordSecurityEvent('SALES_RETURN', "{$userName} processed Sales Return for Sale #{$saleId} (₦" . number_format($totalRefundAmount, 2) . " refund). Reason: {$reason}", [
+                    'return_code'   => $salesReturn->code ?? null,
+                    'sale_id'       => $saleId,
+                    'customer_name' => $sale->customerName,
+                    'refund_amount' => (float) $totalRefundAmount,
+                    'refund_method' => $refundMethod,
+                    'reason'        => $reason,
+                    'warehouse_id'  => $warehouseId,
+                    'items_count'   => count($returnItemsMeta),
+                    'items'         => $returnItemsMeta,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("SALES_RETURN audit logging isolated failure: " . $e->getMessage());
+            }
 
             return $salesReturn;
         });

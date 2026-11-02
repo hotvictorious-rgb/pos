@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\Payment;
 use App\Services\Accounting\AccountingReportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
@@ -145,13 +146,15 @@ class DashboardController extends Controller
         $totalRefundAmount = $periodSummary['cashRefunded'];
         $returnsCount = $periodSummary['returnCount'];
         $totalReturnCredits = $periodSummary['totalReturnCredits'];
+        $totalExchangeCredit = $periodSummary['exchangeCreditApplied'] ?? 0.0;
+        $exchangeCount = $periodSummary['exchangeCreditCount'] ?? 0;
 
         // Returned units
         $returnsQuery = $accountingService->buildReturnsQuery($filters);
         $returnedUnits = (int) $returnsQuery->sum('quantity');
 
         // 3. Stock Movements (In & Out) - Strictly Scoped by Warehouse
-        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+        $stockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
         $applyDateFilter($stockInQuery, 'timestamp');
         if ($warehouseId) {
             $stockInQuery->where('warehouse_id', $warehouseId);
@@ -169,7 +172,7 @@ class DashboardController extends Controller
                 'STOCK_ADJUSTMENT_LOST'
             ])->orWhere('type', 'like', 'STOCK_ADJUSTMENT%')
               ->orWhere(function ($sub) {
-                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN']);
+                  $sub->where('quantity', '<', 0)->whereNotIn('type', ['STOCK_IN', 'TRANSFER_IN', 'RETURN', 'SALES_RETURN', 'EXCHANGE_IN']);
               });
         });
         $applyDateFilter($stockOutQuery, 'timestamp');
@@ -188,18 +191,32 @@ class DashboardController extends Controller
         $debtRecoveryCount = (clone $debtPaymentQuery)->count();
 
         $totalOutstandingDebt = $periodSummary['currentOutstanding'];
+        $relevantSalesQuery = Sale::whereNotNull('customerId')
+            ->whereNotIn('status', ['CANCELLED', 'RETURNED']);
         if ($warehouseId) {
-            $activeDebtorsCount = Sale::where('warehouse_id', $warehouseId)
-                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->whereNotNull('customerId')
-                ->get()
-                ->filter(fn($s) => $accountingService->calculateInvoiceBalance($s) > 0.01)
-                ->pluck('customerId')
-                ->unique()
-                ->count();
-        } else {
-            $activeDebtorsCount = Customer::where('total_debt', '>', 0)->count();
+            $relevantSalesQuery->where('warehouse_id', $warehouseId);
         }
+        $openSales = $relevantSalesQuery->get(['id', 'customerId', 'totalAmount', 'deliveryStatus', 'warehouse_id']);
+        $openBalances = $accountingService->calculateInvoiceBalancesForSales($openSales);
+        $totalDeliveredDebt = 0.0;
+        $totalInstallmentDebt = 0.0;
+        $activeDebtorIds = [];
+
+        foreach ($openSales as $os) {
+            $b = $openBalances[$os->id] ?? 0.0;
+            if ($b > 0.01) {
+                $activeDebtorIds[] = $os->customerId;
+                $isUnsup = in_array(strtoupper($os->deliveryStatus ?? ''), ['UNSUPPLIED', 'NOT_SUPPLIED', 'PENDING', 'PENDING_PICKUP']);
+                if ($isUnsup) {
+                    $totalInstallmentDebt += $b;
+                } else {
+                    $totalDeliveredDebt += $b;
+                }
+            }
+        }
+        $totalDeliveredDebt = round($totalDeliveredDebt, 2);
+        $totalInstallmentDebt = round($totalInstallmentDebt, 2);
+        $activeDebtorsCount = $warehouseId ? count(array_unique($activeDebtorIds)) : Customer::where('total_debt', '>', 0)->count();
 
         // 5. Fulfillment & Unsupplied Backlog
         $unsuppliedCount = $pendingOrders['total_orders'];
@@ -277,11 +294,15 @@ class DashboardController extends Controller
             'returnsCount',
             'returnedUnits',
             'totalRefundAmount',
+            'totalExchangeCredit',
+            'exchangeCount',
             'totalStockInUnits',
             'totalStockOutUnits',
             'debtRecoveredInPeriod',
             'debtRecoveryCount',
             'totalOutstandingDebt',
+            'totalDeliveredDebt',
+            'totalInstallmentDebt',
             'activeDebtorsCount',
             'unsuppliedCount',
             'unsuppliedValue',
@@ -308,4 +329,81 @@ class DashboardController extends Controller
             'myRecentSales'
         ));
     }
+
+    /**
+     * Switch the active operational or executive branch context.
+     */
+    public function switchBranch(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        $targetId = $request->input('warehouse_id');
+
+        // 1. Branch-scoped personnel (cashiers, storekeepers) are locked to their assigned branch
+        if ($user->isBranchScoped()) {
+            if ($targetId && (int) $targetId !== (int) $user->warehouse_id) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => '🔒 Access Restricted: You are assigned to your designated branch.'], 403);
+                }
+                return back()->with('error', '🔒 Access Restricted: You are assigned to your designated branch.');
+            }
+
+            session([
+                'warehouse_id' => $user->warehouse_id,
+                'active_warehouse_id' => $user->warehouse_id,
+            ]);
+
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true, 'warehouse_id' => $user->warehouse_id]);
+            }
+            return back();
+        }
+
+        // 2. Multi-Branch Users (Admins, Owners, Executives) selecting "ALL" (Consolidated)
+        if ($targetId === 'ALL' || $targetId === '' || $targetId === null) {
+            session()->forget('active_warehouse_id');
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'warehouse_id' => null,
+                    'warehouse_name' => 'All Branches (Consolidated)',
+                ]);
+            }
+            return back()->with('success', '🌐 Switched to All Branches (Consolidated View).');
+        }
+
+        // 3. Multi-Branch Users selecting a specific branch
+        $warehouse = Warehouse::find($targetId);
+        if (!$warehouse || !$warehouse->is_active) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Selected branch is invalid or inactive.'], 404);
+            }
+            return back()->with('error', 'Selected branch is invalid or inactive.');
+        }
+
+        // Validate access permission & tenant boundary
+        if (!$user->canAccessWarehouse($warehouse->id)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => '🔒 Access Restricted: You do not have permission to access this branch.'], 403);
+            }
+            return back()->with('error', '🔒 Access Restricted: You do not have permission to access this branch.');
+        }
+
+        session(['active_warehouse_id' => $warehouse->id]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'warehouse_id' => $warehouse->id,
+                'warehouse_name' => $warehouse->name,
+            ]);
+        }
+
+        return back()->with('success', "🏬 Active branch switched to {$warehouse->name}.");
+    }
 }
+

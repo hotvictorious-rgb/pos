@@ -20,7 +20,7 @@ use App\Models\Transfer;
 // ─────────────────────────────────────────────────────────
 Route::get('/account/password',  [AuthController::class, 'showChangePassword'])->name('account.password');
 Route::post('/account/password', [AuthController::class, 'changePassword'])->name('account.password.update');
-Route::post('/branch/switch',    [\App\Http\Controllers\Web\BranchSwitchController::class, 'switchBranch'])->name('branch.switch');
+Route::post('/branch/switch',    [\App\Http\Controllers\Web\DashboardController::class, 'switchBranch'])->name('branch.switch');
 
 // ─────────────────────────────────────────────────────────
 // PUBLIC MARKETING & LANDING PAGE (Nigerian Retail, Supermarkets & Wholesalers)
@@ -85,6 +85,9 @@ Route::prefix('saas')->name('saas.')->group(function () {
         Route::post('/toggle/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'toggleStatus'])->middleware('capability:platform.tenants,platform.tenants.suspend')->name('toggle');
         Route::post('/limits/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'updateTenantLimits'])->middleware('capability:platform.limits')->name('limits');
         Route::post('/delete/{id}',     [\App\Http\Controllers\SaaS\SaaSController::class, 'deleteTenant'])->middleware('capability:platform.tenants.delete')->name('delete');
+        Route::post('/payments/{id}/approve', [\App\Http\Controllers\SaaS\SaaSController::class, 'approvePaymentNotice'])->middleware('capability:platform.tenants')->name('payments.approve');
+        Route::post('/payments/{id}/reject',  [\App\Http\Controllers\SaaS\SaaSController::class, 'rejectPaymentNotice'])->middleware('capability:platform.tenants')->name('payments.reject');
+        Route::post('/tenant/{id}/reset-password', [\App\Http\Controllers\SaaS\SaaSController::class, 'resetTenantAdminPassword'])->middleware('capability:platform.tenants')->name('tenant.reset_password');
     });
 });
 
@@ -122,6 +125,9 @@ Route::prefix('pos')->name('pos.')->group(function () {
     Route::get('/',                     [PosController::class, 'index'])->middleware('capability:pos.view')->name('index');
     Route::post('/checkout',            [PosController::class, 'checkout'])->middleware('capability:pos.checkout')->name('checkout');
     Route::post('/customer/quick-register', [PosController::class, 'quickRegisterCustomer'])->middleware('capability:customer.write,pos.checkout')->name('customer.quick_register');
+    Route::get('/lookup-sale',          [PosController::class, 'lookupSale'])->middleware('capability:pos.view')->name('lookup_sale');
+    Route::get('/lookup',               [PosController::class, 'lookupSale'])->middleware('capability:pos.view')->name('lookup');
+    Route::get('/check-receipt-ref',    [PosController::class, 'checkReceiptRef'])->middleware('capability:pos.view')->name('check_receipt_ref');
     Route::get('/receipt/{id}',         [PosController::class, 'receipt'])->middleware('capability:pos.view')->name('receipt');
     Route::get('/returns',              [PosController::class, 'returns'])->middleware('capability:returns.view')->name('returns');
     Route::post('/returns',             [PosController::class, 'processReturn'])->middleware('capability:returns.process')->name('returns.process');
@@ -160,6 +166,7 @@ Route::prefix('reports')->name('reports.')->group(function () {
     Route::get('/',                             [\App\Http\Controllers\Web\ReportController::class, 'index'])->middleware('capability:reports.view')->name('index');
     Route::get('/export-csv/{type}',            [\App\Http\Controllers\Web\ReportController::class, 'exportCsv'])->middleware('capability:reports.export')->name('export.csv');
     Route::get('/export-json/{type}',           [\App\Http\Controllers\Web\ReportController::class, 'exportJson'])->middleware('capability:reports.export')->name('export.json');
+    Route::get('/export-pdf/{type}',            [\App\Http\Controllers\Web\ReportController::class, 'exportPdf'])->middleware('capability:reports.export')->name('export.pdf');
 });
 
 // 5. Auditor Anti-Theft & Reconciliation Hub
@@ -179,6 +186,11 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
     Route::get('/',                  [\App\Http\Controllers\Web\TransactionController::class, 'index'])->middleware('capability:transactions.view')->name('index');
     Route::get('/export-csv/{tab}',  [\App\Http\Controllers\Web\TransactionController::class, 'exportCsv'])->middleware('capability:transactions.export')->name('export.csv');
     Route::get('/export-json/{tab}', [\App\Http\Controllers\Web\TransactionController::class, 'exportJson'])->middleware('capability:transactions.export')->name('export.json');
+    
+    // Admin Transaction Voiding & Rollback
+    Route::post('/void-sale/{saleId}', [\App\Http\Controllers\Web\TransactionController::class, 'voidSale'])->name('void.sale');
+    Route::post('/void-stock-in/{logId}', [\App\Http\Controllers\Web\TransactionController::class, 'voidStockIn'])->name('void.stock-in');
+    Route::post('/void-stock-out/{id}', [\App\Http\Controllers\Web\TransactionController::class, 'voidStockOutOrAdjustment'])->name('void.stock-out');
 });
 
 // 8. Workers & Role Permissions Hub
@@ -209,7 +221,16 @@ Route::prefix('settings')->name('settings.')->middleware(['capability:settings.m
     });
 });
 
-// 10. User Guide & Training Center
+// 10. Business Owner Subscription & Billing Hub
+Route::prefix('subscription')->name('subscription.')->middleware(['capability:settings.manage'])->group(function () {
+    Route::get('/',                    [\App\Http\Controllers\Web\SubscriptionController::class, 'index'])->name('index');
+    Route::post('/change-plan',        [\App\Http\Controllers\Web\SubscriptionController::class, 'changePlan'])->name('change_plan');
+    Route::post('/paystack/init',      [\App\Http\Controllers\Web\SubscriptionController::class, 'initializePaystack'])->name('paystack.init');
+    Route::get('/paystack/callback',   [\App\Http\Controllers\Web\SubscriptionController::class, 'handlePaystackCallback'])->name('paystack.callback');
+    Route::post('/manual-payment',     [\App\Http\Controllers\Web\SubscriptionController::class, 'recordManualPaymentNotice'])->name('manual_payment');
+});
+
+// 11. User Guide & Training Center
 Route::get('/help', function () {
     return view('help.index');
 })->name('help.index');

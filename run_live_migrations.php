@@ -30,6 +30,52 @@ try {
     echo "Migration note: " . $e->getMessage() . "\n<br>";
 }
 
+// 1b. Ensure stock_reservations status allows RETURNED even if migration runner encountered legacy MySQL strict enum
+try {
+    \Illuminate\Support\Facades\DB::statement("ALTER TABLE stock_reservations MODIFY COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'");
+    echo "Stock reservations status column successfully verified/updated to VARCHAR(32)!\n<br>";
+} catch (\Throwable $e) {
+    // Already updated or non-MySQL
+}
+
+// 1c. Retroactive Cleanup for Previously Voided Sales:
+// If any sale was already voided / deleted before Option A was installed, clean up its orphan Stock Out logs and debt ledger records
+try {
+    $existingSaleIds = \Illuminate\Support\Facades\DB::table('sales')->pluck('id')->toArray();
+    $existingSaleIdSet = array_flip($existingSaleIds);
+
+    // Find all inventory logs referencing a sale
+    $saleLogs = \Illuminate\Support\Facades\DB::table('inventory_logs')
+        ->whereIn('type', ['SALE', 'SALE_RESERVED', 'DISPATCH_FULFILLED'])
+        ->get(['id', 'description']);
+
+    $logsToDelete = [];
+    foreach ($saleLogs as $log) {
+        if (preg_match('/Sale #([a-zA-Z0-9\-]+)/', $log->description, $matches)) {
+            $refId = $matches[1];
+            if (!isset($existingSaleIdSet[$refId])) {
+                $logsToDelete[] = $log->id;
+            }
+        }
+    }
+
+    if (!empty($logsToDelete)) {
+        \Illuminate\Support\Facades\DB::table('inventory_logs')->whereIn('id', $logsToDelete)->delete();
+        echo "Retroactively cleaned up " . count($logsToDelete) . " orphan outflow log(s) from previously voided sales!\n<br>";
+    }
+
+    // Clean up CustomerLedger entries whose sales no longer exist
+    $orphanLedgers = \Illuminate\Support\Facades\DB::table('customer_ledgers')
+        ->whereNotNull('sale_id')
+        ->whereNotIn('sale_id', $existingSaleIds ?: ['__NONE__'])
+        ->delete();
+    if ($orphanLedgers > 0) {
+        echo "Retroactively cleaned up {$orphanLedgers} orphan customer debt ledger record(s) from previously voided sales!\n<br>";
+    }
+} catch (\Throwable $e) {
+    echo "Note on retroactive void cleanup: " . $e->getMessage() . "\n<br>";
+}
+
 // 2. Clear view cache
 echo "2. Clearing compiled Blade views...\n<br>";
 Artisan::call('view:clear');

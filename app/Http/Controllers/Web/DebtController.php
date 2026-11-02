@@ -35,26 +35,43 @@ class DebtController extends Controller
         }
         $assignedWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : ($requestedWh ? (int) $requestedWh : null);
 
+        $agreementType = $request->get('agreement_type', 'ALL');
+        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+
+        // Fetch sales to calculate delivered debt vs unsupplied installments
+        $relevantSalesQuery = \App\Models\Sale::whereNotNull('customerId')
+            ->whereNotIn('status', ['CANCELLED', 'RETURNED']);
+        if ($assignedWarehouseId) {
+            $relevantSalesQuery->where('warehouse_id', $assignedWarehouseId);
+        }
+        $allOpenSales = $relevantSalesQuery->get(['id', 'customerId', 'totalAmount', 'deliveryStatus', 'warehouse_id']);
+        $saleBalances = $accountingService->calculateInvoiceBalancesForSales($allOpenSales);
+
+        $customerBranchDebts = [];
+        $custDeliveredDebts = [];
+        $custUnsuppliedDebts = [];
+        $totalDeliveredDebt = 0.0;
+        $totalInstallmentDebt = 0.0;
+
+        foreach ($allOpenSales as $s) {
+            $bal = $saleBalances[$s->id] ?? 0.0;
+            if ($bal > 0) {
+                $cId = $s->customerId;
+                $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
+                $isUnsupplied = in_array($s->deliveryStatus, ['UNSUPPLIED', 'PENDING_PICKUP', 'NOT_SUPPLIED']);
+                if ($isUnsupplied) {
+                    $custUnsuppliedDebts[$cId] = ($custUnsuppliedDebts[$cId] ?? 0.0) + $bal;
+                    $totalInstallmentDebt += $bal;
+                } else {
+                    $custDeliveredDebts[$cId] = ($custDeliveredDebts[$cId] ?? 0.0) + $bal;
+                    $totalDeliveredDebt += $bal;
+                }
+            }
+        }
+
         $query = Customer::where('total_debt', '>', 0);
 
         if ($assignedWarehouseId) {
-            $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
-            $branchSales = \App\Models\Sale::where('warehouse_id', $assignedWarehouseId)
-                ->whereNotNull('customerId')
-                ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
-                ->get();
-
-            $saleBalances = $accountingService->calculateInvoiceBalancesForSales($branchSales);
-
-            $customerBranchDebts = [];
-            foreach ($branchSales as $bs) {
-                $cId = $bs->customerId;
-                $bal = $saleBalances[$bs->id] ?? 0.0;
-                if ($bal > 0) {
-                    $customerBranchDebts[$cId] = ($customerBranchDebts[$cId] ?? 0.0) + $bal;
-                }
-            }
-
             // Only customers who actually owe debt originating at this branch
             $customerIdsAtBranch = array_keys(array_filter($customerBranchDebts, fn($b) => round($b, 2) > 0));
             $query->whereIn('id', $customerIdsAtBranch);
@@ -93,54 +110,55 @@ class DebtController extends Controller
             });
         }
 
-        if ($assignedWarehouseId) {
-            $matchingCustomers = $query->get()->map(function ($debtor) use ($customerBranchDebts) {
-                $bDebt = round($customerBranchDebts[$debtor->id] ?? 0.0, 2);
-                $debtor->branch_debt = $bDebt;
-                $debtor->total_debt = $bDebt;
-                return $debtor;
-            });
+        $customersCollection = $query->get()->map(function ($debtor) use ($assignedWarehouseId, $customerBranchDebts, $custDeliveredDebts, $custUnsuppliedDebts) {
+            $bDebt = $assignedWarehouseId ? round($customerBranchDebts[$debtor->id] ?? 0.0, 2) : (float) $debtor->total_debt;
+            $debtor->branch_debt = $bDebt;
+            $debtor->total_debt = $bDebt;
+            $debtor->delivered_debt = round($custDeliveredDebts[$debtor->id] ?? 0.0, 2);
+            $debtor->unsupplied_debt = round($custUnsuppliedDebts[$debtor->id] ?? 0.0, 2);
 
-            if ($sortBy === 'lowest_debt') {
-                $sorted = $matchingCustomers->sortBy('branch_debt');
-            } elseif ($sortBy === 'name_asc') {
-                $sorted = $matchingCustomers->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE);
-            } elseif ($sortBy === 'name_desc') {
-                $sorted = $matchingCustomers->sortByDesc('name', SORT_NATURAL | SORT_FLAG_CASE);
+            if ($debtor->unsupplied_debt > 0 && $debtor->delivered_debt <= 0) {
+                $debtor->agreement_category = 'PAY_SMALL_SMALL';
+            } elseif ($debtor->delivered_debt > 0 && $debtor->unsupplied_debt <= 0) {
+                $debtor->agreement_category = 'GOODS_CARRIED';
+            } elseif ($debtor->delivered_debt > 0 && $debtor->unsupplied_debt > 0) {
+                $debtor->agreement_category = 'MIXED';
             } else {
-                $sorted = $matchingCustomers->sortByDesc('branch_debt');
+                $debtor->agreement_category = 'GOODS_CARRIED';
             }
+            return $debtor;
+        });
 
-            $page = (int) $request->get('page', 1);
-            $perPage = 25;
-            $sliced = $sorted->slice(($page - 1) * $perPage, $perPage)->values();
-            $debtors = new \Illuminate\Pagination\LengthAwarePaginator($sliced, $sorted->count(), $perPage, $page, [
-                'path'  => $request->url(),
-                'query' => $request->query(),
-            ]);
-
-            $totalOutstandingDebt = round($sorted->sum('branch_debt'), 2);
-            $highRiskDebtorsCount = $sorted->filter(fn($c) => $c->branch_debt >= 100000)->count();
-            $totalDebtorsCount = $sorted->count();
-        } else {
-            if ($sortBy === 'lowest_debt') {
-                $query->orderBy('total_debt', 'asc');
-            } elseif ($sortBy === 'name_asc') {
-                $query->orderBy('name', 'asc');
-            } elseif ($sortBy === 'name_desc') {
-                $query->orderBy('name', 'desc');
-            } else {
-                $query->orderBy('total_debt', 'desc');
-            }
-
-            $debtors = (clone $query)->paginate(25)->withQueryString();
-            $totalOutstandingDebt = (clone $query)->sum('total_debt');
-            $highRiskDebtorsCount = (clone $query)->where('total_debt', '>=', 100000)->count();
-            $totalDebtorsCount = (clone $query)->count();
+        // Filter by agreement_type if specified
+        if ($agreementType === 'GOODS_CARRIED') {
+            $customersCollection = $customersCollection->filter(fn($d) => in_array($d->agreement_category, ['GOODS_CARRIED', 'MIXED']));
+        } elseif ($agreementType === 'PAY_SMALL_SMALL') {
+            $customersCollection = $customersCollection->filter(fn($d) => in_array($d->agreement_category, ['PAY_SMALL_SMALL', 'MIXED']));
         }
 
-        $recentPaymentsQuery = CustomerLedger::with(['customer', 'sale'])->where('type', 'PAYMENT');
-        $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
+        if ($sortBy === 'lowest_debt') {
+            $sorted = $customersCollection->sortBy('total_debt');
+        } elseif ($sortBy === 'name_asc') {
+            $sorted = $customersCollection->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE);
+        } elseif ($sortBy === 'name_desc') {
+            $sorted = $customersCollection->sortByDesc('name', SORT_NATURAL | SORT_FLAG_CASE);
+        } else {
+            $sorted = $customersCollection->sortByDesc('total_debt');
+        }
+
+        $page = (int) $request->get('page', 1);
+        $perPage = 25;
+        $sliced = $sorted->slice(($page - 1) * $perPage, $perPage)->values();
+        $debtors = new \Illuminate\Pagination\LengthAwarePaginator($sliced, $sorted->count(), $perPage, $page, [
+            'path'  => $request->url(),
+            'query' => $request->query(),
+        ]);
+
+        $totalOutstandingDebt = round($sorted->sum('total_debt'), 2);
+        $highRiskDebtorsCount = $sorted->filter(fn($c) => $c->total_debt >= 100000)->count();
+        $totalDebtorsCount = $sorted->count();
+
+        $recentPaymentsQuery = CustomerLedger::with(['customer', 'sale.items'])->where('type', 'PAYMENT');
         $accountingService->applyDateFilterToQuery($recentPaymentsQuery, 'created_at', [
             'date_preset' => $request->get('date_preset', 'ALL'),
             'from_date'   => $request->get('from_date'),
@@ -158,11 +176,14 @@ class DebtController extends Controller
             'debtors',
             'allCustomers',
             'totalOutstandingDebt',
+            'totalDeliveredDebt',
+            'totalInstallmentDebt',
             'totalDebtorsCount',
             'highRiskDebtorsCount',
             'recentPayments',
             'search',
             'debtBracket',
+            'agreementType',
             'sortBy'
         ));
     }

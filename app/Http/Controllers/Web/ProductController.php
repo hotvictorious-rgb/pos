@@ -191,14 +191,21 @@ class ProductController extends Controller
             );
         }
 
-        Activity::create([
-            'id' => (string) Str::uuid(),
-            'type' => 'PRODUCT_CREATED',
-            'description' => "{$userName} created product '{$product->name}' ({$product->code}) with initial stock: {$initialStock} units",
-            'userId' => $userId,
-            'userName' => $userName,
-            'timestamp' => now()->toIso8601String(),
-        ]);
+        // Security & Operations Audit Log (Fail-safe isolated)
+        try {
+            Activity::recordSecurityEvent('PRODUCT_CREATED', "{$userName} created product '{$product->name}' ({$product->code}) with initial stock: {$initialStock} units", [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'product_code' => $product->code,
+                'category' => $product->category,
+                'unit_price' => (float) $product->unitPrice,
+                'initial_stock' => $initialStock,
+            ]);
+        } catch (\Throwable $auditEx) {
+            \Illuminate\Support\Facades\Log::warning("PRODUCT_CREATED audit log isolated failure: {$auditEx->getMessage()}", [
+                'product_id' => $product->id ?? null,
+            ]);
+        }
 
         return redirect()->route('products.index')->with('success', "✓ Product '{$product->name}' created successfully!");
     }
@@ -236,14 +243,20 @@ class ProductController extends Controller
         $userName = Auth::user()->name ?? 'Auditor / Admin';
         $userId = Auth::id() ?? 'ADMIN';
 
-        Activity::create([
-            'id' => (string) Str::uuid(),
-            'type' => 'PRODUCT_UPDATED',
-            'description' => "{$userName} updated product '{$product->name}' ({$product->code}): Price ₦" . number_format($product->unitPrice, 2) . ", Category '{$product->category}'",
-            'userId' => $userId,
-            'userName' => $userName,
-            'timestamp' => now()->toIso8601String(),
-        ]);
+        // Security & Operations Audit Log (Fail-safe isolated)
+        try {
+            Activity::recordSecurityEvent('PRODUCT_UPDATED', "{$userName} updated product '{$product->name}' ({$product->code}): Price ₦" . number_format($product->unitPrice, 2) . ", Category '{$product->category}'", [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'product_code' => $product->code,
+                'category' => $product->category,
+                'unit_price' => (float) $product->unitPrice,
+            ]);
+        } catch (\Throwable $auditEx) {
+            \Illuminate\Support\Facades\Log::warning("PRODUCT_UPDATED audit log isolated failure: {$auditEx->getMessage()}", [
+                'product_id' => $product->id ?? null,
+            ]);
+        }
 
         if ($request->ajax() || $request->expectsJson()) {
             return response()->json([
@@ -283,6 +296,23 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
         $product->archived = true;
         $product->save();
+
+        // Security & Operations Audit Log (Fail-safe isolated)
+        try {
+            $userName = Auth::user()->name ?? 'Auditor / Admin';
+            Activity::recordSecurityEvent('PRODUCT_ARCHIVED', "Product '{$product->name}' ({$product->code}) was archived by {$userName}.", [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'product_code' => $product->code,
+                'category' => $product->category,
+                'unit_price' => (float) $product->unitPrice,
+                'current_stock' => (int) ($product->stock ?? 0),
+            ]);
+        } catch (\Throwable $auditEx) {
+            \Illuminate\Support\Facades\Log::warning("PRODUCT_ARCHIVED audit log isolated failure: {$auditEx->getMessage()}", [
+                'product_id' => $product->id ?? null,
+            ]);
+        }
 
         return redirect()->route('products.index')->with('success', "✓ Product '{$product->name}' archived.");
     }
