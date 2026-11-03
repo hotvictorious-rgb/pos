@@ -2,7 +2,7 @@
 VICTORIOUS ENTERPRISE POS - LIVE SITE OVERLAY DEPLOYMENT PACKAGE
 Release Tag: v1.0.1
 Base Revision: v1.0.0-rc.1
-Packaged Date: 2026-11-03 11:38:38
+Packaged Date: 2026-11-03 12:32:48
 ================================================================================
 
 1. WHAT IS THIS OVERLAY?
@@ -88,6 +88,7 @@ Step 5: Delete `overlay-v1.0.1.zip` and `overlay-runner.php` from your server.
   - database/migrations/2026_09_17_130000_add_receipt_ref_to_sales_table.php
   - database/migrations/2026_11_03_060000_add_whatsapp_reporting_settings.php
   - database/seeders/DatabaseSeeder.php
+  - database/seeders/LocalTestSeeder.php
   - docs/V_MARKET_SECURITY_CONTRACT.md
   - docs/pilot_deployment_playbook.md
   - hysam_products_import_nwaniba.csv
