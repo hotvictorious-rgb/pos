@@ -48,5 +48,7 @@ return [
 
     'default_report_time' => env('WHATSAPP_DEFAULT_REPORT_TIME', '21:00'),
 
+    'ssl_verify' => env('WHATSAPP_SSL_VERIFY', true),
+
 ];
 

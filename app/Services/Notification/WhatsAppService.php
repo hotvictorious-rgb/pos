@@ -113,9 +113,12 @@ class WhatsAppService
             throw new \RuntimeException('Meta Cloud API phone_number_id or token is not configured in .env');
         }
 
-        $response = Http::withToken($token)
-            ->timeout(15)
-            ->post("{$apiUrl}/{$phoneId}/messages", [
+        $client = Http::withToken($token)->timeout(15);
+        if (app()->isLocal() || !config('whatsapp.ssl_verify', true)) {
+            $client = $client->withoutVerifying();
+        }
+
+        $response = $client->post("{$apiUrl}/{$phoneId}/messages", [
                 'messaging_product' => 'whatsapp',
                 'recipient_type' => 'individual',
                 'to' => $phone,
