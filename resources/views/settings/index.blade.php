@@ -111,6 +111,70 @@
                     <textarea name="reportFooter" rows="2">{{ old('reportFooter', $settings->reportFooter) }}</textarea>
                 </div>
 
+                <!-- WhatsApp 9:00 PM Automated Daily Report Configuration -->
+                <div style="background: rgba(37, 99, 235, 0.05); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 1.25rem; margin-top: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <h4 style="font-size: 1.05rem; font-weight: 800; color: #60a5fa; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>📱</span> Owner WhatsApp Automated Daily Reconciliation Report
+                            </h4>
+                            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                At 9:00 PM closing, the system automatically audits the day's sales, drawer cash, customer debt recoveries, and reversals, dispatching an executive summary directly to the store owner's WhatsApp.
+                            </p>
+                        </div>
+                        <span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 0.3rem 0.75rem; border-radius: 999px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.3);">
+                            Platform Gateway: {{ strtoupper(config('whatsapp.gateway', 'LOG')) }}
+                        </span>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label style="font-weight: 700;">Owner WhatsApp Phone Number</label>
+                            <input type="text" name="owner_whatsapp_phone" id="ownerWhatsappPhone" 
+                                   value="{{ old('owner_whatsapp_phone', $settings->owner_whatsapp_phone) }}" 
+                                   placeholder="e.g. 08012345678 or +2348012345678" 
+                                   style="font-family: monospace; font-size: 0.95rem;">
+                            <small style="color: var(--text-muted); font-size: 0.75rem;">Supports Nigerian (080...) and international (+234...) formats.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="font-weight: 700;">Scheduled Daily Dispatch Time</label>
+                            <input type="time" name="whatsapp_report_time" 
+                                   value="{{ old('whatsapp_report_time', $settings->whatsapp_report_time ?? '21:00') }}" 
+                                   style="font-size: 0.95rem;">
+                            <small style="color: var(--text-muted); font-size: 0.75rem;">Default is 21:00 (9:00 PM closing reconciliation).</small>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem;">
+                        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.88rem; font-weight: 600;">
+                            <input type="checkbox" name="whatsapp_report_enabled" value="1" {{ old('whatsapp_report_enabled', $settings->whatsapp_report_enabled) ? 'checked' : '' }} style="width: 18px; height: 18px; accent-color: var(--primary);">
+                            <span>Enable Automated End-of-Day WhatsApp Daily Report</span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
+                            <input type="checkbox" name="whatsapp_branch_breakdown" value="1" {{ old('whatsapp_branch_breakdown', $settings->whatsapp_branch_breakdown ?? true) ? 'checked' : '' }} style="width: 16px; height: 16px; accent-color: var(--primary);">
+                            <span>Include individual branch performance breakdown (for multi-branch stores)</span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
+                            <input type="checkbox" name="whatsapp_include_reversals" value="1" {{ old('whatsapp_include_reversals', $settings->whatsapp_include_reversals ?? true) ? 'checked' : '' }} style="width: 16px; height: 16px; accent-color: var(--primary);">
+                            <span>Include supervisor voids & reversals audit log</span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
+                            <input type="checkbox" name="whatsapp_include_low_stock" value="1" {{ old('whatsapp_include_low_stock', $settings->whatsapp_include_low_stock ?? true) ? 'checked' : '' }} style="width: 16px; height: 16px; accent-color: var(--primary);">
+                            <span>Include catalog low stock reorder alerts</span>
+                        </label>
+                    </div>
+
+                    <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed rgba(255,255,255,0.1); display: flex; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="sendTestWhatsAppReport()" style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem;">
+                            <span>📲</span> Send Test WhatsApp Notification
+                        </button>
+                    </div>
+                </div>
+
                 <button type="button" class="btn btn-success btn-lg" onclick="confirmSettingsUpdate()">
                     ✓ Save Settings
                 </button>
@@ -521,6 +585,51 @@ function confirmEditBranch() {
         confirmText: '🏬 Yes, Save Changes',
         confirmClass: 'btn-primary',
         form: form
+    });
+}
+
+function sendTestWhatsAppReport() {
+    const phoneInput = document.getElementById('ownerWhatsappPhone');
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    if (!phone) {
+        alert('Please enter an Owner WhatsApp Phone Number first.');
+        if (phoneInput) phoneInput.focus();
+        return;
+    }
+
+    if (!confirm('Send a test WhatsApp reconciliation report to ' + phone + '?')) {
+        return;
+    }
+
+    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const btn = event.currentTarget || event.target;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '⏳ Sending...';
+    btn.disabled = true;
+
+    fetch('{{ route('settings.test.whatsapp') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': token,
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ phone: phone })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+        if (data.success) {
+            alert('✓ Success: Test WhatsApp report sent to ' + phone + ' via ' + data.gateway + '!\n' + (data.simulated ? '(Gateway running in local log/simulation mode)' : ''));
+        } else {
+            alert('❌ Failed to send WhatsApp message: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+        alert('❌ Network or server error: ' + err.message);
     });
 }
 </script>

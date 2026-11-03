@@ -19,11 +19,14 @@ class Warehouse extends Model
         'address',
         'phone',
         'manager_name',
+        'manager_whatsapp_phone',
+        'whatsapp_report_enabled',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'whatsapp_report_enabled' => 'boolean',
     ];
 
     public function stockLevels(): HasMany

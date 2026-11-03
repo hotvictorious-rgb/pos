@@ -292,6 +292,18 @@
             <span>🔄 Customer Exchanges</span>
             <span class="badge-pill" id="badge-exchanges" style="background: rgba(147, 51, 234, 0.4); color: #d8b4fe;">{{ number_format($exchangesCount) }}</span>
         </button>
+
+        @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
+        <!-- 10. Admin Reversals & Voids Center -->
+        <button type="button" 
+           onclick="switchLedgerTab('reversals')" 
+           id="tab-btn-reversals"
+           class="tab-btn {{ $activeTab === 'reversals' ? 'active' : '' }}"
+           style="border-left: 2px solid #ef4444; background: {{ $activeTab === 'reversals' ? 'rgba(239, 68, 68, 0.15)' : 'transparent' }};">
+            <span>🛡️ Voids & Reversals Hub</span>
+            <span class="badge-pill" id="badge-reversals" style="background: rgba(239, 68, 68, 0.4); color: #fca5a5;">{{ number_format($reversalsCount ?? 0) }}</span>
+        </button>
+        @endif
     </div>
 
     <!-- Multi-Criteria Filter Bar (Adaptive per active tab) -->
@@ -757,6 +769,17 @@ function openVoidModal(actionUrl, targetName) {
     if (nameSpan) nameSpan.textContent = targetName;
     if (reasonInput) reasonInput.value = '';
     openModal('modalVoidTransaction');
+}
+
+function switchReversalSubtab(subTabId) {
+    document.querySelectorAll('.reversal-subpane').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('[id^="subtab-btn-"]').forEach(btn => btn.classList.remove('active'));
+
+    const activePane = document.getElementById('subpane-reversal-' + subTabId);
+    if (activePane) activePane.style.display = 'block';
+
+    const activeBtn = document.getElementById('subtab-btn-' + subTabId);
+    if (activeBtn) activeBtn.classList.add('active');
 }
 
 /**

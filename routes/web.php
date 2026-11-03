@@ -191,6 +191,7 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
     Route::post('/void-sale/{saleId}', [\App\Http\Controllers\Web\TransactionController::class, 'voidSale'])->name('void.sale');
     Route::post('/void-stock-in/{logId}', [\App\Http\Controllers\Web\TransactionController::class, 'voidStockIn'])->name('void.stock-in');
     Route::post('/void-stock-out/{id}', [\App\Http\Controllers\Web\TransactionController::class, 'voidStockOutOrAdjustment'])->name('void.stock-out');
+    Route::post('/void-customer-payment/{ledgerId}', [\App\Http\Controllers\Web\TransactionController::class, 'voidCustomerPayment'])->name('void.customer-payment');
 });
 
 // 8. Workers & Role Permissions Hub
@@ -209,6 +210,7 @@ Route::prefix('settings')->name('settings.')->middleware(['capability:settings.m
     Route::post('/warehouse',             [\App\Http\Controllers\Web\SettingController::class, 'storeWarehouse'])->name('warehouse.store');
     Route::post('/warehouse/update/{id}', [\App\Http\Controllers\Web\SettingController::class, 'updateWarehouse'])->name('warehouse.update');
     Route::post('/warehouse/toggle/{id}', [\App\Http\Controllers\Web\SettingController::class, 'toggleWarehouse'])->name('warehouse.toggle');
+    Route::post('/test-whatsapp',         [\App\Http\Controllers\Web\SettingController::class, 'sendTestWhatsApp'])->name('test.whatsapp');
     
     // Tenant Data Safety & Business Backups
     Route::middleware(['capability:tenant.backup'])->group(function () {

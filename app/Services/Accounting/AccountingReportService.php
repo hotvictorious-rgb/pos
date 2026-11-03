@@ -269,6 +269,10 @@ class AccountingReportService
      */
     public function calculateInvoiceBalance(Sale $sale): float
     {
+        if (in_array(strtoupper($sale->status ?? ''), ['CANCELLED', 'VOIDED'], true)) {
+            return 0.0;
+        }
+
         $grossInvoiceKobo = self::toKobo($sale->totalAmount);
 
         // Returns credited against this sale invoice
@@ -338,6 +342,12 @@ class AccountingReportService
         $balances = [];
         foreach ($salesCollection as $sale) {
             $saleId = $sale->id;
+
+            if (in_array(strtoupper($sale->status ?? ''), ['CANCELLED', 'VOIDED'], true)) {
+                $balances[$saleId] = 0.0;
+                continue;
+            }
+
             $grossKobo = self::toKobo($sale->totalAmount);
 
             $returnCreditsKobo = self::toKobo($returnCredits[$saleId] ?? 0);
@@ -929,6 +939,11 @@ class AccountingReportService
         // Date range on sale creation
         $query->whereBetween('createdAt', [$dates['startIso'], $dates['endIso']]);
 
+        // Exclude voided/cancelled sales by default
+        if (empty($filters['include_voided'])) {
+            $query->whereNotIn('status', ['CANCELLED', 'VOIDED']);
+        }
+
         // Branch scoping: user branch is immutable ceiling. Request filter may narrow, but never widen.
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -1043,6 +1058,13 @@ class AccountingReportService
         $query = Payment::with('sale');
 
         $query->whereBetween('timestamp', [$dates['startIso'], $dates['endIso']]);
+
+        // Exclude payments belonging to voided/cancelled sales unless explicitly requested
+        if (empty($filters['include_voided'])) {
+            $query->whereHas('sale', function ($sq) {
+                $sq->whereNotIn('status', ['CANCELLED', 'VOIDED']);
+            });
+        }
 
         // Branch scoping via linked sale: user branch is immutable ceiling
         $user = Auth::user();
@@ -1278,8 +1300,12 @@ class AccountingReportService
             $scopedWarehouseId = (int) $filters['warehouse_id'];
         }
 
-        // Debt recovered in period (CustomerLedger records debt payments with type='PAYMENT')
+        // Debt recovered in period (CustomerLedger records debt payments with type='PAYMENT', excluding reversed payments)
         $debtPaymentsQuery = CustomerLedger::where('type', 'PAYMENT')
+            ->where(function ($q) {
+                $q->whereNull('notes')
+                  ->orWhere('notes', 'not like', '[REVERSED%');
+            })
             ->whereBetween('created_at', [$dateInfo['start'], $dateInfo['end']]);
 
         if ($scopedWarehouseId) {

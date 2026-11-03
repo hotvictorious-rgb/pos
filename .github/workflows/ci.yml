@@ -78,10 +78,13 @@ jobs:
           try {
             const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
             const description = state === 'success' ? 'All CI automated tests passed' : 'CI automated tests failed';
+            const targetSha = (context.payload.pull_request && context.payload.pull_request.head)
+              ? context.payload.pull_request.head.sha
+              : context.sha;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: targetSha,
               state: state,
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               description: description,
@@ -181,10 +184,13 @@ jobs:
           try {
             const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
             const description = state === 'success' ? 'MySQL 8.0 CI & provisioning tests passed' : 'MySQL 8.0 CI tests failed';
+            const targetSha = (context.payload.pull_request && context.payload.pull_request.head)
+              ? context.payload.pull_request.head.sha
+              : context.sha;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: targetSha,
               state: state,
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               description: description,
@@ -224,10 +230,13 @@ jobs:
           try {
             const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
             const description = state === 'success' ? 'Frontend build and typecheck passed' : 'Frontend build/typecheck failed';
+            const targetSha = (context.payload.pull_request && context.payload.pull_request.head)
+              ? context.payload.pull_request.head.sha
+              : context.sha;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: targetSha,
               state: state,
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               description: description,

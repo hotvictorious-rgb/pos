@@ -165,20 +165,6 @@
                                     <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewSaleDetails({{ json_encode($sale) }})">
                                         🔍 Details
                                     </button>
-                                    @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
-                                        @php
-                                            $hasProcessedReturns = ($sale->returns && $sale->returns->isNotEmpty()) || (($sale->returns_count ?? 0) > 0);
-                                        @endphp
-                                        @if($hasProcessedReturns)
-                                            <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #334155; border-color: #475569; color: #94a3b8; cursor: not-allowed;" title="🔒 Voiding blocked: This invoice already has processed returns. Use Returns & Refunds screen." onclick="alert('🔒 Cannot void this Sale:\n\nThis invoice already has processed Return & Refund records. Voiding is blocked to protect inventory counts and financial ledgers from corruption.\n\nPlease process any remaining items on the Returns & Refunds screen.')">
-                                                🔒 Has Returns
-                                            </button>
-                                        @else
-                                            <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.sale', $sale->id) }}', 'Sale #{{ substr($sale->id, 0, 8) }} (₦{{ number_format($sale->totalAmount, 0) }})')">
-                                                🗑️ Delete / Void
-                                            </button>
-                                        @endif
-                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -304,11 +290,6 @@
                                     <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Goods Received Entry (Stock In)', 'GRN-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Supplier / Description', '{{ addslashes($log->description ?: 'Supplier Arrival') }}', 'Stock Inflow', '#22c55e', [{label: 'Source Type', val: '{{ $inflowType }}'}, {label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Quantity Added', val: '+{{ $log->quantity }} units', color: '#4ade80'}, {label: 'Officer', val: '{{ addslashes($log->userName ?: 'Storekeeper') }}'}], 'Physical inventory count increased by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
-                                    @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
-                                        <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.stock-in', $log->id) }}', 'Stock In: {{ addslashes($log->productName) }} (+{{ $log->quantity }} units)')">
-                                            🗑️ Delete / Void
-                                        </button>
-                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -451,11 +432,6 @@
                                     <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="viewGenericDetails('Stock Outflow Record', 'OUT-{{ substr(md5($log->id), 0, 8) }}', '{{ date('d M Y, h:i A', strtotime($log->timestamp)) }}', 'Outflow Source', '{{ addslashes($outflowType) }}', 'Stock Outflow', '#ef4444', [{label: 'Outflow Source', val: '{{ $outflowType }}'}, {label: 'Product SKU', val: '{{ addslashes($log->productCode ?: $log->productName) }}'}, {label: 'Deducted Units', val: '-{{ $log->quantity }} units', color: '#f87171'}, {label: 'Description', val: '{{ addslashes($log->description) }}'}, {label: 'Authorized By', val: '{{ addslashes($log->userName) }}'}], 'Physical count reduced by {{ $log->quantity }} units.')">
                                         🔍 Details
                                     </button>
-                                    @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
-                                        <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.stock-out', $log->id) }}', 'Stock Out: {{ addslashes($log->productCode ?: $log->productName) }} (-{{ $log->quantity }} units)')">
-                                            🗑️ Delete / Void
-                                        </button>
-                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -1118,4 +1094,327 @@
             </div>
         </div>
     </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 10: DEDICATED ADMIN REVERSALS & VOIDS CENTER                          -->
+    <!-- ========================================================================= -->
+    @if(Auth::check() && (Auth::user()->isAdmin() || Auth::user()->isTenantAdmin() || Auth::user()->isPlatformAdmin() || in_array(Auth::user()->role, ['admin', 'owner', 'super_admin'])))
+    <div id="pane-reversals" class="ledger-tab-pane" style="{{ $activeTab === 'reversals' ? 'display: block;' : 'display: none;' }}">
+        <!-- Security Header Banner -->
+        <div class="card" style="margin-bottom: 1.25rem; border-left: 4px solid #ef4444; background: rgba(239, 68, 68, 0.06);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h3 style="font-size: 1.2rem; font-weight: 800; color: #f87171; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span>🛡️</span> Supervisor Voids & Reversals Terminal
+                    </h3>
+                    <p style="font-size: 0.85rem; color: #cbd5e1; margin: 0; max-width: 850px;">
+                        <strong>Centralized Reversal Terminal:</strong> Transactions cannot be voided from general listing tabs. Only transactions listed below may be reversed by authorized Administrators. Every reversal preserves document sequencing, creates symmetrical contra-ledgers, and restores stock strictly to the originating branch.
+                    </p>
+                </div>
+                <div>
+                    <span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; font-size: 0.8rem; font-weight: 800; padding: 0.4rem 0.8rem; border-radius: 9999px;">
+                        🔒 Admin Authorization Required
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub-Navigation for Reversals Hub -->
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 0.75rem;">
+            <button type="button" class="btn btn-secondary active" id="subtab-btn-sales" onclick="switchReversalSubtab('sales')" style="padding: 0.45rem 0.9rem; font-size: 0.82rem; font-weight: 700;">
+                🛒 Reversible Sales Invoices ({{ count($reversibleSales ?? []) }})
+            </button>
+            <button type="button" class="btn btn-secondary" id="subtab-btn-debts" onclick="switchReversalSubtab('debts')" style="padding: 0.45rem 0.9rem; font-size: 0.82rem; font-weight: 700;">
+                💳 Reversible Debt Payments ({{ count($reversibleDebtPayments ?? []) }})
+            </button>
+            <button type="button" class="btn btn-secondary" id="subtab-btn-stockin" onclick="switchReversalSubtab('stockin')" style="padding: 0.45rem 0.9rem; font-size: 0.82rem; font-weight: 700;">
+                📥 Reversible Stock In ({{ count($reversibleStockIns ?? []) }})
+            </button>
+            <button type="button" class="btn btn-secondary" id="subtab-btn-stockout" onclick="switchReversalSubtab('stockout')" style="padding: 0.45rem 0.9rem; font-size: 0.82rem; font-weight: 700;">
+                📤 Reversible Outflows ({{ count($reversibleStockOuts ?? []) }})
+            </button>
+            <button type="button" class="btn btn-secondary" id="subtab-btn-history" onclick="switchReversalSubtab('history')" style="padding: 0.45rem 0.9rem; font-size: 0.82rem; font-weight: 700; border-left: 2px solid #3b82f6;">
+                📜 Past Reversals Audit Log ({{ $reversalsCount ?? 0 }})
+            </button>
+        </div>
+
+        <!-- SUBTAB 1: REVERSIBLE SALES INVOICES -->
+        <div id="subpane-reversal-sales" class="reversal-subpane" style="display: block;">
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div style="padding: 1rem 1.25rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.95rem; color: #f8fafc;">Active Sales Eligible for Reversal</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Showing recent sales at authorized branch location</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table" style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>Date & Ref</th>
+                                <th>Branch</th>
+                                <th>Customer</th>
+                                <th>Items Summary</th>
+                                <th>Gross Total</th>
+                                <th>Cash / POS Paid</th>
+                                <th>Status</th>
+                                <th style="text-align: right;">Supervisor Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($reversibleSales as $item)
+                            @php
+                                $rSale = $item['model'];
+                                $canReverse = $item['can_reverse'];
+                                $blockReason = $item['block_reason'];
+                            @endphp
+                            <tr>
+                                <td>
+                                    <strong>#{{ $rSale->receipt_ref ?: substr($rSale->id, 0, 8) }}</strong>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($rSale->createdAt)) }}</div>
+                                </td>
+                                <td>
+                                    <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd;">{{ $rSale->warehouse->name ?? 'Branch #' . $rSale->warehouse_id }}</span>
+                                </td>
+                                <td>
+                                    <strong>{{ $rSale->customerName ?: 'Walk-in Customer' }}</strong>
+                                    @if($rSale->customerPhone)
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">{{ $rSale->customerPhone }}</div>
+                                    @endif
+                                </td>
+                                <td>
+                                    <span style="font-size: 0.85rem; color: #cbd5e1;">{{ count($rSale->items ?? []) }} item(s)</span>
+                                </td>
+                                <td style="font-weight: 800; color: #f8fafc;">₦{{ number_format($rSale->totalAmount, 0) }}</td>
+                                <td style="font-weight: 700; color: #4ade80;">₦{{ number_format($rSale->paidAmount, 0) }}</td>
+                                <td>
+                                    @if($canReverse)
+                                        <span class="badge badge-success" style="font-size: 0.72rem;">🟢 Eligible</span>
+                                    @else
+                                        <span class="badge badge-warning" style="font-size: 0.72rem;" title="{{ $blockReason }}">⚠️ {{ $blockReason }}</span>
+                                    @endif
+                                </td>
+                                <td style="text-align: right;">
+                                    @if($canReverse)
+                                        <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 700; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.sale', $rSale->id) }}', 'Sale #{{ $rSale->receipt_ref ?: substr($rSale->id, 0, 8) }} (₦{{ number_format($rSale->totalAmount, 0) }})')">
+                                            ↺ Reverse Sale
+                                        </button>
+                                    @else
+                                        <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; opacity: 0.5; cursor: not-allowed;" disabled title="{{ $blockReason }}">
+                                            🔒 Blocked
+                                        </button>
+                                    @endif
+                                </td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                                    No active sales pending reversal matching current filters.
+                                </td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBTAB 2: REVERSIBLE DEBT PAYMENTS -->
+        <div id="subpane-reversal-debts" class="reversal-subpane" style="display: none;">
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div style="padding: 1rem 1.25rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.95rem; color: #f8fafc;">Customer Debt Part-Payments (Mistaken / Clerical Errors)</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Reverse accidental debt payments cleanly</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table" style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>Date & Ref</th>
+                                <th>Customer</th>
+                                <th>Amount Credited</th>
+                                <th>Method</th>
+                                <th>Recorded By</th>
+                                <th>Notes / Description</th>
+                                <th style="text-align: right;">Supervisor Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($reversibleDebtPayments as $rDebt)
+                            <tr>
+                                <td>
+                                    <strong>#{{ $rDebt->reference_no ?: 'PMT-' . $rDebt->id }}</strong>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($rDebt->created_at)) }}</div>
+                                </td>
+                                <td>
+                                    <strong>{{ $rDebt->customer->name ?? 'Debtor' }}</strong>
+                                    @if(!empty($rDebt->customer->phone))
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">{{ $rDebt->customer->phone }}</div>
+                                    @endif
+                                </td>
+                                <td style="font-weight: 800; color: #4ade80;">₦{{ number_format($rDebt->amount, 0) }}</td>
+                                <td><span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #86efac;">{{ $rDebt->payment_method ?: 'CASH' }}</span></td>
+                                <td>{{ $rDebt->recorded_by }}</td>
+                                <td style="font-size: 0.82rem; color: #cbd5e1; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ $rDebt->notes }}</td>
+                                <td style="text-align: right;">
+                                    <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 700; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.customer-payment', $rDebt->id) }}', 'Debt Payment of ₦{{ number_format($rDebt->amount, 0) }} for {{ addslashes($rDebt->customer->name ?? 'Customer') }}')">
+                                        ↺ Reverse Payment
+                                    </button>
+                                </td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                                    No customer debt payment records eligible for reversal.
+                                </td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBTAB 3: REVERSIBLE STOCK IN -->
+        <div id="subpane-reversal-stockin" class="reversal-subpane" style="display: none;">
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div style="padding: 1rem 1.25rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.95rem; color: #f8fafc;">Stock In Entries Eligible for Reversal</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Deducts accidental stock-in from shelf count</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table" style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Product SKU</th>
+                                <th>Product Name</th>
+                                <th>Units Inflow</th>
+                                <th>Officer</th>
+                                <th>Description</th>
+                                <th style="text-align: right;">Supervisor Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($reversibleStockIns as $rIn)
+                            <tr>
+                                <td style="font-size: 0.8rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($rIn->timestamp)) }}</td>
+                                <td><code>{{ $rIn->productCode ?: 'N/A' }}</code></td>
+                                <td><strong>{{ $rIn->productName }}</strong></td>
+                                <td style="font-weight: 800; color: #4ade80;">+{{ $rIn->quantity }} units</td>
+                                <td>{{ $rIn->userName }}</td>
+                                <td style="font-size: 0.82rem; color: #cbd5e1;">{{ $rIn->description }}</td>
+                                <td style="text-align: right;">
+                                    <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 700; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.stock-in', $rIn->id) }}', 'Stock In: {{ addslashes($rIn->productName) }} (+{{ $rIn->quantity }} units)')">
+                                        ↺ Reverse Stock In
+                                    </button>
+                                </td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                                    No stock in entries found eligible for reversal.
+                                </td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBTAB 4: REVERSIBLE STOCK ADJUSTMENTS -->
+        <div id="subpane-reversal-stockout" class="reversal-subpane" style="display: none;">
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div style="padding: 1rem 1.25rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.95rem; color: #f8fafc;">Stock Adjustments & Damage Outflows</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Restores erroneously written-off items to physical inventory</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table" style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Product SKU</th>
+                                <th>Product Name</th>
+                                <th>Type / Reason</th>
+                                <th>Units Deducted</th>
+                                <th>Officer</th>
+                                <th style="text-align: right;">Supervisor Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($reversibleStockOuts as $rOut)
+                            <tr>
+                                <td style="font-size: 0.8rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($rOut->timestamp)) }}</td>
+                                <td><code>{{ $rOut->productCode ?: 'N/A' }}</code></td>
+                                <td><strong>{{ $rOut->productName }}</strong></td>
+                                <td><span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5;">{{ str_replace('STOCK_ADJUSTMENT_', '', $rOut->type) }}</span></td>
+                                <td style="font-weight: 800; color: #f87171;">{{ $rOut->quantity }} units</td>
+                                <td>{{ $rOut->userName }}</td>
+                                <td style="text-align: right;">
+                                    <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 700; background: #dc2626; border-color: #b91c1c;" onclick="openVoidModal('{{ route('transactions.void.stock-out', $rOut->id) }}', 'Outflow: {{ addslashes($rOut->productCode ?: $rOut->productName) }} ({{ $rOut->quantity }} units)')">
+                                        ↺ Reverse Outflow
+                                    </button>
+                                </td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                                    No stock adjustments found eligible for reversal.
+                                </td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBTAB 5: PAST REVERSALS AUDIT LOG -->
+        <div id="subpane-reversal-history" class="reversal-subpane" style="display: none;">
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div style="padding: 1rem 1.25rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.95rem; color: #f8fafc;">Forensic Reversals Audit Log</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Permanent security log of all authorized reversals</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table" style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Reversal Type</th>
+                                <th>Event Description</th>
+                                <th>Authorizing Admin</th>
+                                <th>Audit Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($reversalLogs as $log)
+                            <tr>
+                                <td style="font-size: 0.8rem; color: var(--text-muted);">{{ date('d M Y, h:i A', strtotime($log->created_at ?: $log->timestamp)) }}</td>
+                                <td>
+                                    <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.75rem;">
+                                        {{ str_replace('_', ' ', $log->type) }}
+                                    </span>
+                                </td>
+                                <td style="font-size: 0.85rem; color: #f8fafc;">{{ $log->description }}</td>
+                                <td><strong>{{ $log->userName ?: 'Administrator' }}</strong></td>
+                                <td style="font-size: 0.82rem; color: #fca5a5; font-style: italic;">
+                                    "{{ $log->metadata['void_reason'] ?? ($log->metadata['reason'] ?? 'Supervisor authorized reversal') }}"
+                                </td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="5" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                                    No past reversal activity recorded in forensic security logs.
+                                </td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
 

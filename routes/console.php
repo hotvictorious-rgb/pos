@@ -13,3 +13,6 @@ Artisan::command('inspire', function () {
 Schedule::call(function () {
     BackupController::generateBackup('System Auto-Backup');
 })->daily();
+
+// Automated 9:00 PM Daily Financial & Reconciliation Report dispatched via WhatsApp to Store Owners
+Schedule::command('pos:send-daily-whatsapp')->dailyAt('21:00');

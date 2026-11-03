@@ -53,6 +53,8 @@ class SettingController extends Controller
             'currency' => 'required|string|max:10',
             'lowStockThreshold' => 'required|numeric|min:1',
             'reportFooter' => 'nullable|string',
+            'owner_whatsapp_phone' => 'nullable|string|max:30',
+            'whatsapp_report_time' => 'nullable|string|max:10',
         ]);
 
         $tenantId = session('tenant_id') ?? 'default-tenant';
@@ -69,6 +71,12 @@ class SettingController extends Controller
             'categories' => $categories,
             'reportFooter' => $request->reportFooter,
             'lowStockThreshold' => (int) $request->lowStockThreshold,
+            'owner_whatsapp_phone' => $request->owner_whatsapp_phone,
+            'whatsapp_report_enabled' => $request->boolean('whatsapp_report_enabled'),
+            'whatsapp_report_time' => $request->whatsapp_report_time ?: '21:00',
+            'whatsapp_branch_breakdown' => $request->boolean('whatsapp_branch_breakdown'),
+            'whatsapp_include_reversals' => $request->boolean('whatsapp_include_reversals'),
+            'whatsapp_include_low_stock' => $request->boolean('whatsapp_include_low_stock'),
         ]);
 
         $userName = Auth::user()->name ?? 'Auditor / Admin';
@@ -236,5 +244,54 @@ class SettingController extends Controller
         $wh->save();
 
         return redirect()->route('settings.index')->with('success', "✓ Branch '{$wh->name}' status updated.");
+    }
+
+    /**
+     * Dispatch an immediate test WhatsApp report message to verify configuration.
+     */
+    public function sendTestWhatsApp(Request $request, \App\Services\Notification\WhatsAppService $whatsAppService)
+    {
+        $authUser = Auth::user();
+        if ($authUser && $authUser->isBranchScoped()) {
+            abort(403, 'Forbidden: Branch employees cannot trigger platform WhatsApp test dispatches.');
+        }
+
+        $request->validate([
+            'phone' => 'required|string|max:30',
+        ]);
+
+        $tenantId = session('tenant_id') ?? 'default-tenant';
+        $settings = $this->getOrCreateSettings($tenantId);
+
+        $testData = [
+            'currency' => $settings->currency ?: '₦',
+            'business_name' => $settings->businessName ?: config('app.name', 'Victorious Market POS'),
+            'branch_name' => 'Main Warehouse (Test Simulation)',
+            'date' => now()->format('D, d M Y'),
+            'total_invoices' => 12,
+            'gross_sales' => 450000.00,
+            'cash_collected' => 280000.00,
+            'pos_collected' => 120000.00,
+            'transfer_collected' => 50000.00,
+            'debts_recovered' => 65000.00,
+            'new_debts' => 20000.00,
+            'returns_refunded' => 0.00,
+            'expected_drawer_cash' => 345000.00,
+            'reversals_count' => 0,
+            'reversals_amount' => 0.00,
+            'reversals_details' => [],
+            'branches_breakdown' => [
+                ['name' => 'Main Branch', 'sales' => 300000, 'cash' => 200000],
+                ['name' => 'Outlet Store', 'sales' => 150000, 'cash' => 80000],
+            ],
+            'low_stock_items' => [
+                ['name' => 'Test Item 50kg', 'qty' => 3, 'unit' => 'bags', 'min' => 5],
+            ],
+        ];
+
+        $message = "🔔 *TEST NOTIFICATION*\n" . $whatsAppService->buildDailyReportMessage($testData);
+        $result = $whatsAppService->sendMessage($request->phone, $message, $tenantId);
+
+        return response()->json($result);
     }
 }

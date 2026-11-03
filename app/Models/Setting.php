@@ -25,12 +25,22 @@ class Setting extends Model
         'lowStockThreshold',
         'transactionEditLimitDays',
         'fontFamily',
+        'owner_whatsapp_phone',
+        'whatsapp_report_enabled',
+        'whatsapp_report_time',
+        'whatsapp_branch_breakdown',
+        'whatsapp_include_reversals',
+        'whatsapp_include_low_stock',
     ];
 
     protected $casts = [
         'categories' => 'array',
         'lowStockThreshold' => 'integer',
         'transactionEditLimitDays' => 'integer',
+        'whatsapp_report_enabled' => 'boolean',
+        'whatsapp_branch_breakdown' => 'boolean',
+        'whatsapp_include_reversals' => 'boolean',
+        'whatsapp_include_low_stock' => 'boolean',
     ];
 
     protected static function booted()

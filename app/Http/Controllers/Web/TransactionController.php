@@ -13,6 +13,7 @@ use App\Models\SalesReturn;
 use App\Models\Customer;
 use App\Models\CustomerLedger;
 use App\Models\StockAdjustment;
+use App\Models\Activity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -54,7 +55,7 @@ class TransactionController extends Controller
         $query = Sale::with(['items', 'returns']);
         // 🛡️ Remove voided/cancelled sales from active ledger by default
         if (!$request->filled('include_voided') || !$request->boolean('include_voided')) {
-            $query->where('status', '!=', 'CANCELLED');
+            $query->whereNotIn('status', ['CANCELLED', 'VOIDED']);
         }
         $this->applyDateFilter($query, 'createdAt', $request);
 
@@ -77,7 +78,7 @@ class TransactionController extends Controller
             // When payment records exist for the sale, calculate net paid from payment events.
             // Otherwise, fall back to cached paidAmount for legacy/mock test records.
             $hasPaymentsSql = "(SELECT COUNT(*) FROM payments WHERE payments.saleId = sales.id)";
-            $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method NOT IN ('REFUND', 'REFUND_CASH')), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method IN ('REFUND', 'REFUND_CASH')), 0)";
+            $eventNetPaidSql = "COALESCE((SELECT SUM(amount) FROM payments WHERE payments.saleId = sales.id AND payments.amount > 0 AND payments.method NOT IN ('REFUND', 'REFUND_CASH', 'VOID_REVERSAL')), 0) - COALESCE((SELECT ABS(SUM(amount)) FROM payments WHERE payments.saleId = sales.id AND payments.method IN ('REFUND', 'REFUND_CASH', 'VOID_REVERSAL')), 0)";
             $netPaidSql = "CASE WHEN {$hasPaymentsSql} > 0 THEN ({$eventNetPaidSql}) ELSE sales.paidAmount END";
             $returnCreditsSql = "COALESCE((SELECT SUM(refundAmount) FROM sales_returns WHERE sales_returns.saleId = sales.id), 0)";
             $netBalanceSql = "(sales.totalAmount - ({$returnCreditsSql}) - ({$netPaidSql}))";
@@ -709,6 +710,124 @@ class TransactionController extends Controller
             ->sum('amount');
         $exchangeSalesList = (clone $exchangesQuery)->orderBy('createdAt', 'desc')->paginate(20, ['*'], 'exchanges_page')->withQueryString();
 
+        // TAB 10: ADMIN REVERSALS & VOIDS CENTER (Special Dedicated Reversal Console)
+        $isAdmin = $authUser && ($authUser->isAdmin() || $authUser->isTenantAdmin() || $authUser->isPlatformAdmin() || in_array($authUser->role, ['admin', 'owner', 'super_admin']));
+        $reversalsCount = 0;
+        $reversalLogs = collect();
+        $reversibleSales = collect();
+        $reversibleDebtPayments = collect();
+        $reversibleStockIns = collect();
+        $reversibleStockOuts = collect();
+
+        if ($isAdmin) {
+            $effectiveWh = $warehouseId;
+
+            // 1. Reversible Sales
+            $revSalesQuery = Sale::with(['items', 'customer', 'payments', 'returns', 'warehouse'])
+                ->whereNotIn('status', ['VOIDED', 'CANCELLED']);
+            $this->applyDateFilter($revSalesQuery, 'createdAt', $request);
+            if ($authUser->isBranchScoped()) {
+                $revSalesQuery->where('warehouse_id', $authUser->warehouse_id);
+            } elseif (!empty($effectiveWh)) {
+                $revSalesQuery->where('warehouse_id', $effectiveWh);
+            }
+            if (!empty($search)) {
+                $revSalesQuery->where(function ($q) use ($search) {
+                    $q->where('id', 'like', "%{$search}%")
+                      ->orWhere('receipt_ref', 'like', "%{$search}%")
+                      ->orWhere('customerName', 'like', "%{$search}%");
+                });
+            }
+            $rawRevSales = (clone $revSalesQuery)->orderBy('createdAt', 'desc')->take(25)->get();
+            $reversibleSales = $rawRevSales->map(function ($s) {
+                $hasReturns = ($s->returns && $s->returns->isNotEmpty()) || (($s->returns_count ?? 0) > 0);
+                $hasDebtPayments = \App\Models\Payment::where('saleId', $s->id)->where('amount', '>', 0)->where('recordedBy', 'like', '%[DEBT_RECOVERY]%')->exists();
+                $isPartiallyFulfilled = \App\Models\StockReservation::where('sale_id', $s->id)->where('fulfilled_qty', '>', 0)->where('outstanding_qty', '>', 0)->exists();
+
+                $canReverse = !$hasReturns && !$hasDebtPayments && !$isPartiallyFulfilled;
+                $blockReason = null;
+                if ($hasReturns) $blockReason = 'Has processed Return/Refund';
+                elseif ($hasDebtPayments) $blockReason = 'Debt recovery payments recorded';
+                elseif ($isPartiallyFulfilled) $blockReason = 'Partially picked up unsupplied order';
+
+                return [
+                    'model' => $s,
+                    'can_reverse' => $canReverse,
+                    'block_reason' => $blockReason,
+                ];
+            });
+
+            // 2. Reversible Debt Payments
+            $revDebtsQuery = CustomerLedger::with(['customer', 'sale'])
+                ->where('type', 'PAYMENT')
+                ->where(function ($q) {
+                    $q->whereNull('notes')->orWhere('notes', 'not like', '[REVERSED%');
+                });
+            $this->applyDateFilter($revDebtsQuery, 'created_at', $request);
+            if ($authUser->isBranchScoped()) {
+                $revDebtsQuery->where(function ($q) use ($authUser) {
+                    $q->where('warehouse_id', $authUser->warehouse_id)
+                      ->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $authUser->warehouse_id));
+                });
+            } elseif (!empty($effectiveWh)) {
+                $revDebtsQuery->where(function ($q) use ($effectiveWh) {
+                    $q->where('warehouse_id', $effectiveWh)
+                      ->orWhereHas('sale', fn($sq) => $sq->where('warehouse_id', $effectiveWh));
+                });
+            }
+            if (!empty($search)) {
+                $revDebtsQuery->where(function ($q) use ($search) {
+                    $q->where('reference_no', 'like', "%{$search}%")
+                      ->orWhereHas('customer', fn($cq) => $cq->where('name', 'like', "%{$search}%"));
+                });
+            }
+            $reversibleDebtPayments = (clone $revDebtsQuery)->orderBy('created_at', 'desc')->take(25)->get();
+
+            // 3. Reversible Stock In
+            $revStockInQuery = InventoryLog::whereIn('type', ['STOCK_IN', 'PURCHASE']);
+            $this->applyDateFilter($revStockInQuery, 'timestamp', $request);
+            if ($authUser->isBranchScoped()) {
+                $revStockInQuery->where('warehouse_id', $authUser->warehouse_id);
+            } elseif (!empty($effectiveWh)) {
+                $revStockInQuery->where('warehouse_id', $effectiveWh);
+            }
+            if (!empty($search)) {
+                $revStockInQuery->where(function ($q) use ($search) {
+                    $q->where('productName', 'like', "%{$search}%")
+                      ->orWhere('productCode', 'like', "%{$search}%");
+                });
+            }
+            $reversibleStockIns = (clone $revStockInQuery)->orderBy('timestamp', 'desc')->take(25)->get();
+
+            // 4. Reversible Stock Adjustments / Outflows
+            $revStockOutQuery = InventoryLog::whereIn('type', ['STOCK_ADJUSTMENT', 'STOCK_ADJUSTMENT_DAMAGE', 'STOCK_ADJUSTMENT_EXPIRED', 'STOCK_ADJUSTMENT_LOST']);
+            $this->applyDateFilter($revStockOutQuery, 'timestamp', $request);
+            if ($authUser->isBranchScoped()) {
+                $revStockOutQuery->where('warehouse_id', $authUser->warehouse_id);
+            } elseif (!empty($effectiveWh)) {
+                $revStockOutQuery->where('warehouse_id', $effectiveWh);
+            }
+            if (!empty($search)) {
+                $revStockOutQuery->where(function ($q) use ($search) {
+                    $q->where('productName', 'like', "%{$search}%")
+                      ->orWhere('productCode', 'like', "%{$search}%");
+                });
+            }
+            $reversibleStockOuts = (clone $revStockOutQuery)->orderBy('timestamp', 'desc')->take(25)->get();
+
+            // 5. Past Reversals Audit Trail
+            $pastReversalsQuery = Activity::whereIn('type', [
+                'TRANSACTION_VOIDED',
+                'DEBT_PAYMENT_REVERSED',
+                'STOCK_IN_VOIDED',
+                'STOCK_ADJUSTMENT_VOIDED',
+                'STOCK_OUT_VOIDED'
+            ]);
+            $this->applyDateFilter($pastReversalsQuery, 'created_at', $request);
+            $reversalLogs = (clone $pastReversalsQuery)->orderBy('created_at', 'desc')->take(50)->get();
+            $reversalsCount = (clone $pastReversalsQuery)->count();
+        }
+
         $viewData = compact(
             'activeTab',
             'warehouses',
@@ -738,7 +857,9 @@ class TransactionController extends Controller
             // Tab 8: Debts & Installments
             'debtLedgers', 'debtsEntryCount', 'totalRepayments', 'totalDebtCreated', 'totalOpenDebt', 'totalDeliveredDebt', 'totalInstallmentsInShop',
             // Tab 9: Customer Exchanges
-            'exchangeSalesList', 'exchangesCount', 'totalExchangeCreditsValue'
+            'exchangeSalesList', 'exchangesCount', 'totalExchangeCreditsValue',
+            // Tab 10: Special Reversals Hub (Admin Only)
+            'isAdmin', 'reversalsCount', 'reversibleSales', 'reversibleDebtPayments', 'reversibleStockIns', 'reversibleStockOuts', 'reversalLogs'
         );
 
         if ($request->ajax() || $request->header('X-Partial-Update') || $request->has('_partial')) {
@@ -755,6 +876,7 @@ class TransactionController extends Controller
                     'refunds'      => number_format($refundsCount),
                     'debts'        => number_format($debtsEntryCount),
                     'exchanges'    => number_format($exchangesCount),
+                    'reversals'    => number_format($reversalsCount),
                 ],
                 'panes_html' => view('transactions.partials.panes', $viewData)->render(),
             ]);
@@ -1396,6 +1518,33 @@ class TransactionController extends Controller
         $actor = Auth::user();
         try {
             $result = $voidService->voidStockOutOrAdjustment($id, $request->reason, $actor);
+
+            if ($request->wantsJson()) {
+                return response()->json($result);
+            }
+
+            return back()->with('success', "✓ " . $result['message']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 403);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) return response()->json(['error' => $e->getMessage()], 422);
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Void / Reverse a customer debt payment cleanly.
+     */
+    public function voidCustomerPayment(Request $request, string $ledgerId, \App\Services\TransactionVoidService $voidService)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        $actor = Auth::user();
+        try {
+            $result = $voidService->voidCustomerPayment($ledgerId, $request->reason, $actor);
 
             if ($request->wantsJson()) {
                 return response()->json($result);
