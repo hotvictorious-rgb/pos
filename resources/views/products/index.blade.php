@@ -45,6 +45,29 @@
 
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: rgba(55, 65, 81, 0.25); }
+
+    .dropdown-tool-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 0.85rem;
+        border-radius: 8px;
+        color: #f8fafc;
+        text-decoration: none;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: all 0.15s ease;
+        background: transparent;
+        border: none;
+        width: 100%;
+        text-align: left;
+        cursor: pointer;
+        font-family: inherit;
+    }
+    .dropdown-tool-item:hover {
+        background: rgba(59, 130, 246, 0.2);
+        color: #93c5fd;
+    }
 </style>
 @endpush
 
@@ -64,30 +87,43 @@
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-            <a href="{{ route('products.export.csv', request()->query()) }}" class="btn btn-secondary" style="font-size: 0.85rem;">
-                📥 Export CSV
-            </a>
-            <a href="{{ route('products.export.json', request()->query()) }}" class="btn btn-secondary" style="font-size: 0.85rem; color: #93c5fd;">
-                🤖 Export JSON (AI)
-            </a>
-            <button onclick="window.print()" class="btn btn-secondary" style="font-size: 0.85rem;">
-                🖨️ Print Price List
-            </button>
             @if($isAdmin)
-                <a href="{{ route('products.template.csv') }}" class="btn btn-secondary" style="font-size: 0.85rem;">
-                    📄 CSV Template
-                </a>
+                <button class="btn btn-success" onclick="openModal('modalAddProduct')" style="font-size: 0.9rem; font-weight: 800;">
+                    ➕ Add New Product
+                </button>
                 <button class="btn btn-primary" onclick="openModal('modalImportCsv')" style="font-size: 0.85rem;">
                     📥 Bulk Import (CSV)
                 </button>
-                <button class="btn btn-success" onclick="openModal('modalAddProduct')" style="font-size: 0.85rem;">
-                    ➕ Add New Product
-                </button>
             @else
-                <a href="{{ route('stock.index') }}" class="btn btn-success btn-lg" style="font-size: 0.95rem;">
-                    📥 Add Stock Quantity (Stock In)
+                <a href="{{ route('stock.index') }}" class="btn btn-success" style="font-size: 0.9rem; font-weight: 800;">
+                    📥 Add Stock (Stock In)
                 </a>
             @endif
+
+            <!-- Tools & Export Dropdown (Prevents mobile button wrapping clutter) -->
+            <div style="position: relative;" id="prodToolsWrapper">
+                <button type="button" class="btn btn-secondary" onclick="toggleProdMenu()" id="prodMenuBtn" style="font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+                    <span>⚙️ Tools & Export</span>
+                    <span style="font-size: 0.65rem; transition: transform 0.2s;" id="prodMenuChevron">▼</span>
+                </button>
+                <div id="prodDropdownMenu" style="display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #1e293b; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.55); z-index: 100; min-width: 220px; padding: 0.4rem; flex-direction: column; gap: 0.25rem;">
+                    <a href="{{ route('products.export.csv', request()->query()) }}" class="dropdown-tool-item">
+                        <span>📥</span> Export CSV
+                    </a>
+                    <a href="{{ route('products.export.json', request()->query()) }}" class="dropdown-tool-item" style="color: #93c5fd;">
+                        <span>🤖</span> Export JSON (AI Digest)
+                    </a>
+                    <button type="button" onclick="window.print(); toggleProdMenu(false);" class="dropdown-tool-item">
+                        <span>🖨️</span> Print Price List
+                    </button>
+                    @if($isAdmin)
+                        <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 0.25rem 0.35rem;"></div>
+                        <a href="{{ route('products.template.csv') }}" class="dropdown-tool-item" style="color: #94a3b8; font-size: 0.82rem;">
+                            <span>📄</span> CSV Blank Template
+                        </a>
+                    @endif
+                </div>
+            </div>
         </div>
     </div>
 
@@ -645,5 +681,23 @@ function filterProdTable() {
         r.style.display = text.includes(q) ? '' : 'none';
     });
 }
+
+function toggleProdMenu(forceState) {
+    const menu = document.getElementById('prodDropdownMenu');
+    const chevron = document.getElementById('prodMenuChevron');
+    if (!menu) return;
+    const shouldOpen = (typeof forceState === 'boolean') ? forceState : (menu.style.display !== 'flex');
+    menu.style.display = shouldOpen ? 'flex' : 'none';
+    if (chevron) {
+        chevron.style.transform = shouldOpen ? 'rotate(180deg)' : 'none';
+    }
+}
+
+document.addEventListener('click', function(e) {
+    const wrapper = document.getElementById('prodToolsWrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        toggleProdMenu(false);
+    }
+});
 </script>
 @endpush

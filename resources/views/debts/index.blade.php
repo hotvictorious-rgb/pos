@@ -72,6 +72,21 @@
     th { background: rgba(11, 15, 25, 0.8); padding: 1rem 1.25rem; font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
     td { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
     tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(55, 65, 81, 0.25); }
+
+    .debt-input-search {
+        padding: 0.5rem 0.85rem;
+        font-size: 0.82rem;
+        border-radius: 10px;
+        background: rgba(11, 15, 25, 0.7);
+        border: 1px solid var(--border);
+        color: var(--text);
+        transition: border-color 0.2s;
+    }
+    .debt-input-search:focus {
+        border-color: var(--primary);
+        outline: none;
+    }
 </style>
 @endpush
 
@@ -173,7 +188,7 @@
                 Customers with Outstanding Balances
             </h3>
             <div style="width: 280px;">
-                <input type="text" placeholder="⚡ Live filter debtors..." onkeyup="filterTableRows('debtorsTable', this.value)" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
+                <input type="text" class="debt-input-search" placeholder="⚡ Instant table filter..." onkeyup="filterTableRows('debtorsTable', this.value)" style="width: 100%;">
             </div>
         </div>
 

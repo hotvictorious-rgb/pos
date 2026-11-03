@@ -14,27 +14,28 @@
     .stock-card {
         background: var(--card-bg);
         border: 2px solid var(--border);
-        border-radius: 18px;
-        padding: 1.5rem;
+        border-radius: 16px;
+        padding: 1rem 1.25rem;
         cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 1.25rem;
+        gap: 1rem;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .stock-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+        transform: translateY(-3px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.3);
     }
 
     .card-icon-wrap {
-        width: 60px;
-        height: 60px;
-        border-radius: 16px;
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 2rem;
+        font-size: 1.5rem;
+        flex-shrink: 0;
     }
 
     .filter-card {

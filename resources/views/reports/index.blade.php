@@ -67,12 +67,20 @@
         display: flex;
         gap: 0.5rem;
         margin-bottom: 1.5rem;
-        flex-wrap: wrap;
-        border-bottom: 1px solid var(--border);
-        padding-bottom: 0.5rem;
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: thin;
+        -webkit-overflow-scrolling: touch;
+        border-bottom: 2px solid var(--border);
+        padding-bottom: 0.65rem;
     }
 
     .rep-tab-btn {
+        flex-shrink: 0;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
         padding: 0.65rem 1.15rem;
         background: var(--card-bg);
         border: 1px solid var(--border);
@@ -81,13 +89,19 @@
         font-size: 0.85rem;
         font-weight: 700;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        user-select: none;
+    }
+    .rep-tab-btn:hover {
+        color: #f8fafc;
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.15);
     }
     .rep-tab-btn.active {
         background: var(--primary);
         color: #fff;
         border-color: var(--primary);
-        box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+        box-shadow: 0 4px 12px rgba(37,99,235,0.35);
     }
 
     .report-section { display: none; }
