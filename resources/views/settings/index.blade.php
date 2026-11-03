@@ -166,6 +166,21 @@
                             <input type="checkbox" name="whatsapp_include_low_stock" value="1" {{ old('whatsapp_include_low_stock', $settings->whatsapp_include_low_stock ?? true) ? 'checked' : '' }} style="width: 16px; height: 16px; accent-color: var(--primary);">
                             <span>Include catalog low stock reorder alerts</span>
                         </label>
+
+                        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
+                            <input type="checkbox" name="whatsapp_include_inventory" value="1" {{ old('whatsapp_include_inventory', $settings->whatsapp_include_inventory ?? true) ? 'checked' : '' }} style="width: 16px; height: 16px; accent-color: var(--primary);">
+                            <span>Include daily physical stock movement (Stock In batches, Stock Out units & damage adjustments)</span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
+                            <input type="checkbox" name="whatsapp_include_transfers" value="1" {{ old('whatsapp_include_transfers', $settings->whatsapp_include_transfers ?? true) ? 'checked' : '' }} style="width: 16px; height: 16px; accent-color: var(--primary);">
+                            <span>Include inter-branch logistics & transfers (Outbound, Inbound, and In-Transit goods)</span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
+                            <input type="checkbox" name="whatsapp_include_deliveries" value="1" {{ old('whatsapp_include_deliveries', $settings->whatsapp_include_deliveries ?? true) ? 'checked' : '' }} style="width: 16px; height: 16px; accent-color: var(--primary);">
+                            <span>Include pending deliveries & unsupplied customer pickup backlog</span>
+                        </label>
                     </div>
 
                     <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed rgba(255,255,255,0.1); display: flex; justify-content: flex-end;">
@@ -173,6 +188,43 @@
                             <span>📲</span> Send Test WhatsApp Notification
                         </button>
                     </div>
+                </div>
+
+                <!-- Live Site Versioning & Overlay Updates Hub -->
+                <div style="background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 12px; padding: 1.25rem; margin-top: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <h4 style="font-size: 1.05rem; font-weight: 800; color: #c084fc; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>🏷️</span> System Version & Live Site Overlay Hub
+                            </h4>
+                            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                Manage deployment overlays on live production servers (cPanel/FTP/VPS). Each release produces an overlay bundle to unpack directly over the live site.
+                            </p>
+                        </div>
+                        <span style="font-size: 0.85rem; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; padding: 0.35rem 0.85rem; border-radius: 999px; font-weight: 800; border: 1px solid rgba(168, 85, 247, 0.5);">
+                            Release Tag: {{ config('version.tag', 'v1.2.0') }}
+                        </span>
+                    </div>
+
+                    <div style="background: rgba(0,0,0,0.25); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 1rem; font-size: 0.82rem; line-height: 1.6;">
+                        <div style="font-weight: 700; color: #f8fafc; margin-bottom: 0.3rem;">Latest Release Highlights (Overlaid Changes):</div>
+                        <ul style="padding-left: 1.2rem; color: #cbd5e1; margin: 0;">
+                            <li>Dedicated Admin Reversals & Voids Center (Tab 10) with 5 sub-consoles.</li>
+                            <li>Automated 9:00 PM WhatsApp Daily Closing Reconciliation for store owners.</li>
+                            <li>Deep System Check: Stock-In, Stock-Out, Inter-Branch Transfers, Debts & Backlog.</li>
+                            <li>Delta Overlay Packager (<code>php artisan app:make-overlay</code>) for seamless cPanel updates.</li>
+                        </ul>
+                    </div>
+
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+                        <button type="button" class="btn btn-secondary" onclick="openVersionModal()" style="font-size: 0.82rem;">
+                            📜 View Detailed Changelog
+                        </button>
+                        <button type="button" class="btn btn-warning" id="btnRunMigrations" onclick="runLiveOverlayMigrations()" style="font-size: 0.82rem; font-weight: 700;">
+                            ⚡ Run Pending Migrations & Clear Cache
+                        </button>
+                    </div>
+                    <div id="migrationOutputBox" style="display: none; margin-top: 1rem; background: #000; color: #4ade80; font-family: monospace; font-size: 0.78rem; padding: 0.75rem 1rem; border-radius: 6px; max-height: 180px; overflow-y: auto; white-space: pre-wrap;"></div>
                 </div>
 
                 <button type="button" class="btn btn-success btn-lg" onclick="confirmSettingsUpdate()">
@@ -630,6 +682,47 @@ function sendTestWhatsAppReport() {
         btn.innerHTML = origText;
         btn.disabled = false;
         alert('❌ Network or server error: ' + err.message);
+    });
+}
+
+function runLiveOverlayMigrations() {
+    if (!confirm('Run database migrations and clear application cache now? This is safe to run after applying an overlay update.')) {
+        return;
+    }
+
+    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const btn = document.getElementById('btnRunMigrations');
+    const box = document.getElementById('migrationOutputBox');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Refreshing Database & Cache...';
+    box.style.display = 'block';
+    box.textContent = '> Initializing migration runner...\n';
+
+    fetch('{{ route('settings.run-migrations') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': token,
+            'Accept': 'application/json'
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '⚡ Run Pending Migrations & Clear Cache';
+        if (data.success) {
+            box.textContent += '\n✓ SUCCESS: ' + data.message + '\n\n' + (data.migrate_output || 'No pending migrations.') + '\n' + (data.cache_output || '');
+            box.style.color = '#4ade80';
+        } else {
+            box.textContent += '\n❌ ERROR: ' + (data.error || 'Migration failed');
+            box.style.color = '#f87171';
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '⚡ Run Pending Migrations & Clear Cache';
+        box.textContent += '\n❌ EXCEPTION: ' + err.message;
+        box.style.color = '#f87171';
     });
 }
 </script>

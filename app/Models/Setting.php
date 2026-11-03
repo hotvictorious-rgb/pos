@@ -31,6 +31,9 @@ class Setting extends Model
         'whatsapp_branch_breakdown',
         'whatsapp_include_reversals',
         'whatsapp_include_low_stock',
+        'whatsapp_include_inventory',
+        'whatsapp_include_transfers',
+        'whatsapp_include_deliveries',
     ];
 
     protected $casts = [
@@ -41,6 +44,9 @@ class Setting extends Model
         'whatsapp_branch_breakdown' => 'boolean',
         'whatsapp_include_reversals' => 'boolean',
         'whatsapp_include_low_stock' => 'boolean',
+        'whatsapp_include_inventory' => 'boolean',
+        'whatsapp_include_transfers' => 'boolean',
+        'whatsapp_include_deliveries' => 'boolean',
     ];
 
     protected static function booted()

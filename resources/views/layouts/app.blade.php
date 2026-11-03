@@ -1518,7 +1518,9 @@
             <div class="online-badge">
                 <span class="online-dot"></span> Online
             </div>
-            <div style="font-size: 0.75rem; color: #6b7280;">v1.2.0</div>
+            <a href="javascript:void(0)" onclick="openVersionModal()" style="font-size: 0.75rem; color: #93c5fd; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem;" title="View system version updates and overlay notes">
+                🏷️ {{ config('version.tag', 'v1.0.1') }}
+            </a>
         </div>
     </aside>
 
@@ -1876,7 +1878,95 @@
             if (banner) banner.style.display = 'none';
             sessionStorage.setItem('pwa_banner_dismissed', 'true');
         }
+
+        // Global System Version & Overlay Modal
+        function openVersionModal() {
+            const m = document.getElementById('systemVersionModal');
+            if (m) m.style.display = 'flex';
+        }
+
+        function closeVersionModal() {
+            const m = document.getElementById('systemVersionModal');
+            if (m) m.style.display = 'none';
+        }
     </script>
+
+    <!-- System Version & Live Overlay Modal -->
+    <div id="systemVersionModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 99999; align-items: center; justify-content: center; padding: 1rem; backdrop-filter: blur(4px);">
+        <div style="background: #111827; border: 1px solid #374151; border-radius: 16px; max-width: 650px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+            <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+                <div>
+                    <h3 style="font-size: 1.15rem; font-weight: 800; color: #f9fafb; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <span>🏷️</span> System Version & Live Site Overlays
+                    </h3>
+                    <p style="font-size: 0.78rem; color: #9ca3af; margin: 0.25rem 0 0;">
+                        Incremental 0.0.1 releases with deployment overlays for live production sites.
+                    </p>
+                </div>
+                <button type="button" onclick="closeVersionModal()" style="background: none; border: none; font-size: 1.25rem; color: #9ca3af; cursor: pointer; padding: 0.25rem;">✕</button>
+            </div>
+
+            <div style="padding: 1.5rem; overflow-y: auto; flex: 1;">
+                @php
+                    $allOverlays = config('version.overlays', []);
+                    $currentTag = config('version.tag', 'v1.0.1');
+                @endphp
+
+                <div style="background: rgba(37,99,235,0.1); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #93c5fd; font-weight: 800;">Installed Version</div>
+                        <div style="font-size: 1.35rem; font-weight: 800; color: #fff;">{{ $currentTag }}</div>
+                    </div>
+                    <span style="font-size: 0.78rem; background: rgba(34, 197, 94, 0.2); color: #4ade80; padding: 0.35rem 0.75rem; border-radius: 999px; font-weight: 700; border: 1px solid rgba(34, 197, 94, 0.4);">
+                        ● Active Live Production
+                    </span>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <h4 style="font-size: 0.92rem; font-weight: 700; color: #f3f4f6; margin-bottom: 0.75rem;">
+                        Version Overlays History (Incremented by 0.0.1):
+                    </h4>
+
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        @foreach($allOverlays as $oTag => $overlay)
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.35rem;">
+                                <strong style="color: #60a5fa; font-size: 0.95rem;">{{ $overlay['tag'] ?? $oTag }} – {{ $overlay['title'] ?? 'Release Update' }}</strong>
+                                <span style="font-size: 0.75rem; color: #9ca3af;">{{ $overlay['date'] ?? '' }}</span>
+                            </div>
+                            <ul style="margin: 0.5rem 0 0; padding-left: 1.2rem; font-size: 0.8rem; color: #cbd5e1; line-height: 1.5;">
+                                @foreach($overlay['highlights'] ?? [] as $hl)
+                                    <li>{{ $hl }}</li>
+                                @endforeach
+                            </ul>
+                            @if(!empty($overlay['instructions']))
+                            <div style="margin-top: 0.6rem; font-size: 0.75rem; color: #a78bfa; background: rgba(168,85,247,0.1); padding: 0.45rem 0.75rem; border-radius: 6px;">
+                                💡 <strong>Overlay note:</strong> {{ $overlay['instructions'] }}
+                            </div>
+                            @endif
+                        </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div style="background: #030712; border: 1px solid #1f2937; border-radius: 8px; padding: 0.85rem 1rem; font-size: 0.78rem; color: #9ca3af; line-height: 1.5;">
+                    <strong style="color: #f3f4f6;">Live Site Overlay Deployment Guide:</strong><br>
+                    To overlay a new version onto your live cPanel/FTP server without altering existing database credentials or uploads:
+                    <ol style="margin: 0.4rem 0 0; padding-left: 1.2rem;">
+                        <li>Generate delta overlay using <code>php artisan app:make-overlay --bump</code></li>
+                        <li>Upload <code>overlay-vX.X.X.zip</code> to your live web root and extract it.</li>
+                        <li>Click [ Run Pending Migrations & Clear Cache ] in System Settings.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div style="padding: 1rem 1.5rem; border-top: 1px solid #374151; display: flex; justify-content: flex-end; background: rgba(255,255,255,0.02);">
+                <button type="button" class="btn btn-secondary" onclick="closeVersionModal()" style="font-size: 0.85rem; padding: 0.45rem 1.25rem;">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
 
     @stack('scripts')
 </body>

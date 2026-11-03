@@ -211,6 +211,7 @@ Route::prefix('settings')->name('settings.')->middleware(['capability:settings.m
     Route::post('/warehouse/update/{id}', [\App\Http\Controllers\Web\SettingController::class, 'updateWarehouse'])->name('warehouse.update');
     Route::post('/warehouse/toggle/{id}', [\App\Http\Controllers\Web\SettingController::class, 'toggleWarehouse'])->name('warehouse.toggle');
     Route::post('/test-whatsapp',         [\App\Http\Controllers\Web\SettingController::class, 'sendTestWhatsApp'])->name('test.whatsapp');
+    Route::post('/run-migrations',        [\App\Http\Controllers\Web\SettingController::class, 'runMigrations'])->name('run-migrations');
     
     // Tenant Data Safety & Business Backups
     Route::middleware(['capability:tenant.backup'])->group(function () {

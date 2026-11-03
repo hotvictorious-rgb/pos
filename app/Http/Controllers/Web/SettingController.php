@@ -77,6 +77,9 @@ class SettingController extends Controller
             'whatsapp_branch_breakdown' => $request->boolean('whatsapp_branch_breakdown'),
             'whatsapp_include_reversals' => $request->boolean('whatsapp_include_reversals'),
             'whatsapp_include_low_stock' => $request->boolean('whatsapp_include_low_stock'),
+            'whatsapp_include_inventory' => $request->boolean('whatsapp_include_inventory', true),
+            'whatsapp_include_transfers' => $request->boolean('whatsapp_include_transfers', true),
+            'whatsapp_include_deliveries' => $request->boolean('whatsapp_include_deliveries', true),
         ]);
 
         $userName = Auth::user()->name ?? 'Auditor / Admin';
@@ -293,5 +296,36 @@ class SettingController extends Controller
         $result = $whatsAppService->sendMessage($request->phone, $message, $tenantId);
 
         return response()->json($result);
+    }
+
+    /**
+     * Live Site Overlay Helper: Execute database migrations and clear caches on live production overlay.
+     */
+    public function runMigrations(Request $request)
+    {
+        $authUser = Auth::user();
+        if (!$authUser || (!$authUser->isAdmin() && !$authUser->isTenantAdmin() && !$authUser->isPlatformAdmin())) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized: Administrator credentials required.'], 403);
+        }
+
+        try {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
+
+            \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+            $cacheOutput = \Illuminate\Support\Facades\Artisan::output();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Database migrations and application caches refreshed successfully!',
+                'migrate_output' => trim($migrateOutput),
+                'cache_output' => trim($cacheOutput),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

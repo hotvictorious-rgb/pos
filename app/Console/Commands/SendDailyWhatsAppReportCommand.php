@@ -164,9 +164,12 @@ class SendDailyWhatsAppReportCommand extends Command
         $dateEnd = $targetDate->copy()->endOfDay();
 
         // 1. Sales query
+        $dateStartIso = $dateStart->toIso8601String();
+        $dateEndIso = $dateEnd->toIso8601String();
+
         $salesQuery = Sale::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
-            ->whereBetween('createdAt', [$dateStart, $dateEnd])
+            ->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
             ->whereNotIn('status', ['VOIDED', 'CANCELLED']);
 
         if ($warehouseId !== null) {
@@ -177,6 +180,16 @@ class SendDailyWhatsAppReportCommand extends Command
         $totalInvoices = $sales->count();
         $grossSales = (float) $sales->sum('totalAmount');
         $saleIds = $sales->pluck('id')->toArray();
+
+        // Retail vs Wholesale breakdown
+        $wholesaleSalesList = $sales->filter(fn($s) => strtolower($s->sale_type ?? '') === 'wholesale');
+        $wholesaleCount = $wholesaleSalesList->count();
+        $wholesaleAmount = (float) $wholesaleSalesList->sum('totalAmount');
+
+        $retailSalesList = $sales->filter(fn($s) => strtolower($s->sale_type ?? '') !== 'wholesale');
+        $retailCount = $retailSalesList->count();
+        $retailAmount = (float) $retailSalesList->sum('totalAmount');
+        $avgOrderValue = $totalInvoices > 0 ? round($grossSales / $totalInvoices, 2) : 0.0;
 
         // 2. Payments on today's sales
         $cashSales = (float) Payment::withoutGlobalScopes()
@@ -197,6 +210,14 @@ class SendDailyWhatsAppReportCommand extends Command
             ->where('amount', '>', 0)
             ->sum('amount');
 
+        $exchangeCreditSales = (float) Payment::withoutGlobalScopes()
+            ->whereIn('saleId', $saleIds)
+            ->where('method', 'EXCHANGE_CREDIT')
+            ->where('amount', '>', 0)
+            ->sum('amount');
+
+        $totalTenderCollected = $cashSales + $posSales + $transferSales + $exchangeCreditSales;
+
         // 3. Customer Debt Recoveries today
         $debtRecoveryQuery = CustomerLedger::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
@@ -209,6 +230,7 @@ class SendDailyWhatsAppReportCommand extends Command
         }
 
         $debtsRecovered = abs((float) $debtRecoveryQuery->sum('amount'));
+        $debtsRecoveredCount = $debtRecoveryQuery->distinct('customer_id')->count('customer_id');
 
         // 4. Returns & Refunds Outflows
         $returnsQuery = SalesReturn::withoutGlobalScopes()
@@ -220,20 +242,138 @@ class SendDailyWhatsAppReportCommand extends Command
         }
 
         $returnsRefunded = (float) $returnsQuery->sum('refundAmount');
+        $returnsCount = $returnsQuery->count();
+        $returnsUnits = (float) $returnsQuery->sum('quantity');
+
+        // Customer exchanges
+        $exchangesCount = $sales->filter(fn($s) => $s->payments && $s->payments->where('method', 'EXCHANGE_CREDIT')->isNotEmpty())->count();
 
         // 5. Net Cash in Drawer for Deposit:
         // (Cash from sales) + (Debt recovery cash) - (Cash refunds)
         $expectedDrawerCash = max(0.0, round($cashSales + $debtsRecovered - $returnsRefunded, 2));
 
-        // 6. New Debt Incurred today (Sales total minus payments made on invoice)
+        // 6. New Debt Incurred today
         $totalPaidOnTodaySales = (float) Payment::withoutGlobalScopes()
             ->whereIn('saleId', $saleIds)
             ->where('amount', '>', 0)
             ->whereNotIn('method', ['REFUND', 'REFUND_CASH'])
             ->sum('amount');
         $newDebtsIncurred = max(0.0, round($grossSales - $totalPaidOnTodaySales, 2));
+        $newDebtsCount = $sales->filter(fn($s) => ($s->totalAmount - $s->paidAmount) > 0.01)->count();
 
-        // 7. Reversals & Voids audit logs
+        // Cumulative open customer debt across the shop
+        $totalOpenDebtQuery = \App\Models\Customer::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId);
+        $totalCumulativeDebt = (float) $totalOpenDebtQuery->sum('total_debt');
+
+        // 7. Physical Inventory Movement (Stock In, Stock Out, Damages)
+        $stockInQuery = \App\Models\InventoryLog::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('timestamp', [$dateStartIso, $dateEndIso])
+            ->whereIn('type', ['STOCK_IN', 'PURCHASE']);
+        if ($warehouseId !== null) {
+            $stockInQuery->where('warehouse_id', $warehouseId);
+        }
+        $stockInBatches = $stockInQuery->count();
+        $stockInUnits = abs((float) $stockInQuery->sum('quantity'));
+        $topStockInProducts = (clone $stockInQuery)
+            ->selectRaw('productName, SUM(ABS(quantity)) as total_qty')
+            ->groupBy('productName')
+            ->orderByDesc('total_qty')
+            ->take(3)
+            ->get()
+            ->map(fn($row) => ['name' => $row->productName, 'qty' => (float) $row->total_qty])
+            ->toArray();
+
+        $stockOutQuery = \App\Models\InventoryLog::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('timestamp', [$dateStartIso, $dateEndIso])
+            ->whereIn('type', ['SALE_DISPATCH', 'STOCK_OUT']);
+        if ($warehouseId !== null) {
+            $stockOutQuery->where('warehouse_id', $warehouseId);
+        }
+        $stockOutUnits = abs((float) $stockOutQuery->sum('quantity'));
+
+        $damageQuery = \App\Models\InventoryLog::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('timestamp', [$dateStartIso, $dateEndIso])
+            ->whereIn('type', [
+                'STOCK_ADJUSTMENT',
+                'STOCK_ADJUSTMENT_DAMAGE',
+                'STOCK_ADJUSTMENT_EXPIRED',
+                'STOCK_ADJUSTMENT_LOST',
+            ]);
+        if ($warehouseId !== null) {
+            $damageQuery->where('warehouse_id', $warehouseId);
+        }
+        $damageUnits = abs((float) $damageQuery->sum('quantity'));
+        $damageBatches = $damageQuery->count();
+        $netStockDelta = round($stockInUnits - $stockOutUnits - $damageUnits, 2);
+
+        // 8. Inter-Branch Logistics & Transfers
+        $outboundTransferQuery = \App\Models\Transfer::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('dispatched_at', [$dateStart, $dateEnd]);
+        if ($warehouseId !== null) {
+            $outboundTransferQuery->where('source_warehouse_id', $warehouseId);
+        }
+        $outboundTransfersCount = $outboundTransferQuery->count();
+        $outboundTransferIds = $outboundTransferQuery->pluck('id')->toArray();
+        $outboundUnits = !empty($outboundTransferIds) 
+            ? (float) \App\Models\TransferItem::withoutGlobalScopes()->whereIn('transfer_id', $outboundTransferIds)->sum('dispatched_qty') 
+            : 0.0;
+
+        $inboundTransferQuery = \App\Models\Transfer::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('received_at', [$dateStart, $dateEnd])
+            ->where('status', 'RECEIVED');
+        if ($warehouseId !== null) {
+            $inboundTransferQuery->where('destination_warehouse_id', $warehouseId);
+        }
+        $inboundTransfersCount = $inboundTransferQuery->count();
+        $inboundTransferIds = $inboundTransferQuery->pluck('id')->toArray();
+        $inboundUnits = !empty($inboundTransferIds) 
+            ? (float) \App\Models\TransferItem::withoutGlobalScopes()->whereIn('transfer_id', $inboundTransferIds)->sum('received_qty') 
+            : 0.0;
+
+        $pendingIncomingQuery = \App\Models\Transfer::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereIn('status', ['DISPATCHED', 'IN_TRANSIT']);
+        if ($warehouseId !== null) {
+            $pendingIncomingQuery->where('destination_warehouse_id', $warehouseId);
+        }
+        $pendingIncomingCount = $pendingIncomingQuery->count();
+
+        // 9. Pending Deliveries & Pickup Backlog (Unsupplied Orders)
+        $pendingDeliverySales = Sale::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereIn('deliveryStatus', ['PENDING', 'PARTIALLY_DELIVERED'])
+            ->whereNotIn('status', ['VOIDED', 'CANCELLED']);
+        if ($warehouseId !== null) {
+            $pendingDeliverySales->where('warehouse_id', $warehouseId);
+        }
+        $pendingDeliveriesCount = $pendingDeliverySales->count();
+        $pendingDeliveriesValue = (float) $pendingDeliverySales->sum('totalAmount');
+
+        $unsuppliedBacklogUnitsQuery = \App\Models\StockReservation::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereIn('status', ['ACTIVE', 'PARTIALLY_FULFILLED']);
+        if ($warehouseId !== null) {
+            $unsuppliedBacklogUnitsQuery->where('warehouse_id', $warehouseId);
+        }
+        $unsuppliedBacklogUnits = (float) $unsuppliedBacklogUnitsQuery->get()
+            ->sum(fn($r) => $r->outstanding_qty);
+
+        $fulfilledTodayQuery = Sale::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('deliveredAt', [$dateStartIso, $dateEndIso])
+            ->whereIn('deliveryStatus', ['DELIVERED', 'SUPPLIED']);
+        if ($warehouseId !== null) {
+            $fulfilledTodayQuery->where('warehouse_id', $warehouseId);
+        }
+        $fulfilledTodayCount = $fulfilledTodayQuery->count();
+
+        // 10. Reversals & Voids audit logs
         $reversalsQuery = Activity::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->whereBetween('created_at', [$dateStart, $dateEnd])
@@ -242,6 +382,7 @@ class SendDailyWhatsAppReportCommand extends Command
                 'DEBT_PAYMENT_REVERSED',
                 'STOCK_IN_VOIDED',
                 'STOCK_OUT_VOIDED',
+                'STOCK_ADJUSTMENT_VOIDED',
             ]);
 
         $reversalsCount = $reversalsQuery->count();
@@ -349,18 +490,68 @@ class SendDailyWhatsAppReportCommand extends Command
             'business_name' => $setting->businessName ?: $businessName,
             'branch_name' => $whName,
             'date' => $targetDate->format('D, d M Y'),
+
+            // 1. Sales & Revenue
             'total_invoices' => $totalInvoices,
             'gross_sales' => $grossSales,
+            'retail_sales_count' => $retailCount,
+            'retail_sales_amount' => $retailAmount,
+            'wholesale_sales_count' => $wholesaleCount,
+            'wholesale_sales_amount' => $wholesaleAmount,
+            'avg_order_value' => $avgOrderValue,
+
+            // 2. Payments & Cash In Till
             'cash_collected' => $cashSales,
             'pos_collected' => $posSales,
             'transfer_collected' => $transferSales,
-            'debts_recovered' => $debtsRecovered,
-            'new_debts' => $newDebtsIncurred,
-            'returns_refunded' => $returnsRefunded,
+            'exchange_credit_collected' => $exchangeCreditSales,
+            'total_tender_collected' => $totalTenderCollected,
             'expected_drawer_cash' => $expectedDrawerCash,
+
+            // 3. Customer Debts & Receivables
+            'debts_recovered' => $debtsRecovered,
+            'debts_recovered_count' => $debtsRecoveredCount,
+            'new_debts' => $newDebtsIncurred,
+            'new_debts_count' => $newDebtsCount,
+            'total_cumulative_debt' => $totalCumulativeDebt,
+
+            // 4. Physical Stock Movement
+            'include_inventory' => (bool) ($setting->whatsapp_include_inventory ?? true),
+            'stock_in_batches' => $stockInBatches,
+            'stock_in_units' => $stockInUnits,
+            'top_stock_in_products' => $topStockInProducts,
+            'stock_out_units' => $stockOutUnits,
+            'damage_units' => $damageUnits,
+            'damage_batches' => $damageBatches,
+            'net_stock_delta' => $netStockDelta,
+
+            // 5. Inter-Branch Transfers
+            'include_transfers' => (bool) ($setting->whatsapp_include_transfers ?? true),
+            'outbound_transfers_count' => $outboundTransfersCount,
+            'outbound_units' => $outboundUnits,
+            'inbound_transfers_count' => $inboundTransfersCount,
+            'inbound_units' => $inboundUnits,
+            'pending_incoming_transfers' => $pendingIncomingCount,
+
+            // 6. Pending Deliveries & Unsupplied Orders
+            'include_deliveries' => (bool) ($setting->whatsapp_include_deliveries ?? true),
+            'pending_deliveries_count' => $pendingDeliveriesCount,
+            'pending_deliveries_value' => $pendingDeliveriesValue,
+            'unsupplied_backlog_units' => $unsuppliedBacklogUnits,
+            'fulfilled_today_count' => $fulfilledTodayCount,
+
+            // 7. Returns, Refunds & Exchanges
+            'returns_refunded' => $returnsRefunded,
+            'returns_count' => $returnsCount,
+            'returns_units' => $returnsUnits,
+            'exchanges_count' => $exchangesCount,
+
+            // 8. Reversals & Voids
             'reversals_count' => $reversalsCount,
             'reversals_amount' => $reversalsAmount,
             'reversals_details' => $reversalsDetails,
+
+            // 9. Aggregates & Alerts
             'branches_breakdown' => $branchesBreakdown,
             'low_stock_items' => $lowStockItems,
         ];

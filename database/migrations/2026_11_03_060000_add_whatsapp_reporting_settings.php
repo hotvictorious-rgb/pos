@@ -31,6 +31,15 @@ return new class extends Migration
                 if (!Schema::hasColumn('settings', 'whatsapp_include_low_stock')) {
                     $table->boolean('whatsapp_include_low_stock')->default(true)->after('whatsapp_include_reversals');
                 }
+                if (!Schema::hasColumn('settings', 'whatsapp_include_inventory')) {
+                    $table->boolean('whatsapp_include_inventory')->default(true)->after('whatsapp_include_low_stock');
+                }
+                if (!Schema::hasColumn('settings', 'whatsapp_include_transfers')) {
+                    $table->boolean('whatsapp_include_transfers')->default(true)->after('whatsapp_include_inventory');
+                }
+                if (!Schema::hasColumn('settings', 'whatsapp_include_deliveries')) {
+                    $table->boolean('whatsapp_include_deliveries')->default(true)->after('whatsapp_include_transfers');
+                }
             });
         }
 
@@ -60,6 +69,9 @@ return new class extends Migration
                     'whatsapp_branch_breakdown',
                     'whatsapp_include_reversals',
                     'whatsapp_include_low_stock',
+                    'whatsapp_include_inventory',
+                    'whatsapp_include_transfers',
+                    'whatsapp_include_deliveries',
                 ], fn ($col) => Schema::hasColumn('settings', $col));
                 if (!empty($cols)) {
                     $table->dropColumn($cols);
