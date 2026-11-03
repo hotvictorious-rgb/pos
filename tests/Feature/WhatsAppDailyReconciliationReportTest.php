@@ -351,4 +351,36 @@ class WhatsAppDailyReconciliationReportTest extends TestCase
         $response->assertSee('Cashier / Duty Officer');
         $response->assertSee('Executive Audit Sign-off');
     }
+
+    public function test_branch_manager_whatsapp_configuration_and_isolated_alert_dispatch(): void
+    {
+        // 1. Owner updates warehouse via web route with manager WhatsApp phone
+        $response = $this->actingAs($this->owner)
+            ->withSession(['tenant_id' => 'tenant-victorious'])
+            ->post("/settings/warehouse/update/{$this->warehouse->id}", [
+                'name' => 'Victorious Mega Store',
+                'code' => 'VIC-MEGA',
+                'manager_name' => 'Bassey Manager',
+                'manager_whatsapp_phone' => '08099887766',
+                'whatsapp_report_enabled' => '1',
+            ]);
+
+        $response->assertRedirect(route('settings.index'));
+
+        $this->warehouse->refresh();
+        $this->assertEquals('08099887766', $this->warehouse->manager_whatsapp_phone);
+        $this->assertTrue($this->warehouse->whatsapp_report_enabled);
+
+        // 2. Dispatch command sends to manager as well as owner
+        $exitCode = Artisan::call('pos:send-daily-whatsapp', [
+            '--date' => now()->toDateString(),
+            '--force' => true,
+        ]);
+        $this->assertEquals(0, $exitCode);
+
+        // Check activity log
+        $this->assertDatabaseHas('activities', [
+            'type' => 'WHATSAPP_DAILY_REPORT_SENT',
+        ]);
+    }
 }

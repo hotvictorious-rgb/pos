@@ -145,6 +145,7 @@ class SettingController extends Controller
             'address' => 'nullable|string',
             'phone' => 'nullable|string',
             'manager_name' => 'nullable|string',
+            'manager_whatsapp_phone' => 'nullable|string|max:30',
         ]);
 
         try {
@@ -167,6 +168,8 @@ class SettingController extends Controller
                     'address' => $request->address,
                     'phone' => $request->phone,
                     'manager_name' => $request->manager_name,
+                    'manager_whatsapp_phone' => $request->manager_whatsapp_phone,
+                    'whatsapp_report_enabled' => $request->has('whatsapp_report_enabled') ? $request->boolean('whatsapp_report_enabled') : true,
                     'is_active' => true,
                 ]);
             });
@@ -208,6 +211,7 @@ class SettingController extends Controller
             'address' => 'nullable|string',
             'phone' => 'nullable|string',
             'manager_name' => 'nullable|string',
+            'manager_whatsapp_phone' => 'nullable|string|max:30',
         ]);
 
         $wh->update([
@@ -216,6 +220,8 @@ class SettingController extends Controller
             'address' => $request->address,
             'phone' => $request->phone,
             'manager_name' => $request->manager_name,
+            'manager_whatsapp_phone' => $request->manager_whatsapp_phone,
+            'whatsapp_report_enabled' => $request->boolean('whatsapp_report_enabled'),
         ]);
 
         $userName = Auth::user()->name ?? 'Admin';

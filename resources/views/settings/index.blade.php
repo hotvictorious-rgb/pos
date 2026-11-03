@@ -267,7 +267,14 @@
                             <td><span class="badge badge-info">{{ $wh->code }}</span></td>
                             <td>{{ $wh->address ?? 'N/A' }}</td>
                             <td>{{ $wh->phone ?? 'N/A' }}</td>
-                            <td>{{ $wh->manager_name ?? 'Branch Manager' }}</td>
+                            <td>
+                                <div>{{ $wh->manager_name ?? 'Branch Manager' }}</div>
+                                @if(!empty($wh->manager_whatsapp_phone))
+                                    <div style="font-size: 0.72rem; color: #4ade80; display: flex; align-items: center; gap: 3px; margin-top: 2px;">
+                                        <span>💬</span> {{ $wh->manager_whatsapp_phone }}
+                                    </div>
+                                @endif
+                            </td>
                             <td>
                                 <span class="badge {{ $wh->is_active ? 'badge-success' : 'badge-danger' }}">
                                     {{ $wh->is_active ? '✓ Active' : 'Inactive' }}
@@ -281,7 +288,9 @@
                                         code: '{{ addslashes($wh->code) }}',
                                         manager_name: '{{ addslashes($wh->manager_name ?? '') }}',
                                         address: '{{ addslashes($wh->address ?? '') }}',
-                                        phone: '{{ addslashes($wh->phone ?? '') }}'
+                                        phone: '{{ addslashes($wh->phone ?? '') }}',
+                                        manager_whatsapp_phone: '{{ addslashes($wh->manager_whatsapp_phone ?? '') }}',
+                                        whatsapp_report_enabled: {{ ($wh->whatsapp_report_enabled ?? true) ? 'true' : 'false' }}
                                     })">
                                         ✏️ Edit
                                     </button>
@@ -428,6 +437,17 @@
                     <input type="text" name="phone" placeholder="Contact number">
                 </div>
 
+                <div class="form-group">
+                    <label>Manager WhatsApp Phone (for Daily Closing Alerts)</label>
+                    <input type="text" name="manager_whatsapp_phone" id="newBranchManagerWhatsapp" placeholder="e.g. 08012345678">
+                    <small style="color: var(--text-muted); font-size: 0.72rem;">Manager receives isolated daily closing reconciliations for this branch only.</small>
+                </div>
+
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                    <input type="checkbox" name="whatsapp_report_enabled" id="newBranchWhatsappEnabled" value="1" checked style="width: 16px; height: 16px; accent-color: var(--primary);">
+                    <label for="newBranchWhatsappEnabled" style="margin: 0; font-size: 0.85rem; cursor: pointer;">Enable Automated WhatsApp Reports for this Branch</label>
+                </div>
+
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                     <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalAddBranch')">Cancel</button>
                     <button type="button" class="btn btn-primary" style="flex: 1;" onclick="confirmAddBranch()">✓ Save Branch Shop</button>
@@ -469,6 +489,17 @@
                 <div class="form-group">
                     <label>Branch Phone</label>
                     <input type="text" name="phone" id="editBranchPhone" placeholder="Contact number">
+                </div>
+
+                <div class="form-group">
+                    <label>Manager WhatsApp Phone (for Daily Closing Alerts)</label>
+                    <input type="text" name="manager_whatsapp_phone" id="editBranchManagerWhatsapp" placeholder="e.g. 08012345678">
+                    <small style="color: var(--text-muted); font-size: 0.72rem;">Manager receives isolated daily closing reconciliations for this branch only.</small>
+                </div>
+
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                    <input type="checkbox" name="whatsapp_report_enabled" id="editBranchWhatsappEnabled" value="1" style="width: 16px; height: 16px; accent-color: var(--primary);">
+                    <label for="editBranchWhatsappEnabled" style="margin: 0; font-size: 0.85rem; cursor: pointer;">Enable Automated WhatsApp Reports for this Branch</label>
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
@@ -604,6 +635,8 @@ function openEditBranchModal(wh) {
     document.getElementById('editBranchManager').value = wh.manager_name || '';
     document.getElementById('editBranchAddress').value = wh.address || '';
     document.getElementById('editBranchPhone').value = wh.phone || '';
+    document.getElementById('editBranchManagerWhatsapp').value = wh.manager_whatsapp_phone || '';
+    document.getElementById('editBranchWhatsappEnabled').checked = (wh.whatsapp_report_enabled !== false);
     openModal('modalEditBranch');
 }
 

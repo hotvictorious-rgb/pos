@@ -2,7 +2,7 @@
 VICTORIOUS ENTERPRISE POS - LIVE SITE OVERLAY DEPLOYMENT PACKAGE
 Release Tag: v1.0.1
 Base Revision: v1.0.0-rc.1
-Packaged Date: 2026-11-03 07:06:11
+Packaged Date: 2026-11-03 11:38:38
 ================================================================================
 
 1. WHAT IS THIS OVERLAY?
@@ -56,6 +56,7 @@ Step 5: Delete `overlay-v1.0.1.zip` and `overlay-runner.php` from your server.
   - app/Http/Controllers/Web/TransactionController.php
   - app/Http/Controllers/Web/UserController.php
   - app/Http/Middleware/CheckWebAuth.php
+  - app/Http/Middleware/CronFreeWhatsAppReportMiddleware.php
   - app/Http/Middleware/EnsureTenantActive.php
   - app/Http/Middleware/RequirePlatformUser.php
   - app/Http/Middleware/RequireSuperAdmin.php
@@ -127,6 +128,7 @@ Step 5: Delete `overlay-v1.0.1.zip` and `overlay-runner.php` from your server.
   - resources/views/pos/returns.blade.php
   - resources/views/products/index.blade.php
   - resources/views/reports/index.blade.php
+  - resources/views/reports/pdf/daily_closing.blade.php
   - resources/views/reports/pdf/day_book.blade.php
   - resources/views/reports/pdf/debtors.blade.php
   - resources/views/reports/pdf/exchanges.blade.php
