@@ -1421,6 +1421,26 @@ class ReportController extends Controller
                     'totalRefundAmount' => $totalRefundAmount,
                 ]));
 
+            case 'daily_closing':
+            case 'closing':
+                $targetDate = $request->filled('date') ? Carbon::parse($request->date) : now('Africa/Lagos');
+                $metrics = app(\App\Console\Commands\SendDailyWhatsAppReportCommand::class)->compileDailyMetrics(
+                    $tenantId,
+                    $targetDate,
+                    $settings,
+                    $businessName,
+                    $branchWarehouseId
+                );
+
+                return view('reports.pdf.daily_closing', array_merge($commonViewData, [
+                    'pageTitle' => 'Daily Closing Statement — ' . ($metrics['branch_name'] ?? 'Consolidated'),
+                    'reportTitle' => 'Official Daily Closing & Reconciliation Statement',
+                    'reportSubtitle' => 'Audited daily performance covering sales, tender reconciliations, physical stock deltas, debts & till cash balance',
+                    'metrics' => $metrics,
+                    'targetDate' => $targetDate,
+                    'branchWarehouseId' => $branchWarehouseId,
+                ]));
+
             default:
                 abort(404, 'Unknown report export type: ' . e($type));
         }

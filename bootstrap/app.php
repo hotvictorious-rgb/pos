@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\CheckWebAuth::class,
             \App\Http\Middleware\EnsureTenantActive::class,
             \App\Http\Middleware\BlockReadOnlyMutations::class,
+            \App\Http\Middleware\CronFreeWhatsAppReportMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

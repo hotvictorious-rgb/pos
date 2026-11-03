@@ -437,6 +437,12 @@ class WhatsAppService
             $msg .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
         }
 
+        // 11. Printable PDF Statement link
+        if (!empty($data['statement_url'])) {
+            $msg .= "📄 *Official PDF Daily Statement:*\n" . $data['statement_url'] . "\n";
+            $msg .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        }
+
         $versionTag = config('version.tag', 'v1.0.1');
         $msg .= "🔒 *Automated Deep Report — Victorious Market POS ({$versionTag})*\n";
         $msg .= "Generated at: " . now()->format('H:i:s d/m/Y');

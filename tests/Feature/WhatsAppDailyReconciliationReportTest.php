@@ -337,4 +337,18 @@ class WhatsAppDailyReconciliationReportTest extends TestCase
             'to' => '2348088887777',
         ]);
     }
+
+    public function test_daily_closing_pdf_statement_export(): void
+    {
+        $response = $this->actingAs($this->owner)
+            ->withSession(['tenant_id' => 'tenant-victorious'])
+            ->get('/reports/export-pdf/daily_closing?warehouse_id=1&date=' . now()->toDateString());
+
+        $response->assertStatus(200);
+        $response->assertSee('Official Daily Closing &amp; Reconciliation Statement', false);
+        $response->assertSee('GROSS SALES INVOICED');
+        $response->assertSee('NET CASH IN TILL (BANK DEPOSIT)');
+        $response->assertSee('Cashier / Duty Officer');
+        $response->assertSee('Executive Audit Sign-off');
+    }
 }

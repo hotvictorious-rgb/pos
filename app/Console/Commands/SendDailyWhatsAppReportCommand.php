@@ -99,56 +99,85 @@ class SendDailyWhatsAppReportCommand extends Command
                 continue;
             }
 
-            $this->info("📊 Compiling daily metrics for: {$tenantName} (Recipient: {$ownerPhone})...");
+            $this->info("📊 Compiling daily metrics for: {$tenantName} (Owner: {$ownerPhone})...");
 
-            $reportData = $this->compileDailyMetrics($tenantId, $targetDate, $setting, $tenantName);
-            $message = $this->whatsAppService->buildDailyReportMessage($reportData);
-
-            // 1. Dispatch to Store Owner
-            $result = $this->whatsAppService->sendMessage($ownerPhone, $message, $tenantId);
-
-            if ($result['success']) {
-                $this->info("✅ WhatsApp report successfully dispatched to owner ({$ownerPhone}) via {$result['gateway']}!");
-                $totalDispatched++;
-
-                // Record immutable audit activity
-                Activity::create([
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                    'type' => 'WHATSAPP_DAILY_REPORT_SENT',
-                    'description' => "Automated 9:00 PM daily reconciliation report sent to store owner ({$ownerPhone})",
-                    'userId' => 'SYSTEM_CRON',
-                    'userName' => 'Automated POS Reporter',
-                    'timestamp' => now()->toIso8601String(),
-                ]);
-            } else {
-                $this->error("❌ Failed to send WhatsApp report to owner ({$ownerPhone}): " . ($result['error'] ?? 'Unknown error'));
-            }
-
-            // 2. Dispatch to Branch Managers (if configured on individual warehouses)
-            $warehouses = Warehouse::withoutGlobalScopes()
+            $activeWarehouses = Warehouse::withoutGlobalScopes()
                 ->where('tenant_id', $tenantId)
                 ->where('is_active', true)
-                ->whereNotNull('manager_whatsapp_phone')
-                ->where('manager_whatsapp_phone', '!=', '')
-                ->where('whatsapp_report_enabled', true)
                 ->get();
 
-            foreach ($warehouses as $wh) {
-                $whPhone = trim($wh->manager_whatsapp_phone);
-                if (empty($whPhone) || $whPhone === $ownerPhone) {
-                    continue; // Skip if empty or same as owner (avoid duplicate)
+            $sendIndividualBranches = ($setting->whatsapp_branch_breakdown ?? true) && $activeWarehouses->count() > 1;
+
+            // 1. Dispatch individual reports for EACH branch to Store Owner (and Branch Manager)
+            if ($sendIndividualBranches) {
+                foreach ($activeWarehouses as $wh) {
+                    $branchData = $this->compileDailyMetrics($tenantId, $targetDate, $setting, $tenantName, $wh->id);
+                    $branchMsg = $this->whatsAppService->buildDailyReportMessage($branchData);
+
+                    // Send this branch report to the store owner
+                    $oResult = $this->whatsAppService->sendMessage($ownerPhone, $branchMsg, $tenantId);
+                    if ($oResult['success']) {
+                        $this->info("   ↳ Dispatched isolated branch report for {$wh->name} to Owner ({$ownerPhone})");
+                        $totalDispatched++;
+                    }
+
+                    // Also dispatch to branch manager if configured with a distinct phone
+                    $whPhone = trim($wh->manager_whatsapp_phone ?? '');
+                    if (!empty($whPhone) && $whPhone !== $ownerPhone && ($wh->whatsapp_report_enabled ?? true)) {
+                        $bResult = $this->whatsAppService->sendMessage($whPhone, $branchMsg, $tenantId);
+                        if ($bResult['success']) {
+                            $this->info("   ↳ Dispatched branch report to {$wh->name} manager ({$whPhone})");
+                            $totalDispatched++;
+                        }
+                    }
                 }
 
-                $branchData = $this->compileDailyMetrics($tenantId, $targetDate, $setting, $tenantName, $wh->id);
-                $branchMsg = $this->whatsAppService->buildDailyReportMessage($branchData);
-
-                $bResult = $this->whatsAppService->sendMessage($whPhone, $branchMsg, $tenantId);
-                if ($bResult['success']) {
-                    $this->info("   ↳ Dispatched branch report to {$wh->name} manager ({$whPhone})");
+                // Send Consolidated Master Summary covering all branches to the Owner
+                $consolidatedData = $this->compileDailyMetrics($tenantId, $targetDate, $setting, $tenantName, null);
+                $consolidatedMsg = "🏢 *CONSOLIDATED ALL-BRANCHES TOTAL*\n" . $this->whatsAppService->buildDailyReportMessage($consolidatedData);
+                $cResult = $this->whatsAppService->sendMessage($ownerPhone, $consolidatedMsg, $tenantId);
+                if ($cResult['success']) {
+                    $this->info("✅ Consolidated master report successfully dispatched to owner ({$ownerPhone}) via {$cResult['gateway']}!");
                     $totalDispatched++;
                 }
+            } else {
+                // Single-shop store or consolidated-only: dispatch direct store report
+                $whId = $activeWarehouses->first()?->id;
+                $reportData = $this->compileDailyMetrics($tenantId, $targetDate, $setting, $tenantName, $whId);
+                $message = $this->whatsAppService->buildDailyReportMessage($reportData);
+
+                $result = $this->whatsAppService->sendMessage($ownerPhone, $message, $tenantId);
+                if ($result['success']) {
+                    $this->info("✅ Daily report successfully dispatched to owner ({$ownerPhone}) via {$result['gateway']}!");
+                    $totalDispatched++;
+                } else {
+                    $this->error("❌ Failed to send WhatsApp report to owner ({$ownerPhone}): " . ($result['error'] ?? 'Unknown error'));
+                }
+
+                // Dispatch to branch manager if distinct
+                if ($whId) {
+                    $singleWh = $activeWarehouses->first();
+                    $whPhone = trim($singleWh->manager_whatsapp_phone ?? '');
+                    if (!empty($whPhone) && $whPhone !== $ownerPhone && ($singleWh->whatsapp_report_enabled ?? true)) {
+                        $bResult = $this->whatsAppService->sendMessage($whPhone, $message, $tenantId);
+                        if ($bResult['success']) {
+                            $this->info("   ↳ Dispatched branch report to {$singleWh->name} manager ({$whPhone})");
+                            $totalDispatched++;
+                        }
+                    }
+                }
             }
+
+            // Record immutable audit activity
+            Activity::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'type' => 'WHATSAPP_DAILY_REPORT_SENT',
+                'description' => "Automated 9:00 PM daily reconciliation reports sent to store owner ({$ownerPhone}) with per-branch isolation",
+                'userId' => 'SYSTEM_CRON',
+                'userName' => 'Automated POS Reporter',
+                'timestamp' => now()->toIso8601String(),
+            ]);
         }
 
         $this->info("🎉 Completed Daily WhatsApp Reconciliation Dispatch. Total messages sent: {$totalDispatched}.");
@@ -158,7 +187,7 @@ class SendDailyWhatsAppReportCommand extends Command
     /**
      * Compile complete end-of-day financial & logistical metrics.
      */
-    protected function compileDailyMetrics(string $tenantId, Carbon $targetDate, Setting $setting, string $businessName, ?int $warehouseId = null): array
+    public function compileDailyMetrics(string $tenantId, Carbon $targetDate, Setting $setting, string $businessName, ?int $warehouseId = null): array
     {
         $dateStart = $targetDate->copy()->startOfDay();
         $dateEnd = $targetDate->copy()->endOfDay();
@@ -554,6 +583,9 @@ class SendDailyWhatsAppReportCommand extends Command
             // 9. Aggregates & Alerts
             'branches_breakdown' => $branchesBreakdown,
             'low_stock_items' => $lowStockItems,
+
+            // 10. Official PDF Statement URL
+            'statement_url' => url('/reports/export-pdf/daily_closing?warehouse_id=' . ($warehouseId ?: 'ALL') . '&date=' . $targetDate->toDateString()),
         ];
     }
 }
