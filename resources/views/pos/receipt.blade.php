@@ -88,7 +88,7 @@
 <div class="receipt-wrap" id="printableReceipt">
     <div class="receipt-header">
         <div style="font-size: 2rem; margin-bottom: 0.25rem;">🧾</div>
-        <div class="receipt-title">{{ $tenant->name ?? 'VMARKET POS' }}</div>
+        <div class="receipt-title">{{ $tenant->name ?? ($settings->businessName ?? 'Victorious Market POS') }}</div>
         <div style="font-size: 0.8rem; font-weight: 800; color: #2563eb; text-transform: uppercase; margin-top: 0.2rem;">
             Inventory & Retail Distribution
         </div>
@@ -335,8 +335,9 @@
     <div style="text-align: center; font-size: 0.75rem; color: #94a3b8; margin-top: 1.5rem;">
         Thank you for your patronage!<br>
         Attendant / Cashier: {{ $sale->userName }}
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1;">
-            Powered by Victorious Market — Your trusted online market
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1; line-height: 1.4;">
+            Powered by Victorious Market — Your trusted online market<br>
+            <span style="font-size: 0.68rem; font-weight: 500; color: #94a3b8;">www.victoriousmarket.com.ng</span>
         </div>
     </div>
 </div>

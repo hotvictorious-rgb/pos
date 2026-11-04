@@ -229,9 +229,9 @@
             </div>
 
             <div style="text-align: center; margin-top: 2rem; font-size: 0.75rem; color: #94a3b8;">
-                {{ $tenant->name ?? 'VMARKET POS' }} Inter-Branch Logistics Control • Generated {{ date('d M Y, h:i A') }}
+                {{ $tenant->name ?? ($settings->businessName ?? 'Victorious Market POS') }} Inter-Branch Logistics Control • Generated {{ date('d M Y, h:i A') }}
                 <div style="font-size: 0.72rem; font-weight: 700; color: #64748b; margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px dashed #cbd5e1;">
-                    Powered by Victorious Market — Your trusted online market
+                    Victorious Market POS · Powered by Victorious Market — Your Trusted Online Market
                 </div>
             </div>
         </div>

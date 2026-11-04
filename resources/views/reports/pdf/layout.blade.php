@@ -409,7 +409,7 @@
         <!-- Document Footer -->
         <footer class="report-footer">
             <div>
-                <strong>{{ $businessName }}</strong> • VMPOS Multi-Branch Enterprise Suite • {{ $reportFooter ?? 'Confidential Internal Record' }}
+                <strong>{{ $businessName }}</strong> • Victorious Market POS • {{ $reportFooter ?? 'Confidential Internal Record' }}
                 <div style="font-size: 8.5px; color: #334155; margin-top: 3px; font-weight: 600;">
                     Powered by <strong>Victorious Market</strong> — Your Trusted Online Market
                 </div>

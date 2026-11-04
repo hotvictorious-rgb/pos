@@ -427,7 +427,10 @@
     <div class="pos-col-catalog" id="posColCatalog">
         <div class="catalog-header">
             <div>
-                <h2 style="font-size: 1.35rem; font-weight: 800;">Point of Sale 💰</h2>
+                <h2 style="font-size: 1.35rem; font-weight: 800; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span>Point of Sale 💰</span>
+                    <span style="font-size: 0.7rem; font-weight: 700; color: #93c5fd; background: rgba(37,99,235,0.2); border: 1px solid rgba(59,130,246,0.35); padding: 0.15rem 0.55rem; border-radius: 99px;">Victorious Market POS</span>
+                </h2>
                 @if($warehouses->count() > 1)
                     <div style="display: flex; align-items: center; gap: 0.45rem; margin-top: 0.25rem;">
                         <span style="font-size: 0.82rem; color: var(--text-muted);">Selling from:</span>
@@ -762,6 +765,11 @@
             <button type="button" class="btn btn-success btn-lg btn-block" onclick="submitSale()" id="completeSaleBtn" disabled style="opacity: 0.5; cursor: not-allowed;">
                 ✅ Complete Sale & Print
             </button>
+            <div style="text-align: center; font-size: 0.72rem; color: #64748b; margin-top: 0.75rem; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                <span>🔒 Victorious Market POS</span>
+                <span>•</span>
+                <span>Fast Cloud Till</span>
+            </div>
         </form>
     </div>
 

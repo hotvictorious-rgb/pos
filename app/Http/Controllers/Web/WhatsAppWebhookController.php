@@ -99,9 +99,12 @@ class WhatsAppWebhookController extends Controller
                 ->first();
 
             if (!$user && !$ownerSetting) {
-                $deniedMsg = "🔒 *Access Denied — Victorious POS*\n\n"
+                $deniedMsg = "🔒 *Access Denied — Victorious Market POS*\n\n"
                     . "Your phone number (+{$senderPhone}) is not registered as an authorized worker or owner.\n\n"
-                    . "Please contact your store administrator to link your WhatsApp under Staff & Roles in the POS interface.";
+                    . "Please contact your store administrator to link your WhatsApp under Staff & Roles in the POS interface.\n"
+                    . "━━━━━━━━━━━━━━━━━━━━\n"
+                    . "Powered by Victorious Market\n"
+                    . "Your Trusted Online Market";
                 $this->whatsAppService->sendMessage($senderPhone, $deniedMsg);
                 return response('EVENT_RECEIVED', 200);
             }
@@ -176,9 +179,12 @@ class WhatsAppWebhookController extends Controller
             ->first();
 
         if (!$user) {
-            $msg = "⚠️ *Verification Failed — Victorious POS*\n\n"
+            $msg = "⚠️ *Verification Failed — Victorious Market POS*\n\n"
                 . "The verification code *{$code}* is invalid or has expired.\n\n"
-                . "Please click 'Link WhatsApp' in the POS Staff Management screen to generate a fresh verification link.";
+                . "Please click 'Link WhatsApp' in the POS Staff Management screen to generate a fresh verification link.\n"
+                . "━━━━━━━━━━━━━━━━━━━━\n"
+                . "Powered by Victorious Market\n"
+                . "Your Trusted Online Market";
             $this->whatsAppService->sendMessage($senderPhone, $msg);
             return response('EVENT_RECEIVED', 200);
         }
@@ -196,13 +202,16 @@ class WhatsAppWebhookController extends Controller
             if ($wh) $branchName = $wh->name;
         }
 
-        $welcomeMsg = "✅ *Welcome to Victorious POS!*\n\n"
+        $welcomeMsg = "✅ *Welcome to Victorious Market POS!*\n\n"
             . "👤 Worker: *{$user->name}*\n"
             . "🏷️ Role: *" . strtoupper($user->role) . "*\n"
             . "🏬 Assigned Store: *{$branchName}*\n"
             . "-------------------------------------\n"
             . "Your WhatsApp is now verified to receive real-time on-demand store reports at *₦0.00*.\n\n"
-            . "Reply *MENU* anytime to view your authorized commands.";
+            . "Reply *MENU* anytime to view your authorized commands.\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Powered by Victorious Market\n"
+            . "Your Trusted Online Market";
 
         $this->whatsAppService->sendMessage($senderPhone, $welcomeMsg);
 
@@ -265,7 +274,7 @@ class WhatsAppWebhookController extends Controller
             if ($wh) $branchLabel = $wh->name;
         }
 
-        $msg = "⚡ *Live Sales Pulse — Victorious POS*\n"
+        $msg = "⚡ *Live Sales Pulse — Victorious Market POS*\n"
             . "🏬 Branch: *{$branchLabel}*\n"
             . "📅 Date: *" . $today->format('D, d M Y') . " (" . now()->format('h:i A') . ")*\n"
             . "-------------------------------------\n"
@@ -275,7 +284,7 @@ class WhatsAppWebhookController extends Controller
             . "⏳ Customer Credit / Balance Due: *₦" . number_format($debt, 0) . "*\n\n"
             . "Reply *REPORT* for full closing audit or *CASH* for drawer balance.";
 
-        $this->whatsAppService->sendMessage($phone, $msg);
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
     }
 
     /**
@@ -309,14 +318,14 @@ class WhatsAppWebhookController extends Controller
             if ($wh) $branchLabel = $wh->name;
         }
 
-        $msg = "💵 *Cash Drawer Audit — Victorious POS*\n"
+        $msg = "💵 *Cash Drawer Audit — Victorious Market POS*\n"
             . "🏬 Branch: *{$branchLabel}*\n"
             . "🕒 Time: *" . now()->format('h:i A') . "*\n"
             . "-------------------------------------\n"
             . "💰 Expected Cash in Drawer: *₦" . number_format($cashCollected, 0) . "*\n\n"
             . "⚠️ *Auditor Note:* Verify physical currency against this number before handover or bank deposit.";
 
-        $this->whatsAppService->sendMessage($phone, $msg);
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
     }
 
     /**
@@ -348,10 +357,10 @@ class WhatsAppWebhookController extends Controller
         }
 
         if ($lowStock->isEmpty()) {
-            $msg = "🟢 *Stock Health Clean — Victorious POS*\n"
+            $msg = "🟢 *Stock Health Clean — Victorious Market POS*\n"
                 . "🏬 Branch: *{$branchLabel}*\n"
                 . "All inventory items are currently above safety thresholds (> 5 units). No immediate reorders needed.";
-            $this->whatsAppService->sendMessage($phone, $msg);
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
             return;
         }
 
@@ -363,13 +372,13 @@ class WhatsAppWebhookController extends Controller
             $i++;
         }
 
-        $msg = "⚠️ *Low Stock Radar — Victorious POS*\n"
+        $msg = "⚠️ *Low Stock Radar — Victorious Market POS*\n"
             . "🏬 Branch: *{$branchLabel}*\n"
             . "The following items require immediate restock / purchase order:\n\n"
             . $itemsText . "\n"
             . "Reply *STOCK <name>* to check any other specific product.";
 
-        $this->whatsAppService->sendMessage($phone, $msg);
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
     }
 
     /**
@@ -422,7 +431,7 @@ class WhatsAppWebhookController extends Controller
         }
 
         $msg = "📦 *Inventory Search for \"{$queryStr}\":*\n\n" . $results . "Reply *REPORT* for daily reconciliation.";
-        $this->whatsAppService->sendMessage($phone, $msg);
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
     }
 
     /**
@@ -437,7 +446,7 @@ class WhatsAppWebhookController extends Controller
             if ($wh) $branchName = $wh->name;
         }
 
-        $menu = "🤖 *Victorious POS — Command Console*\n"
+        $menu = "🤖 *Victorious Market POS — Command Console*\n"
             . "👤 Role: *{$roleName}*\n"
             . "🏬 Scope: *{$branchName}*\n"
             . "-------------------------------------\n"
@@ -452,9 +461,20 @@ class WhatsAppWebhookController extends Controller
             $menu .= "• *REPORT <branch_id>* — Specific branch audit\n";
         }
 
-        $menu .= "\n_System: Victorious Enterprise POS Engine_";
+        $menu .= "\n_System: Victorious Market POS Engine_";
 
-        $this->whatsAppService->sendMessage($phone, $menu);
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu));
+    }
+
+    /**
+     * Append Universal Victorious Market Footer.
+     */
+    protected function appendFooter(string $message): string
+    {
+        return $message
+            . "\n━━━━━━━━━━━━━━━━━━━━\n"
+            . "Powered by Victorious Market\n"
+            . "Your Trusted Online Market";
     }
 }
 

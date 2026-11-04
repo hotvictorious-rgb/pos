@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign In — {{ config('saas.platform_name', 'VMARKET POS') }}</title>
+    <title>Sign In — {{ config('saas.platform_name', 'Victorious Market POS') }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -235,9 +235,9 @@
 
     <div class="login-card">
         <div class="brand-header">
-            <div class="brand-icon">📦</div>
-            <h1>{{ config('saas.platform_name', 'VMARKET POS') }}</h1>
-            <p>Multi-Tenant & Multi-Branch POS Platform</p>
+            <div class="brand-icon">🏪</div>
+            <h1>{{ config('saas.platform_name', 'Victorious Market POS') }}</h1>
+            <p>Modern Retail & Multi-Branch Cloud POS</p>
         </div>
 
         @if(session('success'))
@@ -322,6 +322,11 @@
                 });
             }
         </script>
+    </div>
+
+    <div style="text-align: center; margin-top: 1.5rem; font-size: 0.8rem; color: #64748b;">
+        Powered by <strong style="color: #94a3b8;">Victorious Market</strong> — Your Trusted Online Market<br>
+        <a href="https://www.victoriousmarket.com.ng" target="_blank" rel="noopener" style="color: #3b82f6; text-decoration: none; font-size: 0.75rem; margin-top: 0.35rem; display: inline-block; font-weight: 600;">www.victoriousmarket.com.ng</a>
     </div>
 
 </body>

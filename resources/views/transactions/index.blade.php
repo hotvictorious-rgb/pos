@@ -1211,6 +1211,7 @@ function viewGenericDetails(title, refNo, dateStr, partyLabel, partyVal, badgeTe
  * Universal Printable Voucher Generator
  */
 function printGenericVoucher(title, refNo, dateStr, partyLabel, partyVal, badgeText, badgeColor, items, totalSummary, staffName, notes) {
+    const activeStoreName = "{{ addslashes($tenant->name ?? ($settings->businessName ?? 'Victorious Market POS')) }}";
     const printWin = window.open('', '_blank', 'width=800,height=900');
     if (!printWin) {
         alert('Please allow popups to print voucher.');
@@ -1258,7 +1259,7 @@ function printGenericVoucher(title, refNo, dateStr, partyLabel, partyVal, badgeT
         </div>
 
         <div class="header">
-            <div class="company">HYSAM VENTURES</div>
+            <div class="company">${activeStoreName}</div>
             <div style="font-size: 13px; color: #555;">Official Inventory & Financial Management System</div>
             <div class="doc-title">${title}</div>
         </div>
@@ -1301,8 +1302,9 @@ function printGenericVoucher(title, refNo, dateStr, partyLabel, partyVal, badgeT
             </div>
         </div>
 
-        <div style="text-align: center; font-size: 11px; color: #888; margin-top: 40px;">
-            Hysam Ventures ERP · Generated on ${new Date().toLocaleString()} · Permanent Immutable Audit Record
+        <div style="text-align: center; font-size: 11px; color: #64748b; margin-top: 40px; padding-top: 15px; border-top: 1px dashed #cbd5e1;">
+            <div style="font-weight: 700; color: #1e293b; margin-bottom: 3px;">Victorious Market POS · Powered by Victorious Market — Your Trusted Online Market</div>
+            <div>Generated on ${new Date().toLocaleString()} · Official Immutable Audit Record</div>
         </div>
 
         <script>

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'Hysam Ventures') – Inventory & POS</title>
+    <title>@yield('title', 'Dashboard') – {{ $displayBrandName ?? config('saas.platform_name', 'Victorious Market POS') }}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <!-- PWA & Mobile Web Capabilities -->
     <link rel="manifest" href="{{ asset('manifest.json') }}">
     <meta name="theme-color" content="#0c2340">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Victorious POS">
+    <meta name="apple-mobile-web-app-title" content="Victorious Market POS">
     <link rel="apple-touch-icon" href="{{ asset('icons/apple-touch-icon.png') }}">
     <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('icons/icon-192x192.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1389,7 +1389,7 @@
             $tenantModel = \App\Models\Tenant::find($activeTenantId);
             $displayBrandName = ($activeTenantId !== 'default-tenant' && $tenantModel) 
                 ? $tenantModel->name 
-                : config('saas.platform_name', 'VMARKET POS');
+                : config('saas.platform_name', 'Victorious Market POS');
 
             $globalAuthUser = auth()->user();
             $currentRole = $globalAuthUser->role ?? 'admin';
@@ -1415,7 +1415,7 @@
             <div class="brand-icon">📦</div>
             <div class="brand-text">
                 <h1>{{ $displayBrandName }}</h1>
-                <p>{{ $activeTenantId === 'default-tenant' ? 'Platform Master Suite' : 'Multi-Branch POS' }}</p>
+                <p>{{ $activeTenantId === 'default-tenant' ? 'Platform Master Suite' : 'Victorious Market POS' }}</p>
             </div>
             <button type="button" class="mobile-close-sidebar" onclick="toggleMobileSidebar(false)" aria-label="Close navigation menu">✕</button>
         </div>
@@ -1660,6 +1660,17 @@
             @endif
 
             @yield('content')
+
+            <footer class="main-footer no-print" style="margin-top: 3rem; padding: 1.5rem 0; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; font-size: 0.8rem; color: var(--text-muted);">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-weight: 700; color: #f8fafc;">Victorious Market POS</span>
+                    <span>•</span>
+                    <span>Powered by <strong>Victorious Market</strong> — Your Trusted Online Market</span>
+                </div>
+                <div>
+                    <a href="https://www.victoriousmarket.com.ng" target="_blank" rel="noopener" style="color: #3b82f6; text-decoration: none; font-weight: 600;">www.victoriousmarket.com.ng</a>
+                </div>
+            </footer>
         </main>
     </div>
 

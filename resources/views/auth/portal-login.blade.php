@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $meta['title'] }} — {{ config('saas.platform_name', 'VMARKET POS') }}</title>
+    <title>{{ $meta['title'] }} — {{ config('saas.platform_name', 'Victorious Market POS') }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -366,7 +366,7 @@
 
         <div style="margin-top: 1.25rem; text-align: center;">
             <a href="{{ url('/') }}" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">
-                ← Back to VMarket POS Home
+                ← Back to Victorious Market POS Home
             </a>
         </div>
 
@@ -379,6 +379,11 @@
                 <a href="{{ route('portal.super_admin_employee.login') }}" class="portal-switch-link {{ $meta['portal'] === 'super-admin-employee' ? 'active' : '' }}">👥 Platform Staff</a>
             </div>
         </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 1.5rem; font-size: 0.8rem; color: #64748b;">
+        Powered by <strong style="color: #94a3b8;">Victorious Market</strong> — Your Trusted Online Market<br>
+        <a href="https://www.victoriousmarket.com.ng" target="_blank" rel="noopener" style="color: #3b82f6; text-decoration: none; font-size: 0.75rem; margin-top: 0.35rem; display: inline-block; font-weight: 600;">www.victoriousmarket.com.ng</a>
     </div>
 
 </body>

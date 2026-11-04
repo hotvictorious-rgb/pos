@@ -447,7 +447,8 @@ class WhatsAppService
         }
 
         $versionTag = config('version.tag', 'v1.0.1');
-        $msg .= "🔒 *Automated Deep Report — Victorious Market POS ({$versionTag})*\n";
+        $msg .= "🔒 *Victorious Market POS ({$versionTag})*\n";
+        $msg .= "Powered by Victorious Market — Your Trusted Online Market\n";
         $msg .= "Generated at: " . now()->format('H:i:s d/m/Y');
 
         return $msg;

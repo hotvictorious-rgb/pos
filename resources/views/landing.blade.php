@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VMARKET POS – The Modern Cloud POS & Inventory Built for Nigerian Commerce</title>
+    <title>Victorious Market POS – Modern Cloud Retail & Multi-Branch Inventory for Nigerian Commerce</title>
     <meta name="description" content="The cloud POS and inventory management system designed specifically for Nigerian supermarkets, wholesale depots, and retail chains. Reconcile bank transfers, prevent stock theft, track customer debt, and manage multiple branches.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1184,8 +1184,8 @@
             <a href="{{ route('landing') }}" class="brand-logo">
                 <div class="logo-symbol">🛡️</div>
                 <div class="logo-text">
-                    <div class="logo-title">VMARKET<span>POS</span></div>
-                    <div class="logo-tag">🇳🇬 NIGERIAN RETAIL CLOUD</div>
+                    <div class="logo-title">VICTORIOUS MARKET <span>POS</span></div>
+                    <div class="logo-tag">🇳🇬 YOUR TRUSTED RETAIL CLOUD</div>
                 </div>
             </a>
 
@@ -1232,12 +1232,12 @@
     <section class="hero">
         <div class="container">
             <div class="hero-badge">
-                🇳🇬 THE #1 CLOUD POS & INVENTORY SYSTEM FOR NIGERIAN COMMERCE
+                ✨ POWERED BY VICTORIOUS MARKET — YOUR TRUSTED ONLINE MARKET
             </div>
 
             <h1 class="hero-title">
-                Run Your Supermarket & Wholesale Across Nigeria <br />
-                <span class="gradient-text">Without Stock Leaks or Missing Money.</span>
+                Victorious Market POS <br />
+                <span class="gradient-text">Run Your Supermarket & Wholesale With Zero Leakage.</span>
             </h1>
 
             <p class="hero-subtitle">
@@ -1445,7 +1445,7 @@
                         Cashiers getting tricked by SMS fake credit alerts or releasing goods before transfer verification.
                     </p>
                     <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VMARKET FIX:</div>
+                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VICTORIOUS MARKET POS SOLUTION:</div>
                         <p style="font-size: 0.88rem; color: #cbd5e1; margin-top: 0.3rem;">
                             Dedicated Split-Tender recording that matches Moniepoint, OPay, and bank payment references with instant cashier audit logs.
                         </p>
@@ -1460,7 +1460,7 @@
                         Regular buyers taking goods on credit ("pay next week"), recorded in physical exercise books that get lost or manipulated.
                     </p>
                     <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VMARKET FIX:</div>
+                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VICTORIOUS MARKET POS SOLUTION:</div>
                         <p style="font-size: 0.88rem; color: #cbd5e1; margin-top: 0.3rem;">
                             Automated Customer Debt Ledger with hard credit limits, balance statements, and WhatsApp payment reminders.
                         </p>
@@ -1475,7 +1475,7 @@
                         Buying goods in wholesale cartons but selling some as full cartons and some as loose units, leading to missing stock.
                     </p>
                     <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VMARKET FIX:</div>
+                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VICTORIOUS MARKET POS SOLUTION:</div>
                         <p style="font-size: 0.88rem; color: #cbd5e1; margin-top: 0.3rem;">
                             Seamless carton breaking and unit deduction with automated retail and wholesale pricing controls.
                         </p>
@@ -1490,7 +1490,7 @@
                         Operating shops in Lekki, Ikeja, or Kano while trusting branch managers on phone calls for stock and cash balances.
                     </p>
                     <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VMARKET FIX:</div>
+                        <div style="color: var(--success); font-weight: 700; font-size: 0.85rem;">✓ VICTORIOUS MARKET POS SOLUTION:</div>
                         <p style="font-size: 0.88rem; color: #cbd5e1; margin-top: 0.3rem;">
                             Live multi-branch consolidation. See real-time cash collections, inter-branch waybills, and physical stock from your phone.
                         </p>
@@ -1600,7 +1600,7 @@
                 <div class="section-tag">INDUSTRY EXCELLENCE</div>
                 <h2 class="section-title">Powering Nigerian Retail Across All Sectors</h2>
                 <p class="section-subtitle">
-                    Whether you operate a neighborhood mini-mart or a nationwide distribution network, VMarket scales effortlessly.
+                    Whether you operate a neighborhood mini-mart or a nationwide distribution network, Victorious Market POS scales effortlessly.
                 </p>
             </div>
 
@@ -1740,7 +1740,7 @@
                 <div class="section-tag">TESTED ACROSS NIGERIA</div>
                 <h2 class="section-title">What Nigerian Store Owners Say</h2>
                 <p class="section-subtitle">
-                    Real merchants who switched from paper books and clunky desktop software to VMarket POS.
+                    Real merchants who switched from paper books and clunky desktop software to Victorious Market POS.
                 </p>
             </div>
 
@@ -1760,7 +1760,7 @@
 
                 <div class="testimonial-card">
                     <div class="testimonial-quote">
-                        "Before VMarket, our staff in Kano and Abuja kept giving different stories about missing bags of rice during inter-warehouse transfers. Now every waybill must be confirmed digitally. Our stock losses dropped to zero."
+                        "Before Victorious Market POS, our staff in Kano and Abuja kept giving different stories about missing bags of rice during inter-warehouse transfers. Now every waybill must be confirmed digitally. Our stock losses dropped to zero."
                     </div>
                     <div class="testimonial-author">
                         <div class="author-avatar">SB</div>
@@ -1773,7 +1773,7 @@
 
                 <div class="testimonial-card">
                     <p class="testimonial-quote">
-                        "Managing 4 stores across Onitsha Main Market and Asaba used to give me high blood pressure. With VMarket on my tablet, I see every sale, debtor payment, and cash balance as it happens from my house."
+                        "Managing 4 stores across Onitsha Main Market and Asaba used to give me high blood pressure. With Victorious Market POS on my tablet, I see every sale, debtor payment, and cash balance as it happens from my house."
                     </p>
                     <div class="testimonial-author">
                         <div class="author-avatar">KO</div>
@@ -1794,18 +1794,18 @@
                 <div class="section-tag">FREQUENTLY ASKED QUESTIONS</div>
                 <h2 class="section-title">Got Questions? We Have Answers.</h2>
                 <p class="section-subtitle">
-                    Everything you need to know about getting started with VMarket POS in your store.
+                    Everything you need to know about getting started with Victorious Market POS in your store.
                 </p>
             </div>
 
             <div class="faq-accordion">
                 <div class="faq-item">
                     <div class="faq-question">
-                        <span>Does VMarket work with my existing thermal receipt printer & scanner?</span>
+                        <span>Does Victorious Market POS work with my existing thermal receipt printer & scanner?</span>
                         <span class="faq-icon">+</span>
                     </div>
                     <div class="faq-answer">
-                        Yes! VMarket POS works seamlessly with standard 58mm and 80mm thermal receipt printers (Xprinter, Epson, POS-58, etc.) via USB, Bluetooth, or LAN, as well as standard USB and wireless barcode scanners. You do not need to buy expensive proprietary hardware.
+                        Yes! Victorious Market POS works seamlessly with standard 58mm and 80mm thermal receipt printers (Xprinter, Epson, POS-58, etc.) via USB, Bluetooth, or LAN, as well as standard USB and wireless barcode scanners. You do not need to buy expensive proprietary hardware.
                     </div>
                 </div>
 
@@ -1835,7 +1835,7 @@
                         <span class="faq-icon">+</span>
                     </div>
                     <div class="faq-answer">
-                        Yes! VMarket includes an automated Customer Debt Book. When a customer pays partially or takes goods on approved credit, their balance updates automatically. You can set maximum credit ceilings and record partial debt repayments with full receipt printing.
+                        Yes! Victorious Market POS includes an automated Customer Debt Book. When a customer pays partially or takes goods on approved credit, their balance updates automatically. You can set maximum credit ceilings and record partial debt repayments with full receipt printing.
                     </div>
                 </div>
 
@@ -1845,7 +1845,7 @@
                         <span class="faq-icon">+</span>
                     </div>
                     <div class="faq-answer">
-                        Yes! Because VMarket is 100% cloud-based, you can log in as a Tenant Admin from your iPhone, Android phone, tablet, or laptop from anywhere in Nigeria or abroad and see real-time sales, cash drawer balances, and inventory levels.
+                        Yes! Because Victorious Market POS is 100% cloud-based, you can log in as a Tenant Admin from your iPhone, Android phone, tablet, or laptop from anywhere in Nigeria or abroad and see real-time sales, cash drawer balances, and inventory levels.
                     </div>
                 </div>
             </div>
@@ -1856,7 +1856,7 @@
     <div class="container">
         <div class="cta-banner">
             <h2>Ready to Modernize Your Nigerian Retail Business?</h2>
-            <p>Join smart supermarket owners and wholesale merchants across Lagos, Kano, Abuja, and Port Harcourt running their stores on VMarket POS.</p>
+            <p>Join smart supermarket owners and wholesale merchants across Lagos, Kano, Abuja, and Port Harcourt running their stores on Victorious Market POS.</p>
             <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
                 <a href="{{ route('saas.register') }}" class="btn btn-primary" style="padding: 1rem 2.2rem; font-size: 1.1rem;">
                     🚀 Create Your Store in 60 Seconds
@@ -1876,12 +1876,12 @@
                     <div class="brand-logo">
                         <div class="logo-symbol">🛡️</div>
                         <div class="logo-text">
-                            <div class="logo-title">VMARKET<span>POS</span></div>
-                            <div class="logo-tag">🇳🇬 NIGERIAN COMMERCE CLOUD</div>
+                            <div class="logo-title">VICTORIOUS MARKET <span>POS</span></div>
+                            <div class="logo-tag">🇳🇬 POWERED BY VICTORIOUS MARKET</div>
                         </div>
                     </div>
                     <p>
-                        The high-performance cloud point of sale and inventory management platform designed specifically for Nigerian supermarkets, wholesale commodity depots, and retail chains.
+                        The high-performance cloud point of sale and inventory management platform designed specifically for Nigerian supermarkets, wholesale commodity depots, and retail chains. Powered by Victorious Market — Your Trusted Online Market.
                     </p>
                 </div>
 
@@ -1908,17 +1908,17 @@
                 <div>
                     <h4 class="footer-heading">Support & Contact</h4>
                     <ul class="footer-links">
-                        <li style="color: var(--text-muted);">📍 Victoria Island, Lagos, Nigeria</li>
-                        <li style="color: var(--text-muted);">✉️ info@vmarketpos.com</li>
-                        <li style="color: var(--text-muted);">📞 +234 800 000 0000</li>
-                        <li><a href="{{ route('saas.register') }}" class="footer-link" style="color: var(--success); font-weight: 700;">💬 WhatsApp Support</a></li>
+                        <li style="color: var(--text-muted);">📍 Nigeria</li>
+                        <li style="color: var(--text-muted);">🌐 www.victoriousmarket.com.ng</li>
+                        <li style="color: var(--text-muted);">💬 WhatsApp On-Demand Reporting</li>
+                        <li><a href="{{ route('saas.register') }}" class="footer-link" style="color: var(--success); font-weight: 700;">Start Free Setup</a></li>
                     </ul>
                 </div>
             </div>
 
             <div class="footer-bottom">
                 <div class="footer-copy">
-                    &copy; {{ date('Y') }} VMarket POS Platform. Built for Nigerian Retailers & Wholesalers. All rights reserved.
+                    &copy; {{ date('Y') }} Victorious Market POS · Powered by Victorious Market — Your Trusted Online Market. All rights reserved.
                 </div>
                 <div style="display: flex; gap: 1.5rem;">
                     <a href="{{ route('landing') }}" class="footer-link">Privacy Policy</a>
