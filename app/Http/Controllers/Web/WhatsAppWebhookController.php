@@ -23,6 +23,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class WhatsAppWebhookController extends Controller
@@ -91,7 +92,7 @@ class WhatsAppWebhookController extends Controller
         $rawPhone = $message['from'] ?? '';
         $senderPhone = $this->whatsAppService->formatPhoneNumber($rawPhone);
 
-        if (empty($senderPhone) || empty($text)) {
+        if ($senderPhone === '' || $text === '') {
             return response('EVENT_RECEIVED', 200);
         }
 
@@ -158,52 +159,103 @@ class WhatsAppWebhookController extends Controller
             $userWarehouseId = ($user && !$isExecutive) ? $user->warehouse_id : null;
 
             // ─────────────────────────────────────────────────────────────
-            // 3. COMMAND DISPATCHER (DETERMINISTIC, RESILIENT & EXTENDED)
+            // 3. INTERACTIVE USSD COMMAND & NAVIGATION ENGINE
             // ─────────────────────────────────────────────────────────────
-            $parts = preg_split('/\s+/', $text, 2);
+            $rawInput = trim($text);
+            $upperInput = strtoupper($rawInput);
+
+            // Nav session state (15 min per user session)
+            $stateKey = "wa_nav_state_{$senderPhone}";
+            $currentState = Cache::get($stateKey, 'ROOT');
+
+            // A. Global Reset / Main Menu Navigation
+            if ($upperInput === '0' || $upperInput === '00' || in_array($upperInput, ['MENU', 'HELP', 'HI', 'HELLO', 'START', 'COMMANDS', 'INFO', 'MAIN', 'HOME', 'RESET', 'CANCEL'])) {
+                Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                return response('EVENT_RECEIVED', 200);
+            }
+
+            // B. Direct USSD Shortcode Notation (e.g. 1.1, 1*1, 2.1 Peak Milk, 3.2 Okon)
+            if (preg_match('/^(\d+)[\.\*](\d+)(?:\s+(.*))?$/', $rawInput, $matches)) {
+                $cat = (int) $matches[1];
+                $action = (int) $matches[2];
+                $extra = trim($matches[3] ?? '');
+
+                $this->handleUssdDirectAction($cat, $action, $extra, $senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $user, $ownerSetting);
+                return response('EVENT_RECEIVED', 200);
+            }
+
+            // C. Priority Global Direct Keywords (Always execute directly)
+            $parts = preg_split('/\s+/', $rawInput, 2);
             $firstWord = strtoupper(trim($parts[0] ?? ''));
             $argument = trim($parts[1] ?? '');
 
             switch ($firstWord) {
-                case '1':
                 case 'REPORT':
                 case 'CLOSE':
                 case 'CLOSING':
                 case 'SUMMARY':
                 case 'AUDIT':
                     $this->dispatchOnDemandReport($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $argument);
-                    break;
+                    return response('EVENT_RECEIVED', 200);
 
-                case '2':
                 case 'SALES':
                 case 'PULSE':
                 case 'TODAY':
                 case 'REVENUE':
                     $this->dispatchSalesPulse($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
-                    break;
+                    return response('EVENT_RECEIVED', 200);
 
-                case '3':
                 case 'CASH':
                 case 'DRAWER':
                 case 'BALANCE':
                 case 'TILL':
                     $this->dispatchCashDrawer($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $argument);
-                    break;
+                    return response('EVENT_RECEIVED', 200);
 
-                case '4':
                 case 'SOLD':
                 case 'ITEMS':
                 case 'BREAKDOWN':
                 case 'PRODUCTS_SOLD':
                     $this->dispatchSoldItems($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
-                    break;
+                    return response('EVENT_RECEIVED', 200);
 
-                case '5':
+                case 'LOW':
+                case 'ALERT':
+                case 'RESTOCK':
+                case 'OUT':
+                    $this->dispatchLowStockAlert($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                    return response('EVENT_RECEIVED', 200);
+
+                case 'DEBT':
+                case 'DEBTORS':
+                case 'CREDIT':
+                case 'RECEIVABLES':
+                    $this->dispatchCustomerDebtBook($senderPhone, $tenantId, $argument);
+                    return response('EVENT_RECEIVED', 200);
+
+                case 'CASHIERS':
+                case 'SHIFTS':
+                case 'STAFF':
+                case 'TILLS':
+                    $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                    return response('EVENT_RECEIVED', 200);
+
+                case 'TRANSFERS':
+                case 'WAYBILLS':
+                case 'DISPATCH':
+                    $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                    return response('EVENT_RECEIVED', 200);
+
+                case 'LOG':
+                case 'ACTIVITY':
+                case 'TIMELINE':
+                case 'HISTORY':
+                case 'VOIDS':
+                    $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                    return response('EVENT_RECEIVED', 200);
+
                 case 'STOCK':
-                case 'PRICE':
-                case 'CHECK':
-                case 'FIND':
-                case 'INVENTORY':
                     if (strtoupper($argument) === 'ALL' || empty($argument)) {
                         if (strtoupper($argument) === 'ALL') {
                             $this->dispatchAllStockSummary($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
@@ -213,72 +265,34 @@ class WhatsAppWebhookController extends Controller
                     } else {
                         $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $argument);
                     }
-                    break;
+                    return response('EVENT_RECEIVED', 200);
+            }
 
-                case '6':
-                case 'ALL':
-                case 'ALL_STOCK':
-                    $this->dispatchAllStockSummary($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
-                    break;
+            // D. Awaiting Input States (From previous step prompts)
+            if ($currentState === 'AWAIT_STOCK_QUERY') {
+                Cache::put($stateKey, 'STOCK', now()->addMinutes(30));
+                $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $rawInput);
+                return response('EVENT_RECEIVED', 200);
+            }
 
-                case '7':
-                case 'LOW':
-                case 'ALERT':
-                case 'RESTOCK':
-                case 'OUT':
-                    $this->dispatchLowStockAlert($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
-                    break;
+            if ($currentState === 'AWAIT_DEBT_QUERY') {
+                Cache::put($stateKey, 'DEBT', now()->addMinutes(30));
+                $this->dispatchCustomerDebtBook($senderPhone, $tenantId, $rawInput);
+                return response('EVENT_RECEIVED', 200);
+            }
 
-                case '8':
-                case 'LOG':
-                case 'ACTIVITY':
-                case 'TIMELINE':
-                case 'HISTORY':
-                case 'VOIDS':
-                    $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
-                    break;
+            // E. Contextual State Number Navigation
+            $handled = $this->handleContextualNav($currentState, $firstWord, $argument, $senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $user, $ownerSetting);
+            if ($handled) {
+                return response('EVENT_RECEIVED', 200);
+            }
 
-                case '9':
-                case 'DEBT':
-                case 'DEBTORS':
-                case 'CREDIT':
-                case 'RECEIVABLES':
-                    $this->dispatchCustomerDebtBook($senderPhone, $tenantId, $argument);
-                    break;
-
-                case '10':
-                case 'CASHIERS':
-                case 'SHIFTS':
-                case 'STAFF':
-                case 'TILLS':
-                    $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
-                    break;
-
-                case '11':
-                case 'TRANSFERS':
-                case 'WAYBILLS':
-                case 'DISPATCH':
-                    $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
-                    break;
-
-                case 'MENU':
-                case 'HELP':
-                case 'HI':
-                case 'HELLO':
-                case 'START':
-                case 'COMMANDS':
-                case 'INFO':
-                    $this->dispatchHelpMenu($senderPhone, $user, $ownerSetting, $userWarehouseId, $isExecutive);
-                    break;
-
-                default:
-                    // Smart Product Lookup Fallback: If user sent a product name or barcode directly
-                    if ($this->hasMatchingProducts($tenantId, $text)) {
-                        $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $text);
-                    } else {
-                        $this->dispatchHelpMenu($senderPhone, $user, $ownerSetting, $userWarehouseId, $isExecutive);
-                    }
-                    break;
+            // F. Fallback: Smart Product Search or Root Main Menu
+            if ($this->hasMatchingProducts($tenantId, $rawInput)) {
+                $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $rawInput);
+            } else {
+                Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
             }
         } catch (\Throwable $e) {
             Log::error("[WhatsApp Webhook Error] {$e->getMessage()}", [
@@ -506,7 +520,7 @@ class WhatsAppWebhookController extends Controller
             . "🏦 *Net Cash in Drawer:* ₦" . number_format($cashSales, 2) . "\n\n"
             . "Reply *SOLD* for item breakdown or *STOCK <item>* to check inventory.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -550,6 +564,11 @@ class WhatsAppWebhookController extends Controller
         $posTotal = (float) $sales->sum('posAmount');
         $transferTotal = (float) $sales->sum('transferAmount');
 
+        $cashPct = $totalSales > 0 ? round(($cashTotal / $totalSales) * 100, 1) : 0;
+        $posPct = $totalSales > 0 ? round(($posTotal / $totalSales) * 100, 1) : 0;
+        $transferPct = $totalSales > 0 ? round(($transferTotal / $totalSales) * 100, 1) : 0;
+        $avgBasket = $count > 0 ? ($totalSales / $count) : 0;
+
         $branchLabel = 'All Branches Combined';
         if ($targetWarehouseId) {
             $wh = Warehouse::withoutGlobalScopes()->find($targetWarehouseId);
@@ -561,19 +580,22 @@ class WhatsAppWebhookController extends Controller
         $msg = "⚡ *Live Sales Pulse — Victorious Market POS*\n"
             . "🏬 Branch: *{$branchLabel}*\n"
             . "📅 Date: *" . $targetDate->format('D, d M Y') . "{$timeLabel}*\n"
-            . "-------------------------------------\n"
-            . "💰 Gross Sales: *₦" . number_format($totalSales, 2) . "*\n"
-            . "🧾 Total Transactions: *{$count} invoice" . ($count === 1 ? '' : 's') . "*\n"
-            . "💵 Settled Immediately: *₦" . number_format($paidNow, 2) . "*\n"
-            . "⏳ Customer Credit / Unpaid: *₦" . number_format($debt, 2) . "*\n"
-            . "-------------------------------------\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💰 *Gross Sales:* ₦" . number_format($totalSales, 2) . "\n"
+            . "🧾 *Total Invoices:* {$count} completed\n"
+            . "🎯 *Average Basket:* ₦" . number_format($avgBasket, 2) . "\n"
+            . "💵 *Settled Immediately:* ₦" . number_format($paidNow, 2) . "\n";
+        if ($debt > 0.01) {
+            $msg .= "⏳ *Customer Credit / Unpaid:* ₦" . number_format($debt, 2) . "\n";
+        }
+        $msg .= "-----------------------------------------\n"
             . "💳 *Tender Breakdown:*\n"
-            . "   • Cash: *₦" . number_format($cashTotal, 2) . "*\n"
-            . "   • POS Terminal: *₦" . number_format($posTotal, 2) . "*\n"
-            . "   • Bank Transfer: *₦" . number_format($transferTotal, 2) . "*\n\n"
-            . "Reply *SOLD* for itemized product list or *REPORT* for closing audit.";
+            . "   • 💵 Cash in Drawer: *₦" . number_format($cashTotal, 2) . "* ({$cashPct}%)\n"
+            . "   • 💳 POS Terminal:   *₦" . number_format($posTotal, 2) . "* ({$posPct}%)\n"
+            . "   • 🏦 Bank Transfers: *₦" . number_format($transferTotal, 2) . "* ({$transferPct}%)\n\n"
+            . "Reply *1.3* for items sold or *1.4* for full closing audit.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *1.3* for Items Sold | *0* for Main Menu"));
     }
 
     /**
@@ -615,7 +637,7 @@ class WhatsAppWebhookController extends Controller
                 . "-------------------------------------\n"
                 . "ℹ️ No completed product sales recorded for this date.\n\n"
                 . "Reply *STOCK* to check shelf inventory or *SALES* for today's summary.";
-            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
             return;
         }
 
@@ -673,7 +695,7 @@ class WhatsAppWebhookController extends Controller
             . $lines . "\n"
             . "Reply *STOCK <name>* for deep item details or *CASH* for drawer cash.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -760,7 +782,7 @@ class WhatsAppWebhookController extends Controller
             . $topListText . "\n"
             . "Reply *STOCK <name>* for single item lookup or *SOLD* for sales breakdown.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -831,7 +853,7 @@ class WhatsAppWebhookController extends Controller
             . "   • Cash Refunds/Returns: *-₦" . number_format($cashRefunds, 2) . "*\n\n"
             . "⚠️ *Auditor Note:* Physically count cash in till before shift handover or bank deposit.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -902,7 +924,7 @@ class WhatsAppWebhookController extends Controller
             . $eventsText . "\n"
             . "Reply *REPORT* for closing reconciliation or *SOLD* for itemized sales.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -962,7 +984,7 @@ class WhatsAppWebhookController extends Controller
             $msg = "🟢 *Stock Health Clean — Victorious Market POS*\n"
                 . "🏬 Branch: *{$branchLabel}*\n"
                 . "All inventory items are currently above safety thresholds (> 5 units). No immediate reorders needed.";
-            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
             return;
         }
 
@@ -972,7 +994,7 @@ class WhatsAppWebhookController extends Controller
             . $itemsText . "\n"
             . "Reply *STOCK <name>* to check any other specific product.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -983,7 +1005,7 @@ class WhatsAppWebhookController extends Controller
     {
         if (empty($queryStr)) {
             $msg = "ℹ️ *How to check stock & prices:*\nReply *STOCK <product name or barcode>*\nExample: `STOCK milk` or `STOCK 10023`\n\n💡 *Tip:* You can also simply type the item name directly!";
-            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
             return;
         }
 
@@ -1003,7 +1025,7 @@ class WhatsAppWebhookController extends Controller
             $msg = "🔍 *No products found matching:* \"{$queryStr}\"\n\n"
                 . "• Please verify spelling or barcode and try again.\n"
                 . "• Reply *SOLD* to see what sold today or *LOW* for restock alerts.";
-            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
             return;
         }
 
@@ -1099,13 +1121,22 @@ class WhatsAppWebhookController extends Controller
         }
 
         $msg = "📦 *Product Intelligence Search: \"{$queryStr}\"*\n━━━━━━━━━━━━━━━━━━━━\n\n" . $results . "Reply *SOLD* for itemized sales breakdown or *REPORT* for closing audit.";
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
-     * Dispatch Help / Command Menu.
+     * Dispatch Help / Command Menu (Delegates to Root Main Menu).
      */
     protected function dispatchHelpMenu(string $phone, ?User $user, ?Setting $ownerSetting, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        Cache::put("wa_nav_state_{$phone}", 'ROOT', now()->addMinutes(30));
+        $this->dispatchRootMainMenu($phone, $user, $userWarehouseId, $isExecutive);
+    }
+
+    /**
+     * Dispatch Root Interactive USSD Console.
+     */
+    protected function dispatchRootMainMenu(string $phone, ?User $user, ?int $userWarehouseId, bool $isExecutive): void
     {
         $roleName = $user ? strtoupper($user->role) : 'EXECUTIVE STORE OWNER';
         $branchName = 'Consolidated (All Branches)';
@@ -1114,37 +1145,476 @@ class WhatsAppWebhookController extends Controller
             if ($wh) $branchName = $wh->name;
         }
 
-        $menu = "🤖 *Victorious Market POS — Executive Command Console*\n"
-            . "👤 Role: *{$roleName}*\n"
-            . "🏬 Scope: *{$branchName}*\n"
-            . "📅 Date: *" . now()->format('D, d M Y') . "*\n"
-            . "━━━━━━━━━━━━━━━━━━━━\n"
-            . "Reply with any number or keyword:\n\n"
-            . "1️⃣ *REPORT* — Full closing reconciliation audit\n"
-            . "   ↳ Tip: Send `REPORT yesterday` or `REPORT 2`\n\n"
-            . "2️⃣ *SALES*  — Live gross sales & tender breakdown\n"
-            . "   ↳ Tip: Send `SALES yesterday`\n\n"
-            . "3️⃣ *CASH*   — Reconciled cash in drawer for bank deposit\n"
-            . "   ↳ Cash Sales + Debt Recoveries - Refunds\n\n"
-            . "4️⃣ *SOLD*   — Products sold today & remaining shelf stock\n"
-            . "   ↳ Tip: Send `SOLD yesterday`\n\n"
-            . "5️⃣ *STOCK <item>* — Instant price, physical & branch availability\n"
-            . "   ↳ You can also just type any item name directly!\n\n"
-            . "6️⃣ *STOCK ALL* — Total inventory units & store retail value\n\n"
-            . "7️⃣ *LOW*    — Restock radar (≤ safety threshold)\n\n"
-            . "8️⃣ *LOG*    — Operational audit trail of everything that happened\n\n"
-            . "9️⃣ *DEBT*   — Customer debt book, top debtors & recoveries\n"
-            . "   ↳ Tip: Send `DEBT <name>` to check someone's balance\n\n"
-            . "🔟 *CASHIERS* — Cashier scoreboard & till sales breakdown\n\n"
-            . "1️⃣1️⃣ *WAYBILLS* — Active inter-branch transfers & cargo in-transit\n";
+        $nowStr = now()->format('D, d M Y | h:i A');
 
-        if ($isExecutive) {
-            $menu .= "\n💡 *Multi-Branch Option:*\nSend `REPORT 2` or `SALES 2` to audit any specific branch.\n";
+        $menu = "🏛️ *VICTORIOUS MARKET POS — USSD CONSOLE*\n"
+            . "👤 User: *{$roleName}* | 🏬 Scope: *{$branchName}*\n"
+            . "🕒 *{$nowStr}*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Select a service by replying with a number:\n\n"
+            . "1️⃣ 📊 *Sales & Revenue*\n"
+            . "   ↳ Pulse, Cash Drawer, Items Sold\n\n"
+            . "2️⃣ 📦 *Inventory & Stock*\n"
+            . "   ↳ Unit Balances, Valuation, Low Stock\n\n"
+            . "3️⃣ 💳 *Debt & Receivables*\n"
+            . "   ↳ Customer Debt Book, Debtor Profiles\n\n"
+            . "4️⃣ 💼 *Cashiers & Tills*\n"
+            . "   ↳ Shift Scoreboard, Sales per Till\n\n"
+            . "5️⃣ 🚚 *Logistics & Waybills*\n"
+            . "   ↳ Active Transfers & Cargo in Transit\n\n"
+            . "6️⃣ 🛡️ *Audit & Security*\n"
+            . "   ↳ Operational Timeline, Voids, Logs\n\n"
+            . "7️⃣ 📋 *Full Closing Audit (REPORT)*\n"
+            . "   ↳ Complete Financial Closing Reconciliation\n\n"
+            . "0️⃣ 🔄 *Reset / Refresh*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💡 *Fast USSD Shortcuts:* Reply *1.1*, *1.2*, *2.2*, *3.1*, etc.\n"
+            . "💡 *Direct Product Search:* Reply with any item name (e.g. *Milk*) anytime!";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu, "Reply with a number (1-7) or send *0* anytime to return here."));
+    }
+
+    /**
+     * Dispatch Sub-Menu 1: Sales & Revenue.
+     */
+    protected function dispatchSalesSubMenu(string $phone, ?User $user, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        $menu = "📊 *SALES & REVENUE MENU — VICTORIOUS POS*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Select an option by replying with a number:\n\n"
+            . "1️⃣ *Today's Sales Pulse* — Gross volume, ticket count & tenders\n"
+            . "2️⃣ *Cash Drawer Audit* — Till physical currency to bank\n"
+            . "3️⃣ *Items Sold Breakdown* — Units sold & remaining shelf stock\n"
+            . "4️⃣ *Full Closing Audit* — Complete financial reconciliation\n"
+            . "5️⃣ *Yesterday's Sales* — Previous day revenue summary\n\n"
+            . "0️⃣ 🔙 *Back to Main Menu*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💡 *Fast Shortcut:* Jump directly with *1.1*, *1.2*, *1.3*, *1.4*.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu, "Reply *1*, *2*, *3*, *4*, *5* or *0* for Main Menu."));
+    }
+
+    /**
+     * Dispatch Sub-Menu 2: Inventory & Stock.
+     */
+    protected function dispatchStockSubMenu(string $phone, ?User $user, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        $menu = "📦 *INVENTORY & STOCK MENU — VICTORIOUS POS*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Select an option by replying with a number:\n\n"
+            . "1️⃣ *Check Product Stock* — Physical units, location & prices\n"
+            . "   ↳ *Reply `2.1 <item>` (e.g. `2.1 Milk`)*\n"
+            . "2️⃣ *Store Inventory Valuation* — Total units & retail value\n"
+            . "3️⃣ *Low Stock Restock Radar* — Products at or below safety level\n"
+            . "4️⃣ *Inter-Branch Waybills* — Cargo currently in road transit\n\n"
+            . "0️⃣ 🔙 *Back to Main Menu*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💡 *Tip:* You can type any product name or barcode directly anytime!";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu, "Reply *1*, *2*, *3*, *4* or *0* for Main Menu."));
+    }
+
+    /**
+     * Dispatch Sub-Menu 3: Debt & Receivables.
+     */
+    protected function dispatchDebtSubMenu(string $phone, ?User $user, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        $menu = "💳 *DEBT & RECEIVABLES MENU — VICTORIOUS POS*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Select an option by replying with a number:\n\n"
+            . "1️⃣ *Debt Book Overview* — Total store receivables & top debtors\n"
+            . "2️⃣ *Lookup Customer Profile* — Search individual customer balance\n"
+            . "   ↳ *Reply `3.2 <name>` (e.g. `3.2 Okon`)*\n"
+            . "3️⃣ *Debts Recovered Today* — Debt collections received today\n\n"
+            . "0️⃣ 🔙 *Back to Main Menu*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💡 *Tip:* Send `DEBT <name>` anytime for instant single customer lookup.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu, "Reply *1*, *2*, *3* or *0* for Main Menu."));
+    }
+
+    /**
+     * Dispatch Sub-Menu 4: Cashiers & Tills.
+     */
+    protected function dispatchCashiersSubMenu(string $phone, ?User $user, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        $menu = "💼 *CASHIERS & TILLS MENU — VICTORIOUS POS*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Select an option by replying with a number:\n\n"
+            . "1️⃣ *Today's Cashier Scoreboard* — Invoices completed & sales per till\n"
+            . "2️⃣ *Yesterday's Cashier Scoreboard* — Previous day staff tally\n\n"
+            . "0️⃣ 🔙 *Back to Main Menu*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💡 *Fast Shortcut:* Reply *4.1* or *4.2* directly.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu, "Reply *1*, *2* or *0* for Main Menu."));
+    }
+
+    /**
+     * Dispatch Sub-Menu 5: Logistics & Waybills.
+     */
+    protected function dispatchLogisticsSubMenu(string $phone, ?User $user, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        $menu = "🚚 *LOGISTICS & WAYBILLS MENU — VICTORIOUS POS*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Select an option by replying with a number:\n\n"
+            . "1️⃣ *Active In-Transit Cargo* — Waybills on road between warehouses\n"
+            . "2️⃣ *All Recent Dispatches* — Completed transfer movements\n\n"
+            . "0️⃣ 🔙 *Back to Main Menu*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💡 *Fast Shortcut:* Reply *5.1* directly.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu, "Reply *1* or *0* for Main Menu."));
+    }
+
+    /**
+     * Dispatch Sub-Menu 6: Audit Log & Security.
+     */
+    protected function dispatchAuditSubMenu(string $phone, ?User $user, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        $menu = "🛡️ *AUDIT LOG & SECURITY MENU — VICTORIOUS POS*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Select an option by replying with a number:\n\n"
+            . "1️⃣ *Today's Operational Timeline* — Sales, voids, returns & system actions\n"
+            . "2️⃣ *Yesterday's Timeline* — Activity log for yesterday\n"
+            . "3️⃣ *Date-Specific Timeline* — Reply `6.3 YYYY-MM-DD`\n\n"
+            . "0️⃣ 🔙 *Back to Main Menu*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💡 *Fast Shortcut:* Reply *6.1* or *6.2* directly.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu, "Reply *1*, *2* or *0* for Main Menu."));
+    }
+
+    /**
+     * Handle Contextual USSD Menu Tree Navigation based on Current Session State.
+     */
+    protected function handleContextualNav(
+        string $currentState,
+        string $choice,
+        string $argument,
+        string $senderPhone,
+        string $tenantId,
+        string $tenantName,
+        Setting $setting,
+        ?int $userWarehouseId,
+        bool $isExecutive,
+        ?User $user,
+        ?Setting $ownerSetting
+    ): bool {
+        $stateKey = "wa_nav_state_{$senderPhone}";
+
+        switch ($currentState) {
+            case 'ROOT':
+                switch ($choice) {
+                    case '1':
+                        Cache::put($stateKey, 'SALES', now()->addMinutes(30));
+                        $this->dispatchSalesSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '2':
+                        Cache::put($stateKey, 'STOCK', now()->addMinutes(30));
+                        $this->dispatchStockSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '3':
+                        Cache::put($stateKey, 'DEBT', now()->addMinutes(30));
+                        $this->dispatchDebtSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '4':
+                        Cache::put($stateKey, 'CASHIERS', now()->addMinutes(30));
+                        $this->dispatchCashiersSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '5':
+                        Cache::put($stateKey, 'LOGISTICS', now()->addMinutes(30));
+                        $this->dispatchLogisticsSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '6':
+                        Cache::put($stateKey, 'AUDIT', now()->addMinutes(30));
+                        $this->dispatchAuditSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '7':
+                        $this->dispatchOnDemandReport($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    // Backward-compatible direct numbers from old menu:
+                    case '8':
+                        $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '9':
+                        $this->dispatchCustomerDebtBook($senderPhone, $tenantId, $argument);
+                        return true;
+                    case '10':
+                        $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '11':
+                        $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                        return true;
+                }
+                break;
+
+            case 'SALES':
+                switch ($choice) {
+                    case '1':
+                        $this->dispatchSalesPulse($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '2':
+                        $this->dispatchCashDrawer($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '3':
+                        $this->dispatchSoldItems($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '4':
+                        $this->dispatchOnDemandReport($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '5':
+                        $this->dispatchSalesPulse($senderPhone, $tenantId, $userWarehouseId, $isExecutive, 'yesterday');
+                        return true;
+                    case '0':
+                        Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                        $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                }
+                break;
+
+            case 'STOCK':
+                switch ($choice) {
+                    case '1':
+                        if (!empty($argument)) {
+                            $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $argument);
+                        } else {
+                            Cache::put($stateKey, 'AWAIT_STOCK_QUERY', now()->addMinutes(15));
+                            $msg = "🔍 *Check Product Stock*\n\nPlease reply with the product name or barcode (e.g. *Peak Milk* or *Indomie*).";
+                            $this->whatsAppService->sendMessage($senderPhone, $this->appendFooter($msg, "Reply with item name, or *0* to cancel"));
+                        }
+                        return true;
+                    case '2':
+                        $this->dispatchAllStockSummary($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '3':
+                        $this->dispatchLowStockAlert($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '4':
+                        $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '0':
+                        Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                        $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                }
+                break;
+
+            case 'DEBT':
+                switch ($choice) {
+                    case '1':
+                        $this->dispatchCustomerDebtBook($senderPhone, $tenantId, '');
+                        return true;
+                    case '2':
+                        if (!empty($argument)) {
+                            $this->dispatchCustomerDebtBook($senderPhone, $tenantId, $argument);
+                        } else {
+                            Cache::put($stateKey, 'AWAIT_DEBT_QUERY', now()->addMinutes(15));
+                            $msg = "👤 *Lookup Customer Debt Profile*\n\nPlease reply with the customer name, phone number, or code (e.g. *Okon* or *08012345678*).";
+                            $this->whatsAppService->sendMessage($senderPhone, $this->appendFooter($msg, "Reply with customer name, or *0* to cancel"));
+                        }
+                        return true;
+                    case '3':
+                        $this->dispatchCustomerDebtBook($senderPhone, $tenantId, 'today');
+                        return true;
+                    case '0':
+                        Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                        $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                }
+                break;
+
+            case 'CASHIERS':
+                switch ($choice) {
+                    case '1':
+                        $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '2':
+                        $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, 'yesterday');
+                        return true;
+                    case '0':
+                        Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                        $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                }
+                break;
+
+            case 'LOGISTICS':
+                switch ($choice) {
+                    case '1':
+                        $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                        return true;
+                    case '0':
+                        Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                        $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                }
+                break;
+
+            case 'AUDIT':
+                switch ($choice) {
+                    case '1':
+                        $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                        return true;
+                    case '2':
+                        $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, 'yesterday');
+                        return true;
+                    case '0':
+                        Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                        $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        return true;
+                }
+                break;
         }
 
-        $menu .= "\n_Victorious Market POS Engine_";
+        return false;
+    }
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu));
+    /**
+     * Handle Direct USSD Shortcode Syntax (e.g. 1.1, 1*1, 2.1, 3.2).
+     */
+    protected function handleUssdDirectAction(
+        int $cat,
+        int $action,
+        string $extra,
+        string $senderPhone,
+        string $tenantId,
+        string $tenantName,
+        Setting $setting,
+        ?int $userWarehouseId,
+        bool $isExecutive,
+        ?User $user,
+        ?Setting $ownerSetting
+    ): void {
+        $stateKey = "wa_nav_state_{$senderPhone}";
+
+        switch ($cat) {
+            case 1: // Sales & Revenue
+                Cache::put($stateKey, 'SALES', now()->addMinutes(30));
+                switch ($action) {
+                    case 1:
+                        $this->dispatchSalesPulse($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $extra);
+                        break;
+                    case 2:
+                        $this->dispatchCashDrawer($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $extra);
+                        break;
+                    case 3:
+                        $this->dispatchSoldItems($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $extra);
+                        break;
+                    case 4:
+                        $this->dispatchOnDemandReport($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $extra);
+                        break;
+                    case 5:
+                        $this->dispatchSalesPulse($senderPhone, $tenantId, $userWarehouseId, $isExecutive, 'yesterday');
+                        break;
+                    default:
+                        $this->dispatchSalesSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        break;
+                }
+                break;
+
+            case 2: // Inventory & Stock
+                Cache::put($stateKey, 'STOCK', now()->addMinutes(30));
+                switch ($action) {
+                    case 1:
+                        if (!empty($extra)) {
+                            $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $extra);
+                        } else {
+                            Cache::put($stateKey, 'AWAIT_STOCK_QUERY', now()->addMinutes(15));
+                            $msg = "🔍 *Check Product Stock*\n\nPlease reply with the product name or barcode (e.g. *Peak Milk* or *Indomie*).";
+                            $this->whatsAppService->sendMessage($senderPhone, $this->appendFooter($msg, "Reply with item name, or *0* for Main Menu"));
+                        }
+                        break;
+                    case 2:
+                        $this->dispatchAllStockSummary($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                        break;
+                    case 3:
+                        $this->dispatchLowStockAlert($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $extra);
+                        break;
+                    case 4:
+                        $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                        break;
+                    default:
+                        $this->dispatchStockSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        break;
+                }
+                break;
+
+            case 3: // Debt & Customers
+                Cache::put($stateKey, 'DEBT', now()->addMinutes(30));
+                switch ($action) {
+                    case 1:
+                        $this->dispatchCustomerDebtBook($senderPhone, $tenantId, '');
+                        break;
+                    case 2:
+                        if (!empty($extra)) {
+                            $this->dispatchCustomerDebtBook($senderPhone, $tenantId, $extra);
+                        } else {
+                            Cache::put($stateKey, 'AWAIT_DEBT_QUERY', now()->addMinutes(15));
+                            $msg = "👤 *Lookup Customer Debt Profile*\n\nPlease reply with the customer name, phone number, or code (e.g. *Okon* or *08012345678*).";
+                            $this->whatsAppService->sendMessage($senderPhone, $this->appendFooter($msg, "Reply with customer name, or *0* for Main Menu"));
+                        }
+                        break;
+                    case 3:
+                        $this->dispatchCustomerDebtBook($senderPhone, $tenantId, 'today');
+                        break;
+                    default:
+                        $this->dispatchDebtSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        break;
+                }
+                break;
+
+            case 4: // Cashiers & Tills
+                Cache::put($stateKey, 'CASHIERS', now()->addMinutes(30));
+                switch ($action) {
+                    case 1:
+                        $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $extra);
+                        break;
+                    case 2:
+                        $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, 'yesterday');
+                        break;
+                    default:
+                        $this->dispatchCashiersSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        break;
+                }
+                break;
+
+            case 5: // Logistics & Waybills
+                Cache::put($stateKey, 'LOGISTICS', now()->addMinutes(30));
+                switch ($action) {
+                    case 1:
+                        $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
+                        break;
+                    default:
+                        $this->dispatchLogisticsSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        break;
+                }
+                break;
+
+            case 6: // Audit Log & Security
+                Cache::put($stateKey, 'AUDIT', now()->addMinutes(30));
+                switch ($action) {
+                    case 1:
+                        $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $extra);
+                        break;
+                    case 2:
+                        $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, 'yesterday');
+                        break;
+                    default:
+                        $this->dispatchAuditSubMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                        break;
+                }
+                break;
+
+            case 7: // Full Closing Audit (REPORT)
+                $this->dispatchOnDemandReport($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $extra);
+                break;
+
+            default:
+                Cache::put($stateKey, 'ROOT', now()->addMinutes(30));
+                $this->dispatchRootMainMenu($senderPhone, $user, $userWarehouseId, $isExecutive);
+                break;
+        }
     }
 
     /**
@@ -1165,7 +1635,7 @@ class WhatsAppWebhookController extends Controller
 
             if (!$customer) {
                 $msg = "🔍 *No customer found matching:* \"{$query}\"\n\nReply *DEBT* to view top owing customers across the store.";
-                $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+                $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
                 return;
             }
 
@@ -1192,7 +1662,7 @@ class WhatsAppWebhookController extends Controller
                 . ($ledgerLines ?: "   • No recent transactions recorded.\n") . "\n"
                 . "Reply *DEBT* to view the full debtor summary.";
 
-            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
             return;
         }
 
@@ -1237,7 +1707,7 @@ class WhatsAppWebhookController extends Controller
             . $debtorLines . "\n"
             . "💡 *Tip:* Reply *DEBT <name>* to check a specific customer's payment history.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -1274,7 +1744,7 @@ class WhatsAppWebhookController extends Controller
                 . "-------------------------------------\n"
                 . "ℹ️ No cashier sales transactions recorded for this date.\n\n"
                 . "Reply *SALES* for today's summary or *CASH* for drawer balance.";
-            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
             return;
         }
 
@@ -1314,7 +1784,7 @@ class WhatsAppWebhookController extends Controller
             . $lines
             . "Reply *CASH* to verify physical currency or *REPORT* for closing audit.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
@@ -1344,7 +1814,7 @@ class WhatsAppWebhookController extends Controller
                 . "🟢 *No transfers currently in transit!*\n"
                 . "All warehouse waybills have been successfully received and stocked.\n\n"
                 . "Reply *STOCK ALL* to view total branch inventory holdings.";
-            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
             return;
         }
 
@@ -1369,17 +1839,19 @@ class WhatsAppWebhookController extends Controller
             . $lines
             . "Reply *REPORT* for daily reconciliation or *STOCK <item>* to check stock.";
 
-        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg, "Reply *1* for Sales Menu | *2* for Stock Menu | *0* for Main Menu"));
     }
 
     /**
-     * Append Universal Victorious Market Footer.
+     * Append Universal Victorious Market Footer with USSD Quick Navigation.
      */
-    protected function appendFooter(string $message): string
+    protected function appendFooter(string $message, ?string $quickNav = null): string
     {
+        $nav = $quickNav ?: "📲 *USSD Quick Navigation:*\nReply *0* for Main Menu | *1* for Sales | *2* for Stock";
         return $message
-            . "\n━━━━━━━━━━━━━━━━━━━━\n"
-            . "Powered by Victorious Market\n"
-            . "Your Trusted Online Market";
+            . "\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . $nav . "\n"
+            . "─────────────────────────\n"
+            . "Powered by Victorious Market POS";
     }
 }

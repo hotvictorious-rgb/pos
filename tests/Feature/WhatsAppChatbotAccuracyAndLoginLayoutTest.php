@@ -285,4 +285,84 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
         $employeeLoginRedirect = $this->get('/tenant-employee/login');
         $employeeLoginRedirect->assertRedirect('/login');
     }
+
+    public function test_whatsapp_ussd_nested_menu_navigation_and_shortcodes(): void
+    {
+        $this->createSetting([
+            'id' => 3,
+            'tenant_id' => 'tenant-ussd',
+            'owner_whatsapp_phone' => '2348030001122',
+        ]);
+
+        $sender = '2348030001122';
+
+        $sendMsg = function (string $text) use ($sender) {
+            return $this->postJson('/api/whatsapp/webhook', [
+                'entry' => [
+                    [
+                        'changes' => [
+                            [
+                                'value' => [
+                                    'messages' => [
+                                        [
+                                            'from' => $sender,
+                                            'type' => 'text',
+                                            'text' => ['body' => $text]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]);
+        };
+
+        // 1. Send '0' or 'MENU' to open Root USSD Console
+        $res = $sendMsg('0');
+        $res->assertStatus(200);
+        $this->assertEquals('ROOT', \Illuminate\Support\Facades\Cache::get("wa_nav_state_{$sender}"));
+
+        // 2. Send '1' from ROOT to enter Sales & Revenue Sub-Menu
+        $res = $sendMsg('1');
+        $res->assertStatus(200);
+        $this->assertEquals('SALES', \Illuminate\Support\Facades\Cache::get("wa_nav_state_{$sender}"));
+
+        // 3. Send '1' within SALES to trigger Today's Sales Pulse
+        $res = $sendMsg('1');
+        $res->assertStatus(200);
+
+        // 4. Send '0' within SALES to return to ROOT
+        $res = $sendMsg('0');
+        $res->assertStatus(200);
+        $this->assertEquals('ROOT', \Illuminate\Support\Facades\Cache::get("wa_nav_state_{$sender}"));
+
+        // 5. Direct USSD shortcode '1.1' (Sales Pulse)
+        $res = $sendMsg('1.1');
+        $res->assertStatus(200);
+
+        // 6. Direct USSD shortcode '1*2' (Cash Drawer)
+        $res = $sendMsg('1*2');
+        $res->assertStatus(200);
+
+        // 7. Direct USSD shortcode '2.2' (Stock Valuation)
+        $res = $sendMsg('2.2');
+        $res->assertStatus(200);
+
+        // 8. Direct USSD shortcode '3.1' (Debt Overview)
+        $res = $sendMsg('3.1');
+        $res->assertStatus(200);
+
+        // 9. Direct USSD shortcode '4.1' (Cashier Scoreboard)
+        $res = $sendMsg('4.1');
+        $res->assertStatus(200);
+
+        // 10. Direct USSD shortcode '5.1' (Waybills)
+        $res = $sendMsg('5.1');
+        $res->assertStatus(200);
+
+        // 11. Direct USSD shortcode '6.1' (Audit Timeline)
+        $res = $sendMsg('6.1');
+        $res->assertStatus(200);
+    }
 }
