@@ -161,7 +161,18 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
             'createdAt' => now()->toIso8601String(),
         ]);
 
-        // Test list of all supported commands (words, numeric shortcuts, dates, and direct product names)
+        \App\Models\SaleItem::create([
+            'id' => 1,
+            'tenant_id' => 'tenant-test',
+            'saleId' => $sale->id,
+            'productId' => $prod->id,
+            'productName' => $prod->name,
+            'quantity' => 2,
+            'unitPrice' => 2500,
+            'totalPrice' => 5000,
+        ]);
+
+        // Test list of all supported commands (words, numeric shortcuts, dates, items sold, inventory, and direct product names)
         $testCommands = [
             'MENU',
             'HELP',
@@ -175,9 +186,17 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
             'CASH',
             'CASH yesterday',
             '4',
-            'LOW',
+            'SOLD',
+            'SOLD yesterday',
             '5 Peak',
             'STOCK Peak',
+            'STOCK ALL',
+            '6',
+            '7',
+            'LOW',
+            '8',
+            'LOG',
+            'ACTIVITY',
             'Peak Milk 400g', // Direct product name without 'STOCK' prefix
         ];
 
