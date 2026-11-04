@@ -181,6 +181,11 @@ class UserController extends Controller
                     }
                 }
 
+                $whatsappPhone = null;
+                if ($request->filled('whatsapp_phone')) {
+                    $whatsappPhone = app(\App\Services\Notification\WhatsAppService::class)->formatPhoneNumber($request->whatsapp_phone);
+                }
+
                 $createdUser = User::create([
                     'id' => $userId,
                     'tenant_id' => $tenantId,
@@ -191,6 +196,7 @@ class UserController extends Controller
                     'warehouse_id' => $warehouseId,
                     'disabled' => false,
                     'permissions' => $permissions,
+                    'whatsapp_phone' => $whatsappPhone,
                 ]);
 
                 Activity::create([
@@ -422,6 +428,17 @@ class UserController extends Controller
         $user->warehouse_id = $newWarehouseId;
         $user->permissions = $permissions;
 
+        if ($request->filled('whatsapp_phone')) {
+            $formattedPhone = app(\App\Services\Notification\WhatsAppService::class)->formatPhoneNumber($request->whatsapp_phone);
+            if ($formattedPhone !== $user->whatsapp_phone) {
+                $user->whatsapp_phone = $formattedPhone;
+                $user->whatsapp_verified_at = null; // Reset verification if phone changed
+            }
+        } elseif ($request->exists('whatsapp_phone')) {
+            $user->whatsapp_phone = null;
+            $user->whatsapp_verified_at = null;
+        }
+
         if ($request->filled('password')) {
             $request->validate(['password' => PasswordPolicy::rules(true)], PasswordPolicy::messages());
             $user->password = Hash::make($request->password);
@@ -507,5 +524,52 @@ class UserController extends Controller
         ]);
 
         return redirect()->route('users.index')->with('success', "✓ Password for {$user->name} updated successfully.");
+    }
+
+    /**
+     * Generate 1-Tap Verification Token and WhatsApp Deep-link for Worker.
+     */
+    public function generateWhatsAppToken(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        $code = (string) random_int(1000, 9999);
+        $user->whatsapp_verify_token = $code;
+        $user->whatsapp_verify_expires_at = now()->addMinutes(15);
+        $user->save();
+
+        $botPhone = config('whatsapp.meta.phone_number', '2349040503385');
+        $botPhoneClean = preg_replace('/[^0-9]/', '', $botPhone);
+        if (empty($botPhoneClean)) {
+            $botPhoneClean = '2349040503385';
+        }
+
+        $prefilledText = "VERIFY {$code}";
+        $waLink = "https://wa.me/{$botPhoneClean}?text=" . urlencode($prefilledText);
+
+        return response()->json([
+            'success' => true,
+            'code' => $code,
+            'bot_phone' => $botPhoneClean,
+            'wa_link' => $waLink,
+            'expires_at' => $user->whatsapp_verify_expires_at->toIso8601String(),
+            'is_verified' => !empty($user->whatsapp_verified_at),
+            'whatsapp_phone' => $user->whatsapp_phone,
+        ]);
+    }
+
+    /**
+     * Check Worker WhatsApp Verification Status (For UI Polling).
+     */
+    public function checkWhatsAppStatus(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'is_verified' => !empty($user->whatsapp_verified_at),
+            'whatsapp_phone' => $user->whatsapp_phone,
+            'verified_at' => $user->whatsapp_verified_at?->toIso8601String(),
+        ]);
     }
 }

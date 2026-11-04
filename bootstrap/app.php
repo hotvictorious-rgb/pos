@@ -17,6 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->validateCsrfTokens(except: [
             'api/login',
+            'api/whatsapp/webhook',
+            'api/whatsapp/*',
         ]);
         $middleware->alias([
             'capability' => \App\Http\Middleware\RequireCapability::class,

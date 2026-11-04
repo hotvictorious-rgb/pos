@@ -32,6 +32,8 @@ class CheckWebAuth
             'reset-password',
             'reset-password/*',
             'api/login',
+            'api/whatsapp/webhook',
+            'api/whatsapp/*',
             'landing',
             'welcome',
             'saas/register',

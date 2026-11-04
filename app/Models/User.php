@@ -220,6 +220,10 @@ class User extends Authenticatable
         'warehouse_id',
         'disabled',
         'permissions',
+        'whatsapp_phone',
+        'whatsapp_verified_at',
+        'whatsapp_verify_token',
+        'whatsapp_verify_expires_at',
     ];
 
     protected $hidden = [
@@ -232,6 +236,8 @@ class User extends Authenticatable
         return [
             'disabled' => 'boolean',
             'permissions' => 'array',
+            'whatsapp_verified_at' => 'datetime',
+            'whatsapp_verify_expires_at' => 'datetime',
         ];
     }
 

@@ -16,7 +16,7 @@ class EnsureTenantActive
         }
 
         // Allow access to public landing, SaaS registration, suspended page, assets, auth/portal login & logout, and password recovery
-        if ($request->is('/') || $request->is('saas/*') || $request->is('landing') || $request->is('welcome') || $request->is('login') || $request->is('logout') || $request->is('*/login') || $request->is('*/logout') || $request->is('forgot-password') || $request->is('*/forgot-password') || $request->is('reset-password*')) {
+        if ($request->is('/') || $request->is('api/whatsapp/*') || $request->is('saas/*') || $request->is('landing') || $request->is('welcome') || $request->is('login') || $request->is('logout') || $request->is('*/login') || $request->is('*/logout') || $request->is('forgot-password') || $request->is('*/forgot-password') || $request->is('reset-password*')) {
             if (empty(session('tenant_id'))) {
                 return $next($request);
             }

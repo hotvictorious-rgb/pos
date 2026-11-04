@@ -50,5 +50,7 @@ return [
 
     'ssl_verify' => env('WHATSAPP_SSL_VERIFY', true),
 
+    'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'victorious_pos_secret_token_2026'),
+
 ];
 

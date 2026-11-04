@@ -159,6 +159,25 @@
                     Branch: <strong style="color: #60a5fa;">{{ $u->warehouse->name ?? 'All Branches / Central HQ' }}</strong>
                 </div>
 
+                <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.35rem;">
+                    <span>WhatsApp: 
+                        @if($u->whatsapp_phone)
+                            <strong style="color: #67e8f9;">{{ $u->whatsapp_phone }}</strong>
+                        @else
+                            <span style="color: var(--text-muted);">None</span>
+                        @endif
+                    </span>
+                    @if($u->whatsapp_verified_at)
+                        <span class="badge" style="background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); font-size: 0.7rem; padding: 0.15rem 0.45rem;">
+                            🟢 Verified
+                        </span>
+                    @else
+                        <button type="button" class="btn btn-secondary" style="padding: 0.15rem 0.5rem; font-size: 0.72rem; border-color: #22c55e; color: #4ade80;" onclick="openLinkWhatsAppModal('{{ $u->id }}', '{{ addslashes($u->name) }}')">
+                            🔗 Connect
+                        </button>
+                    @endif
+                </div>
+
                 <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 1rem;">
                     Status: 
                     @if($u->disabled)
@@ -217,6 +236,12 @@
                 <div class="form-group">
                     <label>Email Address / Username</label>
                     <input type="email" name="email" id="editUserEmail" required>
+                </div>
+
+                <div class="form-group">
+                    <label>📱 WhatsApp Phone Number (Optional)</label>
+                    <input type="text" name="whatsapp_phone" id="editUserWhatsApp" placeholder="e.g. 08012345678 or 2348012345678">
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">Used for on-demand role-scoped branch WhatsApp reporting.</small>
                 </div>
 
                 <div class="grid-2">
@@ -280,6 +305,12 @@
                 </div>
 
                 <div class="form-group">
+                    <label>📱 WhatsApp Phone Number (Optional)</label>
+                    <input type="text" name="whatsapp_phone" id="newUserWhatsApp" placeholder="e.g. 08012345678 or 2348012345678">
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">Allows worker to receive and query their branch reports via WhatsApp.</small>
+                </div>
+
+                <div class="form-group">
                     <label>Password / PIN</label>
                     <input type="password" name="password" id="newUserPass" placeholder="Minimum 6 characters" required>
                 </div>
@@ -338,6 +369,47 @@
         </div>
     </div>
 
+    <!-- Modal: 1-Tap Link Worker WhatsApp -->
+    <div id="modalLinkWhatsApp" class="modal-backdrop" style="display: none; align-items: center; justify-content: center; z-index: 1050;">
+        <div class="modal" style="max-width: 460px; text-align: center; border: 2px solid rgba(34, 197, 94, 0.4); border-radius: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.5);">
+            <div style="font-size: 2.2rem; margin-bottom: 0.25rem;">📱</div>
+            <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.35rem;">Link Worker WhatsApp</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                Connect <strong id="linkWorkerName" style="color: #60a5fa;">Worker</strong> for on-demand branch reports at <strong style="color: #4ade80;">₦0.00</strong>.
+            </p>
+
+            <div style="background: rgba(15, 23, 42, 0.8); border: 2px dashed rgba(34, 197, 94, 0.35); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.25rem;">
+                <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 0.35rem;">
+                    Verification Code
+                </div>
+                <div id="linkTokenCode" style="font-family: monospace; font-size: 1.9rem; font-weight: 800; color: #4ade80; letter-spacing: 0.12em; margin: 0.35rem 0;">
+                    GENERATING...
+                </div>
+                <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 0.35rem;">
+                    Official Bot Number: <strong style="color: #67e8f9;" id="linkBotNumber">+234 904 050 3385</strong>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+                <a id="linkWaButton" href="#" target="_blank" class="btn btn-success btn-lg btn-block" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-decoration: none; font-size: 0.95rem; padding: 0.85rem; border-radius: 12px; font-weight: 800;">
+                    <span>💬</span> <span>Tap to Send on WhatsApp</span>
+                </a>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.45rem;">
+                    Tapping opens WhatsApp with the code pre-filled. Just hit send!
+                </div>
+            </div>
+
+            <div id="linkPollingStatus" style="font-size: 0.82rem; color: #eab308; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.6rem; background: rgba(234, 179, 8, 0.1); border-radius: 10px; margin-bottom: 1.25rem;">
+                <span style="display: inline-block; width: 10px; height: 10px; border: 2px solid #eab308; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></span>
+                <span id="linkPollingText">Waiting for WhatsApp message to arrive...</span>
+            </div>
+
+            <button type="button" class="btn btn-secondary btn-block" onclick="closeLinkWhatsAppModal()">
+                Close
+            </button>
+        </div>
+    </div>
+
 @endsection
 
 @push('scripts')
@@ -360,6 +432,7 @@ function openEditUserModal(user) {
     document.getElementById('editUserEmail').value = user.email || '';
     document.getElementById('editUserRole').value = user.role || 'cashier';
     document.getElementById('editUserWarehouse').value = user.warehouse_id || '';
+    document.getElementById('editUserWhatsApp').value = user.whatsapp_phone || '';
     document.getElementById('editUserPass').value = '';
     openModal('modalEditUser');
 }
@@ -488,6 +561,78 @@ function confirmResetPass() {
         confirmClass: 'btn-primary',
         form: form
     });
+}
+
+let waPollInterval = null;
+let currentLinkingUserId = null;
+
+function openLinkWhatsAppModal(userId, userName) {
+    currentLinkingUserId = userId;
+    document.getElementById('linkWorkerName').textContent = userName;
+    document.getElementById('linkTokenCode').textContent = 'GENERATING...';
+    document.getElementById('linkWaButton').style.pointerEvents = 'none';
+    document.getElementById('linkWaButton').style.opacity = '0.6';
+    document.getElementById('linkPollingStatus').style.display = 'flex';
+    document.getElementById('linkPollingText').textContent = 'Generating unique link code...';
+    document.getElementById('modalLinkWhatsApp').style.display = 'flex';
+
+    fetch('/users/' + userId + '/whatsapp-token', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('linkTokenCode').textContent = 'VERIFY ' + data.code;
+            document.getElementById('linkBotNumber').textContent = '+' + data.bot_phone;
+            const btn = document.getElementById('linkWaButton');
+            btn.href = data.wa_link;
+            btn.style.pointerEvents = 'auto';
+            btn.style.opacity = '1';
+            document.getElementById('linkPollingText').textContent = 'Waiting for WhatsApp message to arrive...';
+
+            if (waPollInterval) clearInterval(waPollInterval);
+            waPollInterval = setInterval(() => checkVerificationStatus(userId), 3000);
+        } else {
+            document.getElementById('linkTokenCode').textContent = 'ERROR';
+            document.getElementById('linkPollingText').textContent = 'Failed to generate token.';
+        }
+    })
+    .catch(err => {
+        document.getElementById('linkTokenCode').textContent = 'ERROR';
+        document.getElementById('linkPollingText').textContent = 'Connection error.';
+    });
+}
+
+function checkVerificationStatus(userId) {
+    fetch('/users/' + userId + '/whatsapp-status')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.is_verified) {
+                clearInterval(waPollInterval);
+                waPollInterval = null;
+                const statusBox = document.getElementById('linkPollingStatus');
+                statusBox.style.background = 'rgba(34, 197, 94, 0.15)';
+                statusBox.style.color = '#4ade80';
+                statusBox.innerHTML = '<span>✅ Verified! Reloading roster...</span>';
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
+        })
+        .catch(() => {});
+}
+
+function closeLinkWhatsAppModal() {
+    if (waPollInterval) {
+        clearInterval(waPollInterval);
+        waPollInterval = null;
+    }
+    document.getElementById('modalLinkWhatsApp').style.display = 'none';
 }
 </script>
 @endpush

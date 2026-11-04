@@ -201,6 +201,8 @@ Route::prefix('users')->name('users.')->middleware(['capability:users.manage'])-
     Route::post('/update/{id}',           [\App\Http\Controllers\Web\UserController::class, 'update'])->name('update');
     Route::post('/toggle/{id}',           [\App\Http\Controllers\Web\UserController::class, 'toggleStatus'])->name('toggle');
     Route::post('/reset-password/{id}',   [\App\Http\Controllers\Web\UserController::class, 'resetPassword'])->name('reset.password');
+    Route::post('/{id}/whatsapp-token',   [\App\Http\Controllers\Web\UserController::class, 'generateWhatsAppToken'])->name('whatsapp.token');
+    Route::get('/{id}/whatsapp-status',   [\App\Http\Controllers\Web\UserController::class, 'checkWhatsAppStatus'])->name('whatsapp.status');
 });
 
 // 9. System Settings Hub
@@ -237,6 +239,10 @@ Route::prefix('subscription')->name('subscription.')->middleware(['capability:se
 Route::get('/help', function () {
     return view('help.index');
 })->name('help.index');
+
+// 12. Meta WhatsApp Webhook Gateway (On-Demand ₦0.00 Messaging Hub)
+Route::get('/api/whatsapp/webhook', [\App\Http\Controllers\Web\WhatsAppWebhookController::class, 'verifyWebhook'])->name('whatsapp.webhook.verify');
+Route::post('/api/whatsapp/webhook', [\App\Http\Controllers\Web\WhatsAppWebhookController::class, 'handleIncoming'])->name('whatsapp.webhook.incoming');
 
 
 
