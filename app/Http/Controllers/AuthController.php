@@ -276,6 +276,11 @@ class AuthController extends Controller
             abort(404, 'Portal not found.');
         }
 
+        // Direct tenant and employee portal traffic to the unified, mature login screen
+        if (in_array($portal, ['tenant', 'tenant-employee'])) {
+            return redirect()->route('login');
+        }
+
         if (session('user_id') || Auth::check()) {
             $user = Auth::user();
             if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {

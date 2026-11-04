@@ -437,9 +437,9 @@ class SendDailyWhatsAppReportCommand extends Command
         $whName = 'All Branches (Consolidated)';
 
         if ($warehouseId !== null) {
-            $whObj = Warehouse::find($warehouseId);
+            $whObj = Warehouse::withoutGlobalScopes()->find($warehouseId);
             $whName = $whObj ? $whObj->name : "Branch #{$warehouseId}";
-        } elseif ($setting->whatsapp_branch_breakdown) {
+        } elseif (!empty($setting->whatsapp_branch_breakdown)) {
             $branches = Warehouse::withoutGlobalScopes()
                 ->where('tenant_id', $tenantId)
                 ->where('is_active', true)
@@ -449,14 +449,20 @@ class SendDailyWhatsAppReportCommand extends Command
                 $bSales = (float) Sale::withoutGlobalScopes()
                     ->where('tenant_id', $tenantId)
                     ->where('warehouse_id', $b->id)
-                    ->whereBetween('createdAt', [$dateStart, $dateEnd])
+                    ->where(function ($q) use ($dateStart, $dateEnd, $dateStartIso, $dateEndIso) {
+                        $q->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
+                          ->orWhereBetween('created_at', [$dateStart, $dateEnd]);
+                    })
                     ->whereNotIn('status', ['VOIDED', 'CANCELLED'])
                     ->sum('totalAmount');
 
                 $bSaleIds = Sale::withoutGlobalScopes()
                     ->where('tenant_id', $tenantId)
                     ->where('warehouse_id', $b->id)
-                    ->whereBetween('createdAt', [$dateStart, $dateEnd])
+                    ->where(function ($q) use ($dateStart, $dateEnd, $dateStartIso, $dateEndIso) {
+                        $q->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
+                          ->orWhereBetween('created_at', [$dateStart, $dateEnd]);
+                    })
                     ->pluck('id');
 
                 $bCash = (float) Payment::withoutGlobalScopes()
@@ -473,45 +479,50 @@ class SendDailyWhatsAppReportCommand extends Command
             }
         }
 
-        // 9. Low stock items
+        // 9. Low stock items (resilient physical_stock and currentStock column checks)
         $lowStockItems = [];
-        if ($setting->whatsapp_include_low_stock) {
-            $threshold = (int) ($setting->lowStockThreshold ?: 5);
+        try {
+            if (!empty($setting->whatsapp_include_low_stock)) {
+                $threshold = (int) ($setting->lowStockThreshold ?: 5);
 
-            if ($warehouseId !== null) {
-                $lowLevels = StockLevel::withoutGlobalScopes()
-                    ->where('warehouse_id', $warehouseId)
-                    ->where('quantity', '<=', $threshold)
-                    ->with('product')
-                    ->take(10)
-                    ->get();
+                if ($warehouseId !== null) {
+                    $lowLevels = StockLevel::withoutGlobalScopes()
+                        ->where('warehouse_id', $warehouseId)
+                        ->where('physical_stock', '<=', $threshold)
+                        ->with('product')
+                        ->take(10)
+                        ->get();
 
-                foreach ($lowLevels as $sl) {
-                    if ($sl->product) {
+                    foreach ($lowLevels as $sl) {
+                        if ($sl->product && !$sl->product->archived) {
+                            $lowStockItems[] = [
+                                'name' => $sl->product->name,
+                                'qty' => $sl->physical_stock,
+                                'unit' => $sl->product->unit ?? 'pcs',
+                                'min' => $threshold,
+                            ];
+                        }
+                    }
+                } else {
+                    $lowProducts = Product::withoutGlobalScopes()
+                        ->where('tenant_id', $tenantId)
+                        ->where('archived', false)
+                        ->where('currentStock', '<=', $threshold)
+                        ->take(10)
+                        ->get();
+
+                    foreach ($lowProducts as $p) {
                         $lowStockItems[] = [
-                            'name' => $sl->product->name,
-                            'qty' => $sl->quantity,
-                            'unit' => $sl->product->unit ?? 'pcs',
+                            'name' => $p->name,
+                            'qty' => $p->currentStock,
+                            'unit' => $p->unit ?? 'pcs',
                             'min' => $threshold,
                         ];
                     }
                 }
-            } else {
-                $lowProducts = Product::withoutGlobalScopes()
-                    ->where('tenant_id', $tenantId)
-                    ->where('stock', '<=', $threshold)
-                    ->take(10)
-                    ->get();
-
-                foreach ($lowProducts as $p) {
-                    $lowStockItems[] = [
-                        'name' => $p->name,
-                        'qty' => $p->stock,
-                        'unit' => $p->unit ?? 'pcs',
-                        'min' => $threshold,
-                    ];
-                }
             }
+        } catch (\Throwable $e) {
+            Log::warning("[WhatsApp Daily Report] Low stock query warning: " . $e->getMessage());
         }
 
         return [

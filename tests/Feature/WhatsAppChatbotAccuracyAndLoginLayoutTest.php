@@ -161,20 +161,24 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
             'createdAt' => now()->toIso8601String(),
         ]);
 
-        // Test list of all supported commands (words and numeric shortcuts)
+        // Test list of all supported commands (words, numeric shortcuts, dates, and direct product names)
         $testCommands = [
             'MENU',
             'HELP',
             '1',
             'REPORT',
+            'REPORT yesterday',
             '2',
             'SALES',
+            'SALES yesterday',
             '3',
             'CASH',
+            'CASH yesterday',
             '4',
             'LOW',
             '5 Peak',
             'STOCK Peak',
+            'Peak Milk 400g', // Direct product name without 'STOCK' prefix
         ];
 
         foreach ($testCommands as $cmd) {
@@ -237,5 +241,23 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
         $res = $this->postJson('/api/whatsapp/webhook', $payload);
         $res->assertStatus(200);
         $this->assertEquals('EVENT_RECEIVED', $res->getContent());
+    }
+
+    public function test_shopfront_portal_links_direct_to_unified_login(): void
+    {
+        $response = $this->get('/');
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        // Must not link to old portal routes
+        $this->assertStringNotContainsString('/tenant/login', $content);
+        $this->assertStringNotContainsString('/tenant-employee/login', $content);
+
+        // Direct /tenant/login navigations must redirect to /login
+        $tenantLoginRedirect = $this->get('/tenant/login');
+        $tenantLoginRedirect->assertRedirect('/login');
+
+        $employeeLoginRedirect = $this->get('/tenant-employee/login');
+        $employeeLoginRedirect->assertRedirect('/login');
     }
 }

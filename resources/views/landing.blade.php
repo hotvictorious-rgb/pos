@@ -1199,27 +1199,9 @@
             </ul>
 
             <div class="nav-actions">
-                <div class="btn-portal-dropdown">
-                    <a href="javascript:void(0)" class="btn btn-secondary">
-                        🔐 Portals ▾
-                    </a>
-                    <div class="portal-menu">
-                        <a href="{{ route('portal.tenant.login') }}" class="portal-menu-item">
-                            <span class="icon">🏢</span>
-                            <div>
-                                <div>Store Owner Portal</div>
-                                <small style="color: var(--text-dim); font-size: 0.72rem;">Business admin & consolidated analytics</small>
-                            </div>
-                        </a>
-                        <a href="{{ route('portal.tenant_employee.login') }}" class="portal-menu-item">
-                            <span class="icon">💼</span>
-                            <div>
-                                <div>Staff & Cashier Portal</div>
-                                <small style="color: var(--text-dim); font-size: 0.72rem;">Fast POS checkout & sales drawer</small>
-                            </div>
-                        </a>
-                    </div>
-                </div>
+                <a href="{{ route('login') }}" class="btn btn-secondary">
+                    🔐 Sign In
+                </a>
 
                 <a href="{{ route('saas.register') }}" class="btn btn-primary">
                     Start Free Trial ⚡
@@ -1248,8 +1230,8 @@
                 <a href="{{ route('saas.register') }}" class="btn btn-primary" style="padding: 0.95rem 2rem; font-size: 1.05rem;">
                     🚀 Start 14-Day Free Trial (Naira Pricing)
                 </a>
-                <a href="{{ route('portal.tenant.login') }}" class="btn btn-secondary" style="padding: 0.95rem 1.8rem; font-size: 1.05rem;">
-                    Sign In to Store Portal →
+                <a href="{{ route('login') }}" class="btn btn-secondary" style="padding: 0.95rem 1.8rem; font-size: 1.05rem;">
+                    Sign In to Dashboard →
                 </a>
             </div>
 
@@ -1391,7 +1373,7 @@
                             Access multi-branch sales analytics, cash collections, inter-warehouse waybills, and staff permissions from your phone or PC.
                         </p>
                     </div>
-                    <a href="{{ route('portal.tenant.login') }}" class="btn" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; font-weight: 700; width: 100%;">
+                    <a href="{{ route('login') }}" class="btn" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; font-weight: 700; width: 100%;">
                         Sign In as Store Owner →
                     </a>
                 </div>
@@ -1404,7 +1386,7 @@
                             Visual touchscreen POS, fast barcode scanning, split tender matching (Cash, Transfer, Card), and thermal receipt printing.
                         </p>
                     </div>
-                    <a href="{{ route('portal.tenant_employee.login') }}" class="btn" style="background: rgba(37, 99, 235, 0.15); border: 1px solid #3b82f6; color: #93c5fd; font-weight: 700; width: 100%;">
+                    <a href="{{ route('login') }}" class="btn" style="background: rgba(37, 99, 235, 0.15); border: 1px solid #3b82f6; color: #93c5fd; font-weight: 700; width: 100%;">
                         Open Cashier Terminal →
                     </a>
                 </div>
@@ -1861,8 +1843,8 @@
                 <a href="{{ route('saas.register') }}" class="btn btn-primary" style="padding: 1rem 2.2rem; font-size: 1.1rem;">
                     🚀 Create Your Store in 60 Seconds
                 </a>
-                <a href="{{ route('portal.tenant.login') }}" class="btn btn-secondary" style="padding: 1rem 2rem; font-size: 1.1rem;">
-                    Sign In to Portal →
+                <a href="{{ route('login') }}" class="btn btn-secondary" style="padding: 1rem 2rem; font-size: 1.1rem;">
+                    Sign In to Dashboard →
                 </a>
             </div>
         </div>
@@ -1888,8 +1870,8 @@
                 <div>
                     <h4 class="footer-heading">Merchant Sign In</h4>
                     <ul class="footer-links">
-                        <li><a href="{{ route('portal.tenant.login') }}" class="footer-link">🏢 Business Owner Sign In</a></li>
-                        <li><a href="{{ route('portal.tenant_employee.login') }}" class="footer-link">💼 Staff & Cashier Sign In</a></li>
+                        <li><a href="{{ route('login') }}" class="footer-link">🏢 Business Owner Sign In</a></li>
+                        <li><a href="{{ route('login') }}" class="footer-link">💼 Staff & Cashier Sign In</a></li>
                         <li><a href="{{ route('saas.register') }}" class="footer-link" style="color: var(--accent); font-weight: 700;">🚀 Register New Store</a></li>
                     </ul>
                 </div>
@@ -1923,7 +1905,7 @@
                 <div style="display: flex; gap: 1.5rem;">
                     <a href="{{ route('landing') }}" class="footer-link">Privacy Policy</a>
                     <a href="{{ route('landing') }}" class="footer-link">Terms of Service</a>
-                    <a href="{{ route('portal.tenant.login') }}" class="footer-link">Merchant Portal</a>
+                    <a href="{{ route('login') }}" class="footer-link">Merchant Portal</a>
                 </div>
             </div>
         </div>

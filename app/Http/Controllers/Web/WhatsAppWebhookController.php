@@ -145,14 +145,14 @@ class WhatsAppWebhookController extends Controller
             // Determine tenant context
             $tenantId = $user ? $user->tenant_id : ($ownerSetting->tenant_id ?? 'default-tenant');
             $setting = $ownerSetting ?: (Setting::withoutGlobalScopes()->where('tenant_id', $tenantId)->first() ?: (Setting::withoutGlobalScopes()->first() ?: new Setting()));
-            $tenantName = !empty($setting->store_name) ? $setting->store_name : config('app.name', 'Victorious Market');
+            $tenantName = !empty($setting->businessName) ? $setting->businessName : (!empty($setting->store_name) ? $setting->store_name : config('app.name', 'Victorious Market'));
 
             // Determine warehouse/branch scope
             $isExecutive = $user ? ($user->isAdmin() || ($user->isExecutive() && empty($user->warehouse_id))) : true;
             $userWarehouseId = ($user && !$isExecutive) ? $user->warehouse_id : null;
 
             // ─────────────────────────────────────────────────────────────
-            // 3. COMMAND DISPATCHER (DETERMINISTIC, HIGH-ACCURACY)
+            // 3. COMMAND DISPATCHER (DETERMINISTIC, RESILIENT & EXTENDED)
             // ─────────────────────────────────────────────────────────────
             $parts = preg_split('/\s+/', $text, 2);
             $firstWord = strtoupper(trim($parts[0] ?? ''));
@@ -164,6 +164,7 @@ class WhatsAppWebhookController extends Controller
                 case 'CLOSE':
                 case 'CLOSING':
                 case 'SUMMARY':
+                case 'AUDIT':
                     $this->dispatchOnDemandReport($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $argument);
                     break;
 
@@ -171,6 +172,7 @@ class WhatsAppWebhookController extends Controller
                 case 'SALES':
                 case 'PULSE':
                 case 'TODAY':
+                case 'REVENUE':
                     $this->dispatchSalesPulse($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
                     break;
 
@@ -178,6 +180,7 @@ class WhatsAppWebhookController extends Controller
                 case 'CASH':
                 case 'DRAWER':
                 case 'BALANCE':
+                case 'TILL':
                     $this->dispatchCashDrawer($senderPhone, $tenantId, $tenantName, $setting, $userWarehouseId, $isExecutive, $argument);
                     break;
 
@@ -185,6 +188,7 @@ class WhatsAppWebhookController extends Controller
                 case 'LOW':
                 case 'ALERT':
                 case 'RESTOCK':
+                case 'OUT':
                     $this->dispatchLowStockAlert($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
                     break;
 
@@ -193,6 +197,7 @@ class WhatsAppWebhookController extends Controller
                 case 'PRICE':
                 case 'CHECK':
                 case 'FIND':
+                case 'INVENTORY':
                     $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $argument);
                     break;
 
@@ -202,8 +207,17 @@ class WhatsAppWebhookController extends Controller
                 case 'HELLO':
                 case 'START':
                 case 'COMMANDS':
-                default:
+                case 'INFO':
                     $this->dispatchHelpMenu($senderPhone, $user, $ownerSetting, $userWarehouseId, $isExecutive);
+                    break;
+
+                default:
+                    // Smart Product Lookup Fallback: If user sent a product name or barcode directly
+                    if ($this->hasMatchingProducts($tenantId, $text)) {
+                        $this->dispatchStockLookup($senderPhone, $tenantId, $userWarehouseId, $text);
+                    } else {
+                        $this->dispatchHelpMenu($senderPhone, $user, $ownerSetting, $userWarehouseId, $isExecutive);
+                    }
                     break;
             }
         } catch (\Throwable $e) {
@@ -213,11 +227,89 @@ class WhatsAppWebhookController extends Controller
             ]);
 
             $errorMsg = "⚠️ *Victorious POS Alert*\n\n"
-                . "An error occurred while processing your request. Please try again in a moment or contact support.";
-            $this->whatsAppService->sendMessage($senderPhone, $errorMsg);
+                . "We could not compile your request at this moment. Please reply *MENU* to view authorized commands.";
+            $this->whatsAppService->sendMessage($senderPhone, $this->appendFooter($errorMsg));
         }
 
         return response('EVENT_RECEIVED', 200);
+    }
+
+    /**
+     * Check if text matches products in database.
+     */
+    protected function hasMatchingProducts(string $tenantId, string $queryStr): bool
+    {
+        if (empty($queryStr) || strlen($queryStr) < 2) {
+            return false;
+        }
+
+        return Product::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('archived', false)
+            ->where(function ($q) use ($queryStr) {
+                $q->where('name', 'like', "%{$queryStr}%")
+                  ->orWhere('code', 'like', "%{$queryStr}%");
+            })
+            ->exists();
+    }
+
+    /**
+     * Smart Date & Branch Argument Parser.
+     * Supports: 'yesterday', 'today', '2026-11-03', '2', 'Branch 1', 'Main'
+     */
+    protected function parseDateAndBranch(string $arg, string $tenantId, ?int $defaultWarehouseId, bool $isExecutive): array
+    {
+        $targetDate = Carbon::today();
+        $targetWarehouseId = $defaultWarehouseId;
+
+        if (empty($arg)) {
+            return [$targetDate, $targetWarehouseId];
+        }
+
+        $tokens = preg_split('/\s+/', trim($arg));
+        foreach ($tokens as $token) {
+            $lower = strtolower($token);
+
+            // Date keywords
+            if ($lower === 'yesterday') {
+                $targetDate = Carbon::yesterday();
+                continue;
+            }
+            if ($lower === 'today') {
+                $targetDate = Carbon::today();
+                continue;
+            }
+
+            // Explicit date formats YYYY-MM-DD or DD-MM-YYYY
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $token) || preg_match('/^\d{2}-\d{2}-\d{4}$/', $token) || preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $token)) {
+                try {
+                    $targetDate = Carbon::parse($token);
+                    continue;
+                } catch (\Throwable $e) {}
+            }
+
+            // Branch lookup (only if executive with permission)
+            if ($isExecutive) {
+                if (is_numeric($token)) {
+                    $wh = Warehouse::withoutGlobalScopes()->where('tenant_id', $tenantId)->find((int) $token);
+                    if ($wh) {
+                        $targetWarehouseId = $wh->id;
+                        continue;
+                    }
+                }
+
+                $wh = Warehouse::withoutGlobalScopes()
+                    ->where('tenant_id', $tenantId)
+                    ->where('name', 'like', "%{$token}%")
+                    ->first();
+                if ($wh) {
+                    $targetWarehouseId = $wh->id;
+                    continue;
+                }
+            }
+        }
+
+        return [$targetDate, $targetWarehouseId];
     }
 
     /**
@@ -273,55 +365,115 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * Dispatch Full Closing Reconciliation Report (On-Demand).
+     * Dispatch Full Closing Reconciliation Report with Date/Branch Filtering & Fallback Resilience.
      */
-    protected function dispatchOnDemandReport(string $phone, string $tenantId, string $tenantName, Setting $setting, ?int $userWarehouseId, bool $isExecutive, string $branchArg): void
+    protected function dispatchOnDemandReport(string $phone, string $tenantId, string $tenantName, Setting $setting, ?int $userWarehouseId, bool $isExecutive, string $argument): void
     {
-        $targetWarehouseId = $userWarehouseId;
+        [$targetDate, $targetWarehouseId] = $this->parseDateAndBranch($argument, $tenantId, $userWarehouseId, $isExecutive);
 
-        // If executive specified a branch number (e.g. REPORT 2), lookup warehouse
-        if ($isExecutive && !empty($branchArg)) {
-            $wh = Warehouse::withoutGlobalScopes()->where('tenant_id', $tenantId)->find($branchArg);
-            if ($wh) {
-                $targetWarehouseId = $wh->id;
-            }
+        try {
+            $command = app(SendDailyWhatsAppReportCommand::class);
+            $data = $command->compileDailyMetrics($tenantId, $targetDate, $setting, $tenantName, $targetWarehouseId);
+            $message = $this->whatsAppService->buildDailyReportMessage($data);
+            $this->whatsAppService->sendMessage($phone, $message);
+        } catch (\Throwable $e) {
+            Log::error("[WhatsApp Report Compilation Error] {$e->getMessage()}", [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            // Resilient Fallback: compile core numbers directly so user is never left without data
+            $this->dispatchFallbackCoreAudit($phone, $tenantId, $tenantName, $targetDate, $targetWarehouseId);
         }
-
-        $command = app(SendDailyWhatsAppReportCommand::class);
-        $data = $command->compileDailyMetrics($tenantId, Carbon::today(), $setting, $tenantName, $targetWarehouseId);
-        $message = $this->whatsAppService->buildDailyReportMessage($data);
-
-        $this->whatsAppService->sendMessage($phone, $message);
     }
 
     /**
-     * Dispatch Midday Sales Pulse with Exact Column Mapping.
+     * Fallback Core Financial Audit (Invoked if deep compiler catches schema or data errors).
      */
-    protected function dispatchSalesPulse(string $phone, string $tenantId, ?int $userWarehouseId, bool $isExecutive, string $branchArg): void
+    protected function dispatchFallbackCoreAudit(string $phone, string $tenantId, string $tenantName, Carbon $targetDate, ?int $warehouseId): void
     {
-        $targetWarehouseId = $userWarehouseId;
-        if ($isExecutive && !empty($branchArg)) {
-            $wh = Warehouse::withoutGlobalScopes()->where('tenant_id', $tenantId)->find($branchArg);
-            if ($wh) $targetWarehouseId = $wh->id;
+        $dateStart = $targetDate->copy()->startOfDay();
+        $dateEnd = $targetDate->copy()->endOfDay();
+        $dateStartIso = $dateStart->toIso8601String();
+        $dateEndIso = $dateEnd->toIso8601String();
+
+        $salesQuery = Sale::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereNotIn('status', ['VOIDED', 'CANCELLED'])
+            ->where(function ($q) use ($dateStart, $dateEnd, $dateStartIso, $dateEndIso) {
+                $q->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
+                  ->orWhereBetween('created_at', [$dateStart, $dateEnd]);
+            });
+
+        if ($warehouseId) {
+            $salesQuery->where('warehouse_id', $warehouseId);
         }
 
-        $today = Carbon::today();
-        $dateStartIso = $today->copy()->startOfDay()->toIso8601String();
-        $dateEndIso = $today->copy()->endOfDay()->toIso8601String();
+        $sales = $salesQuery->get();
+        $grossSales = (float) $sales->sum('totalAmount');
+        $invoices = $sales->count();
+        $paidNow = (float) $sales->sum('paidAmount');
+        $cashSales = (float) $sales->sum('cashAmount');
+        $posSales = (float) $sales->sum('posAmount');
+        $transferSales = (float) $sales->sum('transferAmount');
+
+        $debtCreated = 0.0;
+        foreach ($sales as $s) {
+            $due = (float) $s->totalAmount - (float) $s->paidAmount;
+            if ($due > 0.01) $debtCreated += $due;
+        }
+
+        $branchLabel = 'All Branches Consolidated';
+        if ($warehouseId) {
+            $wh = Warehouse::withoutGlobalScopes()->find($warehouseId);
+            if ($wh) $branchLabel = $wh->name;
+        }
+
+        $msg = "📊 *{$tenantName} — DAILY FINANCIAL AUDIT*\n"
+            . "🏬 Branch: *{$branchLabel}*\n"
+            . "📅 Date: *" . $targetDate->format('D, d M Y') . "*\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💰 *SALES & REVENUE*\n"
+            . "• *Gross Sales:* ₦" . number_format($grossSales, 2) . "\n"
+            . "• *Invoices Completed:* {$invoices}\n"
+            . "• *Settled Immediately:* ₦" . number_format($paidNow, 2) . "\n"
+            . "• *New Customer Credit / Unpaid:* ₦" . number_format($debtCreated, 2) . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💵 *TENDER COLLECTION*\n"
+            . "• *Cash in Till:* ₦" . number_format($cashSales, 2) . "\n"
+            . "• *POS Terminal:* ₦" . number_format($posSales, 2) . "\n"
+            . "• *Bank Transfers:* ₦" . number_format($transferSales, 2) . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "🏦 *Net Cash in Drawer:* ₦" . number_format($cashSales, 2) . "\n\n"
+            . "Reply *SALES* for live pulse or *STOCK <item>* to check inventory.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+    }
+
+    /**
+     * Dispatch Midday Sales Pulse with Date and Branch Flexibility.
+     */
+    protected function dispatchSalesPulse(string $phone, string $tenantId, ?int $userWarehouseId, bool $isExecutive, string $argument): void
+    {
+        [$targetDate, $targetWarehouseId] = $this->parseDateAndBranch($argument, $tenantId, $userWarehouseId, $isExecutive);
+
+        $dateStart = $targetDate->copy()->startOfDay();
+        $dateEnd = $targetDate->copy()->endOfDay();
+        $dateStartIso = $dateStart->toIso8601String();
+        $dateEndIso = $dateEnd->toIso8601String();
 
         $query = Sale::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->whereNotIn('status', ['VOIDED', 'CANCELLED'])
-            ->where(function ($q) use ($today, $dateStartIso, $dateEndIso) {
+            ->where(function ($q) use ($dateStart, $dateEnd, $dateStartIso, $dateEndIso) {
                 $q->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
-                  ->orWhereDate('created_at', $today);
+                  ->orWhereBetween('created_at', [$dateStart, $dateEnd]);
             });
 
         if ($targetWarehouseId) {
             $query->where('warehouse_id', $targetWarehouseId);
         }
 
-        $sales = $query->with('payments')->get();
+        $sales = $query->get();
         $totalSales = (float) $sales->sum('totalAmount');
         $count = $sales->count();
         $paidNow = (float) $sales->sum('paidAmount');
@@ -344,11 +496,13 @@ class WhatsAppWebhookController extends Controller
             if ($wh) $branchLabel = $wh->name;
         }
 
+        $timeLabel = $targetDate->isToday() ? " (" . now()->format('h:i A') . ")" : "";
+
         $msg = "⚡ *Live Sales Pulse — Victorious Market POS*\n"
             . "🏬 Branch: *{$branchLabel}*\n"
-            . "📅 Date: *" . $today->format('D, d M Y') . " (" . now()->format('h:i A') . ")*\n"
+            . "📅 Date: *" . $targetDate->format('D, d M Y') . "{$timeLabel}*\n"
             . "-------------------------------------\n"
-            . "💰 Gross Sales Today: *₦" . number_format($totalSales, 2) . "*\n"
+            . "💰 Gross Sales: *₦" . number_format($totalSales, 2) . "*\n"
             . "🧾 Total Transactions: *{$count} invoice" . ($count === 1 ? '' : 's') . "*\n"
             . "💵 Settled Immediately: *₦" . number_format($paidNow, 2) . "*\n"
             . "⏳ Customer Credit / Unpaid: *₦" . number_format($debt, 2) . "*\n"
@@ -365,22 +519,53 @@ class WhatsAppWebhookController extends Controller
     /**
      * Dispatch Cash in Drawer Balance Reconciled with Closing Engine.
      */
-    protected function dispatchCashDrawer(string $phone, string $tenantId, string $tenantName, Setting $setting, ?int $userWarehouseId, bool $isExecutive, string $branchArg): void
+    protected function dispatchCashDrawer(string $phone, string $tenantId, string $tenantName, Setting $setting, ?int $userWarehouseId, bool $isExecutive, string $argument): void
     {
-        $targetWarehouseId = $userWarehouseId;
-        if ($isExecutive && !empty($branchArg)) {
-            $wh = Warehouse::withoutGlobalScopes()->where('tenant_id', $tenantId)->find($branchArg);
-            if ($wh) $targetWarehouseId = $wh->id;
+        [$targetDate, $targetWarehouseId] = $this->parseDateAndBranch($argument, $tenantId, $userWarehouseId, $isExecutive);
+
+        $dateStart = $targetDate->copy()->startOfDay();
+        $dateEnd = $targetDate->copy()->endOfDay();
+        $dateStartIso = $dateStart->toIso8601String();
+        $dateEndIso = $dateEnd->toIso8601String();
+
+        // 1. Cash sales today
+        $salesQuery = Sale::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereNotIn('status', ['VOIDED', 'CANCELLED'])
+            ->where(function ($q) use ($dateStart, $dateEnd, $dateStartIso, $dateEndIso) {
+                $q->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
+                  ->orWhereBetween('created_at', [$dateStart, $dateEnd]);
+            });
+
+        if ($targetWarehouseId) {
+            $salesQuery->where('warehouse_id', $targetWarehouseId);
         }
 
-        // Use the centralized closing calculation engine for exact drawer consistency
-        $command = app(SendDailyWhatsAppReportCommand::class);
-        $data = $command->compileDailyMetrics($tenantId, Carbon::today(), $setting, $tenantName, $targetWarehouseId);
+        $cashSales = (float) $salesQuery->sum('cashAmount');
 
-        $cashSales = (float) ($data['cash_sales'] ?? 0.0);
-        $cashRecoveries = (float) ($data['debts_recovered'] ?? 0.0);
-        $cashRefunds = (float) ($data['returns_refunded'] ?? 0.0);
-        $netCash = (float) ($data['net_cash_drawer'] ?? ($cashSales + $cashRecoveries - $cashRefunds));
+        // 2. Debt recoveries in cash
+        $debtRecoveryQuery = CustomerLedger::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('created_at', [$dateStart, $dateEnd])
+            ->where('type', 'PAYMENT')
+            ->where('notes', 'not like', '[REVERSED%');
+
+        if ($targetWarehouseId) {
+            $debtRecoveryQuery->where('warehouse_id', $targetWarehouseId);
+        }
+        $cashRecoveries = abs((float) $debtRecoveryQuery->sum('amount'));
+
+        // 3. Cash refunds
+        $returnsQuery = SalesReturn::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('created_at', [$dateStart, $dateEnd]);
+
+        if ($targetWarehouseId) {
+            $returnsQuery->where('warehouse_id', $targetWarehouseId);
+        }
+        $cashRefunds = (float) $returnsQuery->sum('refundAmount');
+
+        $netCash = max(0.0, round($cashSales + $cashRecoveries - $cashRefunds, 2));
 
         $branchLabel = 'All Branches Combined';
         if ($targetWarehouseId) {
@@ -390,11 +575,11 @@ class WhatsAppWebhookController extends Controller
 
         $msg = "💵 *Cash Drawer Audit — Victorious Market POS*\n"
             . "🏬 Branch: *{$branchLabel}*\n"
-            . "🕒 Time: *" . now()->format('h:i A') . "*\n"
+            . "📅 Date: *" . $targetDate->format('D, d M Y') . " (" . now()->format('h:i A') . ")*\n"
             . "-------------------------------------\n"
             . "💰 *Net Expected Cash in Drawer: ₦" . number_format($netCash, 2) . "*\n"
             . "-------------------------------------\n"
-            . "   • Cash Sales Today: *₦" . number_format($cashSales, 2) . "*\n"
+            . "   • Cash Sales: *₦" . number_format($cashSales, 2) . "*\n"
             . "   • Debt Recoveries (Cash): *₦" . number_format($cashRecoveries, 2) . "*\n"
             . "   • Cash Refunds/Returns: *-₦" . number_format($cashRefunds, 2) . "*\n\n"
             . "⚠️ *Auditor Note:* Physically count cash in till before shift handover or bank deposit.";
@@ -403,15 +588,11 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * Dispatch Low Stock Alert Items (checks StockLevel & Product models).
+     * Dispatch Low Stock Alert Items with Branch Scoping.
      */
-    protected function dispatchLowStockAlert(string $phone, string $tenantId, ?int $userWarehouseId, bool $isExecutive, string $branchArg): void
+    protected function dispatchLowStockAlert(string $phone, string $tenantId, ?int $userWarehouseId, bool $isExecutive, string $argument): void
     {
-        $targetWarehouseId = $userWarehouseId;
-        if ($isExecutive && !empty($branchArg)) {
-            $wh = Warehouse::withoutGlobalScopes()->where('tenant_id', $tenantId)->find($branchArg);
-            if ($wh) $targetWarehouseId = $wh->id;
-        }
+        [$targetDate, $targetWarehouseId] = $this->parseDateAndBranch($argument, $tenantId, $userWarehouseId, $isExecutive);
 
         $branchLabel = 'All Branches';
         if ($targetWarehouseId) {
@@ -477,13 +658,14 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * Instant Stock & Price Lookup for Attendants / Managers.
+     * Comprehensive Product & Inventory Intelligence Lookup.
+     * Displays: Price, physical stock, allocated orders, net available, branch breakdown, category, barcode.
      */
     protected function dispatchStockLookup(string $phone, string $tenantId, ?int $userWarehouseId, string $queryStr): void
     {
         if (empty($queryStr)) {
-            $msg = "ℹ️ *How to check stock & prices:*\nReply *STOCK <product name or barcode>*\nExample: `STOCK milk` or `STOCK 10023`";
-            $this->whatsAppService->sendMessage($phone, $msg);
+            $msg = "ℹ️ *How to check stock & prices:*\nReply *STOCK <product name or barcode>*\nExample: `STOCK milk` or `STOCK 10023`\n\n💡 *Tip:* You can also simply type the item name directly!";
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
             return;
         }
 
@@ -500,13 +682,22 @@ class WhatsAppWebhookController extends Controller
             ->get();
 
         if ($products->isEmpty()) {
-            $msg = "🔍 No products found matching: *\"{$queryStr}\"*\nPlease verify spelling or barcode and try again.";
-            $this->whatsAppService->sendMessage($phone, $msg);
+            $msg = "🔍 *No products found matching:* \"{$queryStr}\"\n\n"
+                . "• Please verify spelling or barcode and try again.\n"
+                . "• Reply *LOW* to view items running low on stock.";
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
             return;
         }
 
+        // Retrieve active branches for multi-branch breakdown
+        $branches = Warehouse::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->get();
+
         $results = "";
         $i = 1;
+
         foreach ($products as $p) {
             $stockQuery = StockLevel::withoutGlobalScopes()
                 ->where('product_id', $p->id);
@@ -518,23 +709,55 @@ class WhatsAppWebhookController extends Controller
             $physical = (int) $stockQuery->sum('physical_stock');
             $allocated = (int) $stockQuery->sum('allocated_stock');
 
-            // Fallback to Product.currentStock if no warehouse stock level exists
+            // Fallback to Product.currentStock if no warehouse stock level row exists
             if ($physical === 0 && $stockQuery->count() === 0) {
                 $physical = (int) ($p->currentStock ?? 0);
             }
 
             $available = max(0, $physical - $allocated);
             $statusEmoji = $available > 5 ? '🟢' : ($available > 0 ? '🟡' : '🔴');
+            $statusText = $available > 5 ? 'IN STOCK' : ($available > 0 ? 'LOW STOCK' : 'OUT OF STOCK');
 
-            $results .= "{$i}. *{$p->name}*\n"
-                . "   • Unit Price: *₦" . number_format($p->unitPrice ?? 0, 2) . "*\n"
-                . "   • Physical on Hand: *{$physical}*\n"
-                . "   • Allocated/Unsupplied: *{$allocated}*\n"
-                . "   • Available for Sale: {$statusEmoji} *{$available} units*\n\n";
+            $results .= "{$i}️⃣ *{$p->name}*\n"
+                . "   • 💰 Unit Selling Price: *₦" . number_format($p->unitPrice ?? 0, 2) . "*\n"
+                . "   • 📦 Availability: {$statusEmoji} *{$available} units* ({$statusText})\n"
+                . "   • 🏬 Physical on Hand: *{$physical} units*\n";
+
+            if ($allocated > 0) {
+                $results .= "   • ⏳ Reserved Orders: *{$allocated} units*\n";
+            }
+
+            if (!empty($p->code)) {
+                $results .= "   • 🏷️ Barcode/SKU: `{$p->code}`\n";
+            }
+            if (!empty($p->category)) {
+                $results .= "   • 📂 Category: {$p->category}\n";
+            }
+
+            // Per-Branch Breakdown (if multi-branch and user has consolidated view)
+            if (empty($userWarehouseId) && $branches->count() > 1) {
+                $branchLines = [];
+                foreach ($branches as $br) {
+                    $brStock = StockLevel::withoutGlobalScopes()
+                        ->where('product_id', $p->id)
+                        ->where('warehouse_id', $br->id)
+                        ->first();
+
+                    if ($brStock && $brStock->physical_stock > 0) {
+                        $brAvail = max(0, $brStock->physical_stock - $brStock->allocated_stock);
+                        $branchLines[] = "     ↳ {$br->name}: *{$brAvail} avail*";
+                    }
+                }
+                if (!empty($branchLines)) {
+                    $results .= "   • 🏢 *Branch Breakdown:*\n" . implode("\n", $branchLines) . "\n";
+                }
+            }
+
+            $results .= "\n";
             $i++;
         }
 
-        $msg = "📦 *Inventory Search for \"{$queryStr}\":*\n\n" . $results . "Reply *REPORT* for daily reconciliation.";
+        $msg = "📦 *Product Intelligence Search: \"{$queryStr}\"*\n━━━━━━━━━━━━━━━━━━━━\n\n" . $results . "Reply *REPORT* for daily reconciliation or *SALES* for today's pulse.";
         $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
     }
 
@@ -553,16 +776,21 @@ class WhatsAppWebhookController extends Controller
         $menu = "🤖 *Victorious Market POS — Command Console*\n"
             . "👤 Role: *{$roleName}*\n"
             . "🏬 Scope: *{$branchName}*\n"
-            . "-------------------------------------\n"
-            . "Reply with the number or keyword to get instant data at *₦0.00*:\n\n"
-            . "1️⃣ *REPORT* — Full daily closing reconciliation\n"
-            . "2️⃣ *SALES*  — Live sales total & tender split today\n"
-            . "3️⃣ *CASH*   — Expected physical cash in till/drawer\n"
-            . "4️⃣ *LOW*    — Items running low (≤ 5 units)\n"
-            . "5️⃣ *STOCK <item>* — Instant price & quantity lookup\n";
+            . "📅 Date: *" . now()->format('D, d M Y') . "*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "Reply with any number or keyword:\n\n"
+            . "1️⃣ *REPORT* — Full closing reconciliation audit\n"
+            . "   ↳ Tip: Send `REPORT yesterday` or `REPORT 2`\n\n"
+            . "2️⃣ *SALES*  — Live gross sales & tender breakdown\n"
+            . "   ↳ Tip: Send `SALES yesterday`\n\n"
+            . "3️⃣ *CASH*   — Reconciled cash in drawer for bank deposit\n"
+            . "   ↳ Cash Sales + Debt Recoveries - Refunds\n\n"
+            . "4️⃣ *LOW*    — Items running low (≤ safety threshold)\n\n"
+            . "5️⃣ *STOCK <item>* — Instant price & quantity lookup\n"
+            . "   ↳ You can also just type any item name directly!\n";
 
         if ($isExecutive) {
-            $menu .= "\n💡 *Multi-Branch Option:*\nReply *REPORT <branch_id>* to audit a specific branch.\n";
+            $menu .= "\n💡 *Multi-Branch Commands:*\n• `REPORT 2` (Audit Branch 2)\n• `SALES yesterday 2`\n";
         }
 
         $menu .= "\n_Victorious Market POS Engine_";
