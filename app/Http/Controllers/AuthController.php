@@ -131,7 +131,7 @@ class AuthController extends Controller
         if (session('user_id') || \Illuminate\Support\Facades\Auth::check()) {
             return redirect()->route('dashboard');
         }
-        return redirect()->route('portal.tenant.login');
+        return view('auth.login');
     }
 
     public function webLogin(Request $request)
@@ -182,20 +182,24 @@ class AuthController extends Controller
 
         $tenantId = $user->tenant_id;
         if (config('saas.enabled')) {
-            if (empty($tenantId)) {
-                $this->hitRateLimit($request, $email);
-                return back()->withInput()->with('error', 'Account is not assigned to an active business tenant. Please contact support.');
-            }
-
-            if ($tenantId !== 'default-tenant') {
-                $tenant = Tenant::find($tenantId);
-                if (!$tenant) {
-                    $this->hitRateLimit($request, $email);
-                    return back()->withInput()->with('error', 'Your business account was not found. Please contact support.');
-                }
-                if (!$tenant->isActive()) {
-                    $this->hitRateLimit($request, $email);
-                    return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
+            // Super admins and root platform admins always belong to default-tenant
+            if ($user->isSuperAdmin() || $user->isPlatformAdmin() || in_array($user->role, ['super_admin', 'admin'], true)) {
+                $tenantId = $tenantId ?: 'default-tenant';
+            } elseif (empty($tenantId)) {
+                // If legacy user has no tenant_id, resolve to first active business tenant or default-tenant
+                $firstTenant = Tenant::where('status', 'active')->first();
+                $tenantId = $firstTenant ? $firstTenant->id : 'default-tenant';
+            } else {
+                if ($tenantId !== 'default-tenant') {
+                    $tenant = Tenant::find($tenantId);
+                    if (!$tenant) {
+                        $this->hitRateLimit($request, $email);
+                        return back()->withInput()->with('error', 'Your business account was not found. Please contact support.');
+                    }
+                    if (!$tenant->isActive()) {
+                        $this->hitRateLimit($request, $email);
+                        return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
+                    }
                 }
             }
         }
@@ -406,11 +410,8 @@ class AuthController extends Controller
                     break;
 
                 case 'tenant':
-                    if (!$user->isTenantAdmin()) {
+                    if (!$user->isTenantAdmin() && !$user->isSuperAdmin() && !$user->isPlatformAdmin()) {
                         $this->hitRateLimit($request, $email);
-                        if ($user->tenant_id === 'default-tenant') {
-                            return back()->withInput()->with('error', 'This portal is for Business Tenant Owners only. Platform administrators must log in through the Super-Admin Portal.');
-                        }
                         if (empty($user->tenant_id)) {
                             return back()->withInput()->with('error', 'Account is not assigned to an active business tenant. Please contact support.');
                         }
@@ -418,12 +419,8 @@ class AuthController extends Controller
                     }
 
                     // Validate tenant status
-                    $tenant = Tenant::find($user->tenant_id);
-                    if (!$tenant) {
-                        $this->hitRateLimit($request, $email);
-                        return back()->withInput()->with('error', 'Your business account was not found. Please contact support.');
-                    }
-                    if (!$tenant->isActive()) {
+                    $tenant = ($user->tenant_id === 'default-tenant' || empty($user->tenant_id)) ? null : Tenant::find($user->tenant_id);
+                    if ($tenant && !$tenant->isActive()) {
                         $this->hitRateLimit($request, $email);
                         return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
                     }
