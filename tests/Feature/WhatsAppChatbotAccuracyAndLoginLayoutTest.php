@@ -197,6 +197,12 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
             '8',
             'LOG',
             'ACTIVITY',
+            '9',
+            'DEBT',
+            '10',
+            'CASHIERS',
+            '11',
+            'WAYBILLS',
             'Peak Milk 400g', // Direct product name without 'STOCK' prefix
         ];
 

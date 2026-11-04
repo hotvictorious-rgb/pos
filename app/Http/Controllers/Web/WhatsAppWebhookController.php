@@ -12,7 +12,10 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Payment;
 use App\Models\CustomerLedger;
+use App\Models\Customer;
 use App\Models\SalesReturn;
+use App\Models\Transfer;
+use App\Models\TransferItem;
 use App\Models\Activity;
 use App\Services\Notification\WhatsAppService;
 use App\Console\Commands\SendDailyWhatsAppReportCommand;
@@ -233,6 +236,29 @@ class WhatsAppWebhookController extends Controller
                 case 'HISTORY':
                 case 'VOIDS':
                     $this->dispatchOperationalTimeline($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                    break;
+
+                case '9':
+                case 'DEBT':
+                case 'DEBTORS':
+                case 'CREDIT':
+                case 'RECEIVABLES':
+                    $this->dispatchCustomerDebtBook($senderPhone, $tenantId, $argument);
+                    break;
+
+                case '10':
+                case 'CASHIERS':
+                case 'SHIFTS':
+                case 'STAFF':
+                case 'TILLS':
+                    $this->dispatchCashierBreakdown($senderPhone, $tenantId, $userWarehouseId, $isExecutive, $argument);
+                    break;
+
+                case '11':
+                case 'TRANSFERS':
+                case 'WAYBILLS':
+                case 'DISPATCH':
+                    $this->dispatchTransferWaybills($senderPhone, $tenantId, $userWarehouseId, $isExecutive);
                     break;
 
                 case 'MENU':
@@ -1106,7 +1132,11 @@ class WhatsAppWebhookController extends Controller
             . "   ↳ You can also just type any item name directly!\n\n"
             . "6️⃣ *STOCK ALL* — Total inventory units & store retail value\n\n"
             . "7️⃣ *LOW*    — Restock radar (≤ safety threshold)\n\n"
-            . "8️⃣ *LOG*    — Operational audit trail of everything that happened\n";
+            . "8️⃣ *LOG*    — Operational audit trail of everything that happened\n\n"
+            . "9️⃣ *DEBT*   — Customer debt book, top debtors & recoveries\n"
+            . "   ↳ Tip: Send `DEBT <name>` to check someone's balance\n\n"
+            . "🔟 *CASHIERS* — Cashier scoreboard & till sales breakdown\n\n"
+            . "1️⃣1️⃣ *WAYBILLS* — Active inter-branch transfers & cargo in-transit\n";
 
         if ($isExecutive) {
             $menu .= "\n💡 *Multi-Branch Option:*\nSend `REPORT 2` or `SALES 2` to audit any specific branch.\n";
@@ -1115,6 +1145,231 @@ class WhatsAppWebhookController extends Controller
         $menu .= "\n_Victorious Market POS Engine_";
 
         $this->whatsAppService->sendMessage($phone, $this->appendFooter($menu));
+    }
+
+    /**
+     * Dispatch Customer Debt Book & Debtor Lookup.
+     */
+    protected function dispatchCustomerDebtBook(string $phone, string $tenantId, string $query): void
+    {
+        // 1. If searching for a specific customer: e.g. "DEBT Okon"
+        if (!empty($query)) {
+            $customer = Customer::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->where(function ($q) use ($query) {
+                    $q->where('name', 'like', "%{$query}%")
+                      ->orWhere('phone', 'like', "%{$query}%")
+                      ->orWhere('customer_code', 'like', "%{$query}%");
+                })
+                ->first();
+
+            if (!$customer) {
+                $msg = "🔍 *No customer found matching:* \"{$query}\"\n\nReply *DEBT* to view top owing customers across the store.";
+                $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+                return;
+            }
+
+            $recentLedgers = $customer->ledgers()->take(4)->get();
+            $ledgerLines = "";
+            foreach ($recentLedgers as $led) {
+                $time = Carbon::parse($led->created_at)->format('d M, h:i A');
+                $typeSign = $led->type === 'PAYMENT' ? '-' : '+';
+                $ledgerLines .= "   • [{$time}] {$led->type}: *{$typeSign}₦" . number_format($led->amount, 0) . "* (" . Str::limit($led->notes, 25) . ")\n";
+            }
+
+            $creditLimit = (float) ($customer->credit_limit ?? 0);
+            $limitText = $creditLimit > 0 ? "₦" . number_format($creditLimit, 0) : "Unlimited";
+
+            $msg = "👤 *Customer Debt Profile — Victorious Market POS*\n"
+                . "━━━━━━━━━━━━━━━━━━━━\n"
+                . "• Customer: *{$customer->name}*\n"
+                . "• Phone: *{$customer->phone}*\n"
+                . "• Code: `{$customer->customer_code}`\n"
+                . "• 💰 *Current Outstanding Debt: ₦" . number_format($customer->total_debt, 2) . "*\n"
+                . "• Credit Limit: *{$limitText}*\n"
+                . "━━━━━━━━━━━━━━━━━━━━\n"
+                . "📋 *Recent Debt & Repayment Ledger:*\n"
+                . ($ledgerLines ?: "   • No recent transactions recorded.\n") . "\n"
+                . "Reply *DEBT* to view the full debtor summary.";
+
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            return;
+        }
+
+        // 2. Full Debtor Book Summary
+        $totalDebt = (float) Customer::withoutGlobalScopes()->where('tenant_id', $tenantId)->sum('total_debt');
+        $debtorCount = Customer::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('total_debt', '>', 0)->count();
+
+        // Debt collected today
+        $todayRecoveries = abs((float) CustomerLedger::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereBetween('created_at', [Carbon::today()->startOfDay(), Carbon::today()->endOfDay()])
+            ->where('type', 'PAYMENT')
+            ->where('notes', 'not like', '[REVERSED%')
+            ->sum('amount'));
+
+        $topDebtors = Customer::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('total_debt', '>', 0)
+            ->orderByDesc('total_debt')
+            ->take(10)
+            ->get();
+
+        $debtorLines = "";
+        $i = 1;
+        foreach ($topDebtors as $d) {
+            $debtorLines .= "{$i}. *{$d->name}* ({$d->phone})\n   • Outstanding: *₦" . number_format($d->total_debt, 2) . "*\n";
+            $i++;
+        }
+
+        if (empty($debtorLines)) {
+            $debtorLines = "🟢 *Zero Unpaid Debts!* All customer accounts are fully settled.\n";
+        }
+
+        $msg = "📖 *Customer Debt Book — Victorious Market POS*\n"
+            . "📅 Date: *" . now()->format('D, d M Y (h:i A)') . "*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "💰 *Total Store Receivables / Debt:* ₦" . number_format($totalDebt, 2) . "\n"
+            . "👥 *Total Customers Owing:* {$debtorCount} customers\n"
+            . "💵 *Debt Recovered Today:* ₦" . number_format($todayRecoveries, 2) . "\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . "📋 *Top Outstanding Debtors:*\n\n"
+            . $debtorLines . "\n"
+            . "💡 *Tip:* Reply *DEBT <name>* to check a specific customer's payment history.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+    }
+
+    /**
+     * Dispatch Cashier & Till Performance Breakdown.
+     */
+    protected function dispatchCashierBreakdown(string $phone, string $tenantId, ?int $userWarehouseId, bool $isExecutive, string $argument): void
+    {
+        [$targetDate, $targetWarehouseId] = $this->parseDateAndBranch($argument, $tenantId, $userWarehouseId, $isExecutive);
+
+        $dateStart = $targetDate->copy()->startOfDay();
+        $dateEnd = $targetDate->copy()->endOfDay();
+        $dateStartIso = $dateStart->toIso8601String();
+        $dateEndIso = $dateEnd->toIso8601String();
+
+        $query = Sale::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereNotIn('status', ['VOIDED', 'CANCELLED'])
+            ->where(function ($q) use ($dateStart, $dateEnd, $dateStartIso, $dateEndIso) {
+                $q->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
+                  ->orWhereBetween('created_at', [$dateStart, $dateEnd]);
+            });
+
+        if ($targetWarehouseId) {
+            $query->where('warehouse_id', $targetWarehouseId);
+        }
+
+        $sales = $query->get();
+
+        if ($sales->isEmpty()) {
+            $branchLabel = $targetWarehouseId ? (Warehouse::withoutGlobalScopes()->find($targetWarehouseId)?->name ?? "Branch #{$targetWarehouseId}") : "All Branches";
+            $msg = "💼 *Cashier Performance — Victorious Market POS*\n"
+                . "🏬 Branch: *{$branchLabel}*\n"
+                . "📅 Date: *" . $targetDate->format('D, d M Y') . "*\n"
+                . "-------------------------------------\n"
+                . "ℹ️ No cashier sales transactions recorded for this date.\n\n"
+                . "Reply *SALES* for today's summary or *CASH* for drawer balance.";
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            return;
+        }
+
+        // Group by cashier (userName or userId)
+        $cashierStats = $sales->groupBy(fn($s) => $s->userName ?: ($s->userId ?: 'Till Cashier'));
+
+        $lines = "";
+        $i = 1;
+        foreach ($cashierStats as $cashierName => $cSales) {
+            $cTotal = (float) $cSales->sum('totalAmount');
+            $cInvoices = $cSales->count();
+            $cCash = (float) $cSales->sum('cashAmount');
+            $cPos = (float) $cSales->sum('posAmount');
+            $cTransfer = (float) $cSales->sum('transferAmount');
+
+            $lines .= "{$i}️⃣ *{$cashierName}*\n"
+                . "   • Invoices Completed: *{$cInvoices} sales*\n"
+                . "   • Gross Sales: *₦" . number_format($cTotal, 2) . "*\n"
+                . "   • Cash Collected: *₦" . number_format($cCash, 0) . "* | POS: *₦" . number_format($cPos, 0) . "*\n";
+            if ($cTransfer > 0) {
+                $lines .= "   • Transfers: *₦" . number_format($cTransfer, 0) . "*\n";
+            }
+            $lines .= "\n";
+            $i++;
+        }
+
+        $branchLabel = 'All Branches Combined';
+        if ($targetWarehouseId) {
+            $wh = Warehouse::withoutGlobalScopes()->find($targetWarehouseId);
+            if ($wh) $branchLabel = $wh->name;
+        }
+
+        $msg = "💼 *Cashier & Till Performance — Victorious Market POS*\n"
+            . "🏬 Branch: *{$branchLabel}*\n"
+            . "📅 Date: *" . $targetDate->format('D, d M Y') . "*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . $lines
+            . "Reply *CASH* to verify physical currency or *REPORT* for closing audit.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+    }
+
+    /**
+     * Dispatch Inter-Branch Transfers & Waybills Radar.
+     */
+    protected function dispatchTransferWaybills(string $phone, string $tenantId, ?int $userWarehouseId, bool $isExecutive): void
+    {
+        $query = Transfer::withoutGlobalScopes()
+            ->with(['sourceWarehouse', 'destinationWarehouse', 'items'])
+            ->where('tenant_id', $tenantId)
+            ->whereIn('status', ['DISPATCHED', 'IN_TRANSIT', 'PENDING'])
+            ->latest('created_at')
+            ->take(8);
+
+        if ($userWarehouseId) {
+            $query->where(function ($q) use ($userWarehouseId) {
+                $q->where('source_warehouse_id', $userWarehouseId)
+                  ->orWhere('destination_warehouse_id', $userWarehouseId);
+            });
+        }
+
+        $transfers = $query->get();
+
+        if ($transfers->isEmpty()) {
+            $msg = "🚚 *Waybills & Inter-Branch Transfers — Victorious Market POS*\n"
+                . "━━━━━━━━━━━━━━━━━━━━\n"
+                . "🟢 *No transfers currently in transit!*\n"
+                . "All warehouse waybills have been successfully received and stocked.\n\n"
+                . "Reply *STOCK ALL* to view total branch inventory holdings.";
+            $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
+            return;
+        }
+
+        $lines = "";
+        $i = 1;
+        foreach ($transfers as $tr) {
+            $src = $tr->sourceWarehouse?->name ?? "Branch #{$tr->source_warehouse_id}";
+            $dest = $tr->destinationWarehouse?->name ?? "Branch #{$tr->destination_warehouse_id}";
+            $time = $tr->dispatched_at ? Carbon::parse($tr->dispatched_at)->format('d M, h:i A') : 'Pending';
+            $itemsCount = $tr->items->count();
+            $totalUnits = (int) $tr->items->sum('dispatched_qty');
+
+            $lines .= "{$i}️⃣ *Waybill #{$tr->transfer_no}* [{$tr->status}]\n"
+                . "   • Route: *{$src}* ➔ *{$dest}*\n"
+                . "   • Cargo: *{$totalUnits} units* ({$itemsCount} products)\n"
+                . "   • Dispatched: {$time}\n\n";
+            $i++;
+        }
+
+        $msg = "🚚 *Active Inter-Branch Transfers / Waybills*\n"
+            . "━━━━━━━━━━━━━━━━━━━━\n"
+            . $lines
+            . "Reply *REPORT* for daily reconciliation or *STOCK <item>* to check stock.";
+
+        $this->whatsAppService->sendMessage($phone, $this->appendFooter($msg));
     }
 
     /**
