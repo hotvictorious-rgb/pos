@@ -21,11 +21,16 @@ class AuditorController extends Controller
     public function index(Request $request)
     {
         $authUser = Auth::user();
-        $assignedWarehouseId = ($authUser && !empty($authUser->warehouse_id)) ? $authUser->warehouse_id : null;
+        $scopedWh = ($authUser && $authUser->isBranchScoped()) ? $authUser->warehouse_id : $request->get('warehouse_id', session('active_warehouse_id'));
+        if ($scopedWh === 'ALL' || empty($scopedWh)) {
+            $assignedWarehouseId = null;
+        } else {
+            $assignedWarehouseId = (int) $scopedWh;
+        }
 
         $warehouses = $assignedWarehouseId 
             ? Warehouse::where('id', $assignedWarehouseId)->get() 
-            : Warehouse::all();
+            : Warehouse::where('is_active', true)->get();
         
         // 1. Theft / Variance Alerts (Transfers with missing units)
         $discrepancyQuery = Transfer::with(['source', 'destination', 'items'])->where('status', 'DISCREPANCY');

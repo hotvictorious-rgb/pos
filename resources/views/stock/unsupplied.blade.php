@@ -80,7 +80,7 @@
                 <h2 style="font-size: 1.5rem; font-weight: 800;">Pending Orders (Awaiting Pickup & Delivery)</h2>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted);">
-                Customer orders purchased and awaiting pickup or delivery in <strong style="color: #60a5fa;">{{ $activeWarehouse->name ?? 'Main Shop' }}</strong>. Hand them over when customer arrives!
+                Customer orders purchased and awaiting pickup or delivery in <strong style="color: #60a5fa;">{{ $activeWarehouse->name ?? 'All Branches (Consolidated)' }}</strong>. Hand them over when customer arrives!
             </p>
         </div>
         <div style="display: flex; gap: 0.5rem;">

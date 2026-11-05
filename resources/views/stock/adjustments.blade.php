@@ -149,7 +149,7 @@
                     <select name="warehouse_id">
                         <option value="">-- All Branches --</option>
                         @foreach($warehouses as $wh)
-                            <option value="{{ $wh->id }}" {{ request('warehouse_id') == $wh->id ? 'selected' : '' }}>{{ $wh->name }}</option>
+                            <option value="{{ $wh->id }}" {{ (string)($warehouseId ?? request('warehouse_id')) === (string)$wh->id ? 'selected' : '' }}>{{ $wh->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -262,7 +262,7 @@
                     <label>Branch Shop Location</label>
                     <select name="warehouse_id" id="adjWarehouse" required onchange="updateAdjStockBadge()">
                         @foreach($warehouses as $wh)
-                            <option value="{{ $wh->id }}">{{ $wh->name }} ({{ $wh->code }})</option>
+                            <option value="{{ $wh->id }}" {{ (string)($warehouseId ?? session('active_warehouse_id')) === (string)$wh->id ? 'selected' : '' }}>{{ $wh->name }} ({{ $wh->code }})</option>
                         @endforeach
                     </select>
                 </div>

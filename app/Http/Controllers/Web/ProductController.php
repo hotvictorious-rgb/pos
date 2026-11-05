@@ -78,11 +78,22 @@ class ProductController extends Controller
             ->get()
             ->groupBy('product_id');
 
+        $activeWhId = ($authUser && $authUser->isBranchScoped()) ? (int) $authUser->warehouse_id : $request->get('warehouse_id', session('active_warehouse_id'));
+        if ($activeWhId === 'ALL' || empty($activeWhId)) {
+            $activeWhId = null;
+        } else {
+            $activeWhId = (int) $activeWhId;
+        }
+
         // Attach per-branch physical stocks strictly scoped to authorized warehouses
-        $products = $productsList->map(function ($p) use ($allStockLevels) {
+        $products = $productsList->map(function ($p) use ($allStockLevels, $activeWhId) {
             $levels = $allStockLevels->get($p->id, collect());
             $p->branch_stocks = $levels->pluck('physical_stock', 'warehouse_id')->toArray();
-            $p->total_physical_stock = array_sum($p->branch_stocks);
+            if ($activeWhId) {
+                $p->total_physical_stock = (int) ($p->branch_stocks[$activeWhId] ?? 0);
+            } else {
+                $p->total_physical_stock = (int) array_sum($p->branch_stocks);
+            }
             return $p;
         });
 

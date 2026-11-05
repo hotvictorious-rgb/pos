@@ -604,14 +604,26 @@ class StockController extends Controller
         $isBranchStaff = ($authUser && $authUser->isBranchScoped());
         $userWarehouse = $isBranchStaff ? Warehouse::find($authUser->warehouse_id) : null;
 
+        $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
+        if ($rawWh === 'ALL' || empty($rawWh)) {
+            $effectiveWhId = null;
+        } else {
+            $effectiveWhId = (int) $rawWh;
+        }
+
         $query = Transfer::with(['source', 'destination', 'items']);
         $this->applyDateFilter($query, 'created_at', $datePreset, $fromDate, $toDate);
 
-        // 🔒 Strict Branch Scoping: Branch staff ONLY see transfers involving their assigned shop (Origin or Destination)
+        // 🔒 Strict Branch Scoping: Branch staff or active branch selection ONLY see transfers involving their assigned/selected shop (Origin or Destination)
         if ($isBranchStaff) {
             $query->where(function ($q) use ($authUser) {
                 $q->where('source_warehouse_id', $authUser->warehouse_id)
                   ->orWhere('destination_warehouse_id', $authUser->warehouse_id);
+            });
+        } elseif ($effectiveWhId && !$sourceId && !$destId) {
+            $query->where(function ($q) use ($effectiveWhId) {
+                $q->where('source_warehouse_id', $effectiveWhId)
+                  ->orWhere('destination_warehouse_id', $effectiveWhId);
             });
         }
 
@@ -644,6 +656,11 @@ class StockController extends Controller
             $kpiQuery->where(function ($q) use ($authUser) {
                 $q->where('source_warehouse_id', $authUser->warehouse_id)
                   ->orWhere('destination_warehouse_id', $authUser->warehouse_id);
+            });
+        } elseif ($effectiveWhId) {
+            $kpiQuery->where(function ($q) use ($effectiveWhId) {
+                $q->where('source_warehouse_id', $effectiveWhId)
+                  ->orWhere('destination_warehouse_id', $effectiveWhId);
             });
         }
 
@@ -745,8 +762,15 @@ class StockController extends Controller
             $activeWarehouse = Warehouse::find($authUser->warehouse_id) ?? Warehouse::first();
             $query->where('warehouse_id', $authUser->warehouse_id);
         } else {
-            $activeWarehouseId = session('active_warehouse_id', Warehouse::first()->id ?? 1);
-            $activeWarehouse = Warehouse::find($activeWarehouseId) ?? Warehouse::first();
+            $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
+            if ($rawWh && $rawWh !== 'ALL') {
+                $activeWarehouse = Warehouse::find($rawWh);
+                if ($activeWarehouse) {
+                    $query->where('warehouse_id', $activeWarehouse->id);
+                }
+            } else {
+                $activeWarehouse = null; // Consolidated
+            }
         }
 
         $unsuppliedSales = $query->orderBy('createdAt', 'desc')->paginate(25)->withQueryString();
@@ -849,8 +873,14 @@ class StockController extends Controller
             $warehouses = Warehouse::where('id', $user->warehouse_id)->get();
         } else {
             $warehouses = Warehouse::where('is_active', true)->get();
-            if ($warehouseId && $user && !$user->canAccessWarehouse($warehouseId)) {
+            $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
+            if ($rawWh === 'ALL' || empty($rawWh)) {
                 $warehouseId = null;
+            } else {
+                $warehouseId = (int) $rawWh;
+                if ($user && !$user->canAccessWarehouse($warehouseId)) {
+                    $warehouseId = null;
+                }
             }
         }
 

@@ -293,12 +293,18 @@ class TransactionController extends Controller
             ->where('status', 'DISPATCHED');
         $this->applyDateFilter($query, 'dispatched_at', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Branch Privacy Scoping
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
+        if ($user && $user->isBranchScoped()) {
             $query->where(function ($q) use ($user) {
                 $q->where('source_warehouse_id', $user->warehouse_id)
                   ->orWhere('destination_warehouse_id', $user->warehouse_id);
+            });
+        } elseif (!empty($effectiveWh)) {
+            $query->where(function ($q) use ($effectiveWh) {
+                $q->where('source_warehouse_id', $effectiveWh)
+                  ->orWhere('destination_warehouse_id', $effectiveWh);
             });
         }
 
@@ -338,10 +344,13 @@ class TransactionController extends Controller
         $query = Transfer::with(['items', 'sourceWarehouse', 'destinationWarehouse']);
         $this->applyDateFilter($query, 'created_at', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Branch Privacy Scoping
         $user = Auth::user();
-        if ($user && $user->role !== 'admin' && !empty($user->warehouse_id)) {
+        if ($user && $user->isBranchScoped()) {
             $query->where('destination_warehouse_id', $user->warehouse_id);
+        } elseif (!empty($effectiveWh)) {
+            $query->where('destination_warehouse_id', $effectiveWh);
         }
 
         if ($request->filled('warehouse_id')) {
@@ -461,6 +470,7 @@ class TransactionController extends Controller
         $query = CustomerLedger::with(['customer', 'sale.items', 'sale.payments', 'sale.returns']);
         $this->applyDateFilter($query, 'created_at', $request);
 
+        $effectiveWh = $this->getEffectiveWarehouseId($request);
         // 🔒 Role & Branch Privacy Scoping
         $user = Auth::user();
         if ($user && $user->isBranchScoped()) {
@@ -471,8 +481,8 @@ class TransactionController extends Controller
             if ($user->role === 'cashier') {
                 $query->where('recorded_by', $user->name);
             }
-        } elseif ($request->filled('warehouse_id')) {
-            $whId = (int) $request->warehouse_id;
+        } elseif (!empty($effectiveWh)) {
+            $whId = (int) $effectiveWh;
             $query->where(function ($q) use ($whId) {
                 $q->whereHas('sale', fn($sq) => $sq->where('warehouse_id', $whId))
                   ->orWhere('warehouse_id', $whId);
@@ -687,8 +697,9 @@ class TransactionController extends Controller
             ->whereHas('sale', fn($sq) => $sq->whereIn('deliveryStatus', ['UNSUPPLIED', 'PENDING_PICKUP', 'NOT_SUPPLIED']))
             ->sum('amount');
 
-        if ($authUser && $authUser->isBranchScoped()) {
-            $openSalesBranch = Sale::where('warehouse_id', $authUser->warehouse_id)
+        $targetDebtWh = ($authUser && $authUser->isBranchScoped()) ? $authUser->warehouse_id : $warehouseId;
+        if (!empty($targetDebtWh)) {
+            $openSalesBranch = Sale::where('warehouse_id', $targetDebtWh)
                 ->whereNotIn('status', ['CANCELLED', 'RETURNED'])
                 ->get();
             $branchOpenDebt = 0.0;

@@ -11,8 +11,8 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.3',
-    'tag' => 'v1.0.3',
+    'version' => '1.0.4',
+    'tag' => 'v1.0.4',
     'name' => 'Victorious Enterprise POS',
     'released_at' => '2026-11-05',
 
@@ -26,6 +26,23 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.4' => [
+            'version' => '1.0.4',
+            'tag' => 'v1.0.4',
+            'title' => 'Universal Multi-Branch Isolation & Active-Branch Context Synchronization Across All Screens and Tabs',
+            'date' => '2026-11-05',
+            'highlights' => [
+                'Deep Per-Shop Isolation on Pending Orders (/stock/unsupplied): strictly clamps orders to active branch in session or designated shop for frontline staff.',
+                'Multi-Branch Synchronization on Shop Transfers (/stock/transfers): active branch selection automatically defaults to filtering transfers involving that branch, and scopes transfer KPIs accordingly.',
+                'Stock Out & Deductions Hub (/stock/adjustments): active branch synchronization pre-selects and filters adjustments by active shop location.',
+                'Universal 10-Tab History & Ledgers Hub (/transactions): In-Transit, Incoming Transfers, and Customer Debts now automatically respect active branch context, and total open debt correctly computes for the selected shop.',
+                'Reports & Daybook System (/reports, CSV, JSON, PDF): strict branch isolation across Daybook, inventory valuation, pending orders, and all executive export formats.',
+                'Catalog Stock Scoping (/products): product shelf count and low/out-of-stock indicators strictly reflect the active branch inventory.',
+                'Frontline Immutability: Cashiers and branch employees are hard-locked to their designated location and cannot switch branches.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.4.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.3' => [
             'version' => '1.0.3',
             'tag' => 'v1.0.3',
