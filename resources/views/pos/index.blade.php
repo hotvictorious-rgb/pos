@@ -6,7 +6,7 @@
 <style>
     .pos-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.25fr) minmax(380px, 440px);
+        grid-template-columns: minmax(0, 1.45fr) minmax(380px, 440px);
         gap: 1.25rem;
         align-items: start;
     }
@@ -100,9 +100,9 @@
 
     .product-grid {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0.75rem;
-        max-height: calc(100vh - 200px);
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 0.85rem;
+        max-height: calc(100vh - 195px);
         overflow-y: auto;
         padding-right: 0.35rem;
     }

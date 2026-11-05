@@ -2,7 +2,7 @@
 VICTORIOUS ENTERPRISE POS - LIVE SITE OVERLAY DEPLOYMENT PACKAGE
 Release Tag: v1.0.4
 Base Revision: v1.0.0-rc.1
-Packaged Date: 2026-11-05 19:30:02
+Packaged Date: 2026-11-05 19:51:04
 ================================================================================
 
 1. WHAT IS THIS OVERLAY?
@@ -103,8 +103,6 @@ Step 5: Delete `overlay-v1.0.4.zip` and `overlay-runner.php` from your server.
   - app/Services/TransactionVoidService.php
   - app/Traits/BelongsToTenant.php
   - bootstrap/app.php
-  - bootstrap/cache/packages.php
-  - bootstrap/cache/services.php
   - bootstrap/providers.php
   - config/version.php
   - config/app.php

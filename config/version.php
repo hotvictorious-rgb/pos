@@ -11,8 +11,8 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.4',
-    'tag' => 'v1.0.4',
+    'version' => '1.0.5',
+    'tag' => 'v1.0.5',
     'name' => 'Victorious Enterprise POS',
     'released_at' => '2026-11-05',
 
@@ -26,6 +26,20 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.5' => [
+            'version' => '1.0.5',
+            'tag' => 'v1.0.5',
+            'title' => 'Shopify-Style Full-Screen POS Zen Mode & Auto-Fill Responsive Grid',
+            'date' => '2026-11-05',
+            'highlights' => [
+                'Full-Screen Zen Mode POS Register: Automatically hides standard fixed sidebar on POS screen (/pos), giving 100% full-width workspace to cashier registers.',
+                'Responsive Auto-Fill Product Grid: Replaced cramped 2-column fixed grid with repeat(auto-fill, minmax(210px, 1fr)), rendering 3 to 5 responsive product tiles per row on desktop/laptops.',
+                'Dedicated Exit POS / Shift Summary Navigation: Added direct 🏠 Exit POS topbar button navigating back to Executive Dashboard (or Shift Summary for cashiers).',
+                'Slide-Out Drawer Menu on POS: Cashiers and managers can access full system navigation via drawer toggle (☰) on POS without leaving the active sales register.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.5.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.4' => [
             'version' => '1.0.4',
             'tag' => 'v1.0.4',

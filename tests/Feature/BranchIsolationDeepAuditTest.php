@@ -360,4 +360,32 @@ class BranchIsolationDeepAuditTest extends TestCase
         // Session active_warehouse_id remains locked to cashier's assigned branch
         $this->assertEquals($this->branch1->id, session('active_warehouse_id', $this->cashier1->warehouse_id));
     }
+
+    public function test_pos_zen_mode_collapses_sidebar_and_provides_exit_navigation(): void
+    {
+        // 1. Visiting POS activates pos-zen-mode class on body and renders Exit POS button
+        $resPos = $this->actingAs($this->admin)
+            ->withSession([
+                'user_id' => $this->admin->id,
+                'tenant_id' => $this->tenant->id,
+            ])
+            ->get(route('pos.index'));
+
+        $resPos->assertStatus(200);
+        $resPos->assertSee('<body class="pos-zen-mode">', false);
+        $resPos->assertSee('class="btn-pos-home"', false);
+        $resPos->assertSee(route('dashboard'));
+
+        // 2. Visiting Dashboard does NOT activate pos-zen-mode on body
+        $resDash = $this->actingAs($this->admin)
+            ->withSession([
+                'user_id' => $this->admin->id,
+                'tenant_id' => $this->tenant->id,
+            ])
+            ->get(route('dashboard'));
+
+        $resDash->assertStatus(200);
+        $resDash->assertDontSee('<body class="pos-zen-mode">', false);
+        $resDash->assertDontSee('class="btn-pos-home"', false);
+    }
 }

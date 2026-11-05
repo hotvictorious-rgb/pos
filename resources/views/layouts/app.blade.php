@@ -992,6 +992,56 @@
             transition: opacity 0.2s;
         }
 
+        /* 🛍️ Full-Screen POS Zen Mode (Shopify / Square Style Register) */
+        body.pos-zen-mode .sidebar {
+            transform: translateX(-100%);
+            width: 280px;
+            z-index: 999;
+            box-shadow: 10px 0 50px rgba(0, 0, 0, 0.85);
+        }
+        body.pos-zen-mode .sidebar.open {
+            transform: translateX(0);
+        }
+        body.pos-zen-mode .main-wrapper {
+            margin-left: 0 !important;
+            width: 100% !important;
+            max-width: 100vw;
+        }
+        body.pos-zen-mode .mobile-menu-btn {
+            display: inline-flex !important;
+        }
+        body.pos-zen-mode .mobile-close-sidebar {
+            display: inline-flex !important;
+        }
+        body.pos-zen-mode .container {
+            padding: 1rem 1.25rem;
+            max-width: 100vw;
+        }
+        .btn-pos-home {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.42rem 0.85rem;
+            font-size: 0.83rem;
+            font-weight: 800;
+            color: #f8fafc;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.25), rgba(30, 58, 138, 0.5));
+            border: 1.5px solid rgba(59, 130, 246, 0.5);
+            border-radius: 10px;
+            text-decoration: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .btn-pos-home:hover {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.45), rgba(30, 58, 138, 0.7));
+            border-color: #60a5fa;
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+        }
+
         /* Responsive Breakpoints */
         @media (max-width: 1024px) {
             .sidebar {
@@ -1377,7 +1427,7 @@
 
     @stack('styles')
 </head>
-<body>
+<body class="{{ request()->routeIs('pos.*') ? 'pos-zen-mode' : '' }}">
 
     <!-- Mobile Sidebar Backdrop Overlay -->
     <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleMobileSidebar(false)"></div>
@@ -1529,7 +1579,15 @@
         <header class="topbar">
             <!-- Left: Mobile Menu Toggle & Live Clock -->
             <div class="topbar-left-wrap">
-                <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" aria-label="Toggle navigation menu">
+                @if(request()->routeIs('pos.*'))
+                    <a href="{{ route('dashboard') }}" class="btn-pos-home" title="Exit POS register and return to Dashboard / Shift Summary">
+                        <span>🏠</span>
+                        <span class="btn-text-desktop">{{ (auth()->user()?->role === 'cashier') ? 'Shift Summary' : 'Exit POS' }}</span>
+                        <span class="btn-text-mobile">Exit</span>
+                    </a>
+                @endif
+
+                <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" aria-label="Toggle navigation menu" title="Open navigation drawer">
                     <span>☰</span>
                 </button>
 
