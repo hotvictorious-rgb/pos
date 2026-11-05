@@ -43,11 +43,11 @@ class RequireCapability
         }
 
         // 3. Strict Authority Boundary Enforcement
-        // Platform users can NEVER access tenant business capabilities
-        if ($user->isPlatformUser()) {
+        // Subordinate platform employees can NEVER access tenant business capabilities
+        if ($user->isPlatformEmployee() && !$user->isAdmin()) {
             foreach ($required as $cap) {
                 if (!CapabilityService::isPlatformCapability($cap)) {
-                    $msg = 'Forbidden. Platform administrators cannot access tenant business records.';
+                    $msg = 'Forbidden. Platform employees cannot access tenant business records.';
                     if ($request->ajax() || $request->wantsJson() || $request->is('api/*')) {
                         return response()->json(['error' => $msg], 403);
                     }

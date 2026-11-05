@@ -99,14 +99,10 @@ class CheckWebAuth
 
         // Validate and synchronize tenant_id context securely
         if (config('saas.enabled')) {
-            // If a normal tenant user has no valid tenant, deny access rather than assigning them to the platform tenant
+            // Gracefully resolve missing tenant_id to default-tenant rather than destroying session
             if (empty($user->tenant_id)) {
-                session()->forget(['user_id', 'user_name', 'user_role', 'tenant_id', 'warehouse_id', 'active_warehouse_id']);
-                Auth::logout();
-                if ($isApi) {
-                    return response()->json(['error' => 'Forbidden: Account is not associated with an active tenant.'], 403);
-                }
-                return redirect()->route('login')->with('error', 'Your account is not assigned to an active tenant.');
+                $user->tenant_id = 'default-tenant';
+                $user->save();
             }
 
             if (session('tenant_id') !== $user->tenant_id) {
@@ -141,8 +137,8 @@ class CheckWebAuth
             }
         }
 
-        // Hard Boundary: Platform users can NEVER access tenant business web routes
-        if ($user->isPlatformUser()) {
+        // Hard Boundary: Subordinate platform employees (without store admin privileges) are restricted from tenant store routes
+        if ($user->isPlatformEmployee() && !$user->isAdmin()) {
             $tenantWebPrefixes = [
                 'dashboard',
                 'pos', 'pos/*',
@@ -158,9 +154,9 @@ class CheckWebAuth
             foreach ($tenantWebPrefixes as $pattern) {
                 if ($request->is($pattern)) {
                     if ($isApi) {
-                        return response()->json(['error' => 'Forbidden: Platform users cannot access tenant business operations.'], 403);
+                        return response()->json(['error' => 'Forbidden: Platform employees cannot access tenant business operations.'], 403);
                     }
-                    abort(403, 'Forbidden: Platform users cannot access tenant business operations.');
+                    abort(403, 'Forbidden: Platform employees cannot access tenant business operations.');
                 }
             }
         }

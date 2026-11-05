@@ -366,8 +366,8 @@
                 @csrf
 
                 <div class="form-group">
-                    <label for="email">Work Email</label>
-                    <input type="email" id="email" name="email" value="{{ old('email') }}" placeholder="e.g. admin@hysamventures.com" required autofocus>
+                    <label for="email">Work Email, Username or Phone</label>
+                    <input type="text" id="email" name="email" value="{{ old('email') }}" placeholder="e.g. admin or staff@example.com or 08012345678" required autofocus>
                 </div>
 
                 <div class="form-group">

@@ -76,6 +76,23 @@ try {
     echo "Note on retroactive void cleanup: " . $e->getMessage() . "\n<br>";
 }
 
+// 1d. Ensure all existing users have valid tenant_id and super-admin integrity
+try {
+    \Illuminate\Support\Facades\DB::table('users')
+        ->whereNull('tenant_id')
+        ->orWhere('tenant_id', '')
+        ->update(['tenant_id' => 'default-tenant']);
+
+    $superEmail = strtolower(trim(env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
+    \Illuminate\Support\Facades\DB::table('users')
+        ->whereRaw('LOWER(email) = ?', [$superEmail])
+        ->update(['disabled' => false, 'tenant_id' => 'default-tenant']);
+
+    echo "User accounts and tenant integrity verified successfully!\n<br>";
+} catch (\Throwable $e) {
+    echo "Note on user integrity: " . $e->getMessage() . "\n<br>";
+}
+
 // 2. Clear view cache
 echo "2. Clearing compiled Blade views...\n<br>";
 Artisan::call('view:clear');

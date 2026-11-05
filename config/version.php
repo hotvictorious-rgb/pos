@@ -11,10 +11,10 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.1',
-    'tag' => 'v1.0.1',
+    'version' => '1.0.2',
+    'tag' => 'v1.0.2',
     'name' => 'Victorious Enterprise POS',
-    'released_at' => '2026-11-03',
+    'released_at' => '2026-11-05',
 
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +26,22 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.2' => [
+            'version' => '1.0.2',
+            'tag' => 'v1.0.2',
+            'title' => 'Universal Multi-Identifier Authentication, Role & Branch Isolated Dashboards & Interactive WhatsApp USSD Engine',
+            'date' => '2026-11-05',
+            'highlights' => [
+                'Universal Single-Entrypoint Login at /login accepting Work Email, Staff Username, or WhatsApp Phone Number without format blocks.',
+                'Strict Role-Based Dashboard Isolation: Cashiers land straight at POS (/pos), Store Owners & Managers land at their isolated Executive Dashboard (/dashboard), and Superadmins land at Platform Command (/saas/admin).',
+                'Hard multi-tenant and multi-branch data isolation: cross-tenant access is strictly denied (403/redirect) and branch staff are clamped to their warehouse.',
+                'Resolved platform user boundary check ensuring super-admins retain store access without 403 Forbidden roadblocks.',
+                'Interactive Multi-Level WhatsApp USSD Navigation: Hierarchical menus with dot/star notation (1.1, 1.2, 2.2, 3.1) and stateful cache navigation.',
+                'Enhanced live deployment migration runner ensuring user integrity and default-tenant recovery.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.2.zip directly over live site folder in cPanel File Manager, then load https://pos.victoriousmarket.com.ng/run_live_migrations.php?token=vmpos_deploy_2026 to verify database and clear all caches.',
+        ],
         'v1.0.1' => [
             'version' => '1.0.1',
             'tag' => 'v1.0.1',

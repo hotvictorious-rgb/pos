@@ -137,7 +137,7 @@ class AuthController extends Controller
     public function webLogin(Request $request)
     {
         $request->validate([
-            'email' => 'required|email',
+            'email' => 'required|string',
             'password' => 'required',
         ]);
 
@@ -152,11 +152,11 @@ class AuthController extends Controller
 
         if (!$user) {
             $this->hitRateLimit($request, $email);
-            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for email '{$email}' (Invalid credentials).", [
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for identifier '{$email}' (Invalid credentials).", [
                 'attempted_email' => $email,
                 'reason' => 'user_not_found',
             ]);
-            return back()->withInput()->with('error', 'Invalid email address or password.');
+            return back()->withInput()->with('error', 'Invalid email address, username, or password.');
         }
 
         if ($user->disabled) {
@@ -172,12 +172,12 @@ class AuthController extends Controller
 
         if (!Hash::check($password, $user->password)) {
             $this->hitRateLimit($request, $email);
-            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for email '{$email}' (Wrong password).", [
+            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed login attempt for identifier '{$email}' (Wrong password).", [
                 'user_id' => $user->id,
                 'attempted_email' => $email,
                 'reason' => 'invalid_password',
             ], $user);
-            return back()->withInput()->with('error', 'Invalid email address or password.');
+            return back()->withInput()->with('error', 'Invalid email address, username, or password.');
         }
 
         $tenantId = $user->tenant_id;
@@ -210,10 +210,12 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
         session([
-            'user_id'   => $user->id,
-            'user_name' => $user->name,
-            'user_role' => $user->role,
-            'tenant_id' => $activeTenantId
+            'user_id'             => $user->id,
+            'user_name'           => $user->name,
+            'user_role'           => $user->role,
+            'tenant_id'           => $activeTenantId,
+            'warehouse_id'        => $user->warehouse_id,
+            'active_warehouse_id' => $user->warehouse_id,
         ]);
         \Illuminate\Support\Facades\Auth::login($user);
 
@@ -226,11 +228,31 @@ class AuthController extends Controller
             'portal' => 'standard',
         ], $user);
 
-        $intended = session()->pull('url.intended', '/');
-        if (!$user->isSuperAdmin() && (str_contains($intended, 'saas/admin') || str_contains($intended, 'super-admin'))) {
-            $intended = '/';
+        // Determine destination based on role and intended URL
+        $intended = session()->pull('url.intended');
+        if ($intended) {
+            $intendedPath = parse_url($intended, PHP_URL_PATH) ?: '/';
+            if ($intendedPath === '/' || $intendedPath === '' || $intendedPath === '/login' || $intended === url('/') || $intended === route('login')) {
+                $intended = null;
+            } elseif (!$user->isSuperAdmin() && (str_contains($intended, 'saas/admin') || str_contains($intended, 'super-admin'))) {
+                $intended = null;
+            }
         }
-        return redirect($intended)->with('success', "Welcome back, {$user->name}!");
+
+        if ($intended) {
+            return redirect($intended)->with('success', "Welcome back, {$user->name}!");
+        }
+
+        // Dedicated Role & Branch-Isolated Landing Hubs
+        if ($user->isSuperAdmin() || $user->isPlatformAdmin()) {
+            return redirect()->route('saas.admin.index')->with('success', "Welcome back to Platform Command, {$user->name}!");
+        }
+
+        if ($user->role === 'cashier') {
+            return redirect()->route('pos.index')->with('success', "Welcome to the POS register, {$user->name}!");
+        }
+
+        return redirect()->route('dashboard')->with('success', "Welcome back, {$user->name}!");
     }
 
     public function logout()

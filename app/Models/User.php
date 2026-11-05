@@ -15,14 +15,50 @@ class User extends Authenticatable
 
     /**
      * Look up user strictly for pre-authentication identity verification.
+     * Supports Email, Username (Name), or WhatsApp Phone Number.
      * Controlled global scope bypass before session tenant context is established.
      */
-    public static function findForAuthentication(string $email): ?self
+    public static function findForAuthentication(string $identifier): ?self
     {
-        $normalized = strtolower(trim($email));
-        return static::withoutGlobalScope(TenantScope::class)
+        $clean = trim($identifier);
+        $normalized = strtolower($clean);
+
+        // 1. Direct match on email (case-insensitive)
+        $user = static::withoutGlobalScope(TenantScope::class)
             ->whereRaw('LOWER(email) = ?', [$normalized])
             ->first();
+
+        if ($user) {
+            return $user;
+        }
+
+        // 2. Direct match on name / username (case-insensitive)
+        $user = static::withoutGlobalScope(TenantScope::class)
+            ->whereRaw('LOWER(name) = ?', [$normalized])
+            ->first();
+
+        if ($user) {
+            return $user;
+        }
+
+        // 3. Match on phone number if digits provided
+        $digits = preg_replace('/[^0-9]/', '', $clean);
+        if (strlen($digits) >= 8) {
+            $lastDigits = strlen($digits) >= 10 ? substr($digits, -10) : $digits;
+            $user = static::withoutGlobalScope(TenantScope::class)
+                ->where(function ($q) use ($digits, $lastDigits) {
+                    $q->where('whatsapp_phone', 'like', "%{$digits}%")
+                      ->orWhere('whatsapp_phone', 'like', "%{$lastDigits}%")
+                      ->orWhere('email', 'like', "%{$digits}%");
+                })
+                ->first();
+
+            if ($user) {
+                return $user;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -85,8 +121,8 @@ class User extends Authenticatable
 
         $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
 
-        return in_array($this->role, ['admin', 'super_admin'], true) 
-            && (strtolower(trim($this->email)) === $superAdminEmail);
+        return ($this->role === 'super_admin') 
+            || (in_array($this->role, ['admin', 'super_admin'], true) && (strtolower(trim($this->email)) === $superAdminEmail));
     }
 
     /**
@@ -94,7 +130,7 @@ class User extends Authenticatable
      */
     public function isSuperAdmin(): bool
     {
-        return $this->isPlatformAdmin();
+        return $this->role === 'super_admin' || $this->isPlatformAdmin();
     }
 
     /**

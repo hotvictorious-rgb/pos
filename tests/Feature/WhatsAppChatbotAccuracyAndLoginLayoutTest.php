@@ -365,4 +365,104 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
         $res = $sendMsg('6.1');
         $res->assertStatus(200);
     }
+
+    public function test_multi_identifier_login_and_role_dashboard_isolation(): void
+    {
+        // 0. Ensure tenant exists
+        \App\Models\Tenant::create([
+            'id' => 'tenant-test',
+            'name' => 'Victorious Market',
+            'status' => 'active',
+            'owner_email' => 'owner@victoriousmarket.com',
+            'owner_phone' => '2348000000002',
+            'plan' => 'pro',
+        ]);
+
+        // 1. Create a Super Admin
+        $superAdmin = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'name' => 'Root SuperAdmin',
+            'email' => 'superadmin@hysam.com',
+            'password' => bcrypt('SuperSecret123!'),
+            'role' => 'super_admin',
+            'whatsapp_phone' => '2348000000001',
+        ]);
+
+        // 2. Create a Business Tenant Admin (Owner)
+        $tenantOwner = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'tenant-test',
+            'name' => 'victor_owner',
+            'email' => 'owner@victoriousmarket.com',
+            'password' => bcrypt('OwnerSecret123!'),
+            'role' => 'admin',
+            'whatsapp_phone' => '2348000000002',
+        ]);
+
+        // 3. Create a Cashier for the tenant
+        $cashier = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'tenant-test',
+            'name' => 'mary_cashier',
+            'email' => 'mary@victoriousmarket.com',
+            'password' => bcrypt('CashierSecret123!'),
+            'role' => 'cashier',
+            'whatsapp_phone' => '2348000000003',
+        ]);
+
+        // Case A: Cashier logs in via username 'mary_cashier' -> Lands at POS
+        $foundCashier = User::findForAuthentication('mary_cashier');
+        $this->assertNotNull($foundCashier, 'Cashier should be found by username');
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('CashierSecret123!', $foundCashier->password), 'Password hash check should match');
+
+        $loginRes = $this->from('/login')->post('/login', [
+            'email' => 'mary_cashier',
+            'password' => 'CashierSecret123!',
+        ]);
+        if ($loginRes->getSession()->has('error')) {
+            $this->fail('Login failed with error: ' . $loginRes->getSession()->get('error'));
+        }
+        $loginRes->assertRedirect(route('pos.index'));
+        $this->assertAuthenticatedAs($cashier);
+        $this->post('/logout');
+
+        // Case B: Cashier logs in via WhatsApp Phone '08000000003' -> Lands at POS
+        $loginRes = $this->post('/login', [
+            'email' => '08000000003',
+            'password' => 'CashierSecret123!',
+        ]);
+        if ($loginRes->getSession()->has('error')) {
+            $this->fail('Login failed with error: ' . $loginRes->getSession()->get('error'));
+        }
+        $loginRes->assertRedirect(route('pos.index'));
+        $this->assertAuthenticatedAs($cashier);
+        $this->post('/logout');
+
+        // Case C: Tenant Owner logs in via username 'victor_owner' -> Lands at Dashboard
+        $loginRes = $this->post('/login', [
+            'email' => 'victor_owner',
+            'password' => 'OwnerSecret123!',
+        ]);
+        $loginRes->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($tenantOwner);
+        $this->post('/logout');
+
+        // Case D: Super Admin logs in via email -> Lands at Platform Command (saas.admin.index)
+        $loginRes = $this->post('/login', [
+            'email' => 'superadmin@hysam.com',
+            'password' => 'SuperSecret123!',
+        ]);
+        $loginRes->assertRedirect(route('saas.admin.index'));
+        $this->assertAuthenticatedAs($superAdmin);
+        $this->post('/logout');
+
+        // Case E: Strict Isolation - Cashier cannot access SaaS Admin
+        $this->actingAs($cashier);
+        $saasRes = $this->get('/saas/admin');
+        $saasRes->assertRedirect(route('dashboard'));
+
+        $saasJsonRes = $this->getJson('/saas/admin');
+        $saasJsonRes->assertStatus(403);
+    }
 }

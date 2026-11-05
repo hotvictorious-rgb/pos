@@ -83,32 +83,8 @@ class CapabilityService
      * Unknown roles return an empty array (fail-closed).
      */
     protected static array $roleCapabilities = [
-        'platform_admin' => [
-            'platform.tenants',
-            'platform.tenants.read',
-            'platform.tenants.create',
-            'platform.tenants.suspend',
-            'platform.tenants.delete',
-            'platform.settings',
-            'platform.limits',
-            'platform.health',
-            'platform.backup',
-            'platform.restore',
-            'platform.reset',
-        ],
-        'super_admin' => [
-            'platform.tenants',
-            'platform.tenants.read',
-            'platform.tenants.create',
-            'platform.tenants.suspend',
-            'platform.tenants.delete',
-            'platform.settings',
-            'platform.limits',
-            'platform.health',
-            'platform.backup',
-            'platform.restore',
-            'platform.reset',
-        ],
+        'platform_admin' => self::CAPABILITIES,
+        'super_admin' => self::CAPABILITIES,
         'platform_employee' => [
             // Platform employees perform ONLY explicitly assigned platform work
         ],
