@@ -63,7 +63,9 @@ class CheckWebAuth
             if ($isApi) {
                 return response()->json(['error' => 'Unauthenticated.'], 401);
             }
-            session()->put('url.intended', $request->fullUrl());
+            if ($request->isMethod('GET') && !$request->is('branch/switch') && !$request->is('logout') && !$request->is('*/logout')) {
+                session()->put('url.intended', $request->fullUrl());
+            }
             return redirect()->route('login')->with('warning', 'Please log in to access the system.');
         }
 

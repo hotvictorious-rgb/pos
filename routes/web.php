@@ -20,7 +20,7 @@ use App\Models\Transfer;
 // ─────────────────────────────────────────────────────────
 Route::get('/account/password',  [AuthController::class, 'showChangePassword'])->name('account.password');
 Route::post('/account/password', [AuthController::class, 'changePassword'])->name('account.password.update');
-Route::post('/branch/switch',    [\App\Http\Controllers\Web\DashboardController::class, 'switchBranch'])->name('branch.switch');
+Route::match(['get', 'post'], '/branch/switch', [\App\Http\Controllers\Web\DashboardController::class, 'switchBranch'])->name('branch.switch');
 
 // ─────────────────────────────────────────────────────────
 // PUBLIC MARKETING & LANDING PAGE (Nigerian Retail, Supermarkets & Wholesalers)

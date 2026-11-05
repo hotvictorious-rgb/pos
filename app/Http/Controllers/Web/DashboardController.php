@@ -340,6 +340,12 @@ class DashboardController extends Controller
             return redirect()->route('login');
         }
 
+        // Gracefully handle GET requests or direct navigation by redirecting to appropriate dashboard
+        if ($request->isMethod('get') || !$request->has('warehouse_id')) {
+            $dest = ($user->role === 'cashier') ? 'pos.index' : (($user->isSuperAdmin() || $user->isPlatformAdmin()) ? 'saas.admin.index' : 'dashboard');
+            return redirect()->route($dest);
+        }
+
         $targetId = $request->input('warehouse_id');
 
         // 1. Branch-scoped personnel (cashiers, storekeepers) are locked to their assigned branch

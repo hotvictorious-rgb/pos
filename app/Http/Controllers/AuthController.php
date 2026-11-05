@@ -232,7 +232,8 @@ class AuthController extends Controller
         $intended = session()->pull('url.intended');
         if ($intended) {
             $intendedPath = parse_url($intended, PHP_URL_PATH) ?: '/';
-            if ($intendedPath === '/' || $intendedPath === '' || $intendedPath === '/login' || $intended === url('/') || $intended === route('login')) {
+            $unsafePaths = ['/', '', '/login', '/logout', '/branch/switch', '/pos/checkout'];
+            if (in_array($intendedPath, $unsafePaths, true) || $intended === url('/') || $intended === route('login') || str_contains($intendedPath, 'switch') || str_contains($intendedPath, 'logout')) {
                 $intended = null;
             } elseif (!$user->isSuperAdmin() && (str_contains($intended, 'saas/admin') || str_contains($intended, 'super-admin'))) {
                 $intended = null;
@@ -293,64 +294,8 @@ class AuthController extends Controller
      */
     public function showPortalLogin(Request $request, string $portal)
     {
-        $allowedPortals = ['tenant', 'tenant-employee', 'super-admin', 'super-admin-employee'];
-        if (!in_array($portal, $allowedPortals)) {
-            abort(404, 'Portal not found.');
-        }
-
-        // Direct tenant and employee portal traffic to the unified, mature login screen
-        if (in_array($portal, ['tenant', 'tenant-employee'])) {
-            return redirect()->route('login');
-        }
-
-        if (session('user_id') || Auth::check()) {
-            $user = Auth::user();
-            if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-                return redirect()->route('saas.admin.index');
-            }
-            return redirect('/');
-        }
-
-        $meta = match($portal) {
-            'tenant' => [
-                'portal'      => 'tenant',
-                'badge'       => '🏢 TENANT ADMIN PORTAL',
-                'badge_color' => '#f59e0b',
-                'title'       => 'Business Owner Sign In',
-                'subtitle'    => 'Business administration, consolidated analytics & shop branches',
-                'route'       => route('portal.tenant.login.post'),
-                'icon'        => '🏢',
-            ],
-            'tenant-employee' => [
-                'portal'      => 'tenant-employee',
-                'badge'       => '💼 EMPLOYEE PORTAL',
-                'badge_color' => '#10b981',
-                'title'       => 'Staff & Cashier Sign In',
-                'subtitle'    => 'Daily POS checkout, branch sales, and shelf inventory',
-                'route'       => route('portal.tenant_employee.login.post'),
-                'icon'        => '💼',
-            ],
-            'super-admin' => [
-                'portal'      => 'super-admin',
-                'badge'       => '🛡️ SUPER-ADMIN CONSOLE',
-                'badge_color' => '#ef4444',
-                'title'       => 'Platform Super-Admin Sign In',
-                'subtitle'    => 'Platform tenant oversight, subscriptions & master control',
-                'route'       => route('portal.super_admin.login.post'),
-                'icon'        => '🛡️',
-            ],
-            'super-admin-employee' => [
-                'portal'      => 'super-admin-employee',
-                'badge'       => '👥 PLATFORM STAFF PORTAL',
-                'badge_color' => '#6366f1',
-                'title'       => 'Platform Employee Sign In',
-                'subtitle'    => 'Platform operations, system auditing & technical support',
-                'route'       => route('portal.super_admin_employee.login.post'),
-                'icon'        => '👥',
-            ],
-        };
-
-        return view('auth.portal-login', compact('meta'));
+        // Direct all legacy portal traffic to the unified, multi-identifier login screen
+        return redirect()->route('login');
     }
 
     /**
@@ -358,163 +303,7 @@ class AuthController extends Controller
      */
     public function portalLogin(Request $request, string $portal)
     {
-        $allowedPortals = ['tenant', 'tenant-employee', 'super-admin', 'super-admin-employee'];
-        if (!in_array($portal, $allowedPortals)) {
-            abort(404, 'Portal not found.');
-        }
-
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
-
-        $email = (string) $request->input('email');
-        $password = (string) $request->input('password');
-
-        if ($retryAfter = $this->checkRateLimit($request, $email)) {
-            return back()->withInput()->with('error', "Too many login attempts. Please try again in {$retryAfter} seconds.");
-        }
-
-        // 1. Identity Resolution (pre-auth lookup without global scopes)
-        $user = User::findForAuthentication($email);
-
-        if (!$user) {
-            $this->hitRateLimit($request, $email);
-            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed portal login attempt for email '{$email}' on [{$portal}] portal (User not found).", [
-                'attempted_email' => $email,
-                'portal' => $portal,
-                'reason' => 'user_not_found',
-            ]);
-            return back()->withInput()->with('error', 'Invalid email address or password.');
-        }
-
-        // 2. Disabled Account Check
-        if ($user->disabled) {
-            $this->hitRateLimit($request, $email);
-            $this->logAuthEvent('AUTH_LOGIN_DISABLED', "Blocked portal login attempt for deactivated user '{$user->name}' on [{$portal}] portal.", [
-                'user_id' => $user->id,
-                'email' => $email,
-                'role' => $user->role,
-                'portal' => $portal,
-                'reason' => 'account_disabled',
-            ], $user);
-            return back()->withInput()->with('error', 'Your account has been disabled by the administrator.');
-        }
-
-        // 3. Password Verification
-        if (!Hash::check($password, $user->password)) {
-            $this->hitRateLimit($request, $email);
-            $this->logAuthEvent('AUTH_LOGIN_FAILED', "Failed portal login attempt for email '{$email}' on [{$portal}] portal (Wrong password).", [
-                'user_id' => $user->id,
-                'attempted_email' => $email,
-                'portal' => $portal,
-                'reason' => 'invalid_password',
-            ], $user);
-            return back()->withInput()->with('error', 'Invalid email address or password.');
-        }
-
-        // 4. Strict Portal-Account Category Verification (LOGIN URL != PERMISSION)
-        if (config('saas.enabled')) {
-            switch ($portal) {
-                case 'super-admin':
-                    if (!$user->isSuperAdmin()) {
-                        $this->hitRateLimit($request, $email);
-                        if ($user->tenant_id === 'default-tenant') {
-                            return back()->withInput()->with('error', 'Super-Administrator authority required. Platform staff must log in through the Super-Admin Employee Portal.');
-                        }
-                        return back()->withInput()->with('error', 'Access Denied: Customer business accounts cannot authenticate through the Super-Admin Portal.');
-                    }
-                    break;
-
-                case 'super-admin-employee':
-                    if (!$user->isSuperAdminEmployee()) {
-                        $this->hitRateLimit($request, $email);
-                        if ($user->isSuperAdmin()) {
-                            return back()->withInput()->with('error', 'Super-Administrators must log in through the primary Super-Admin Portal.');
-                        }
-                        return back()->withInput()->with('error', 'Access Denied: Customer business accounts cannot authenticate through the Platform Employee Portal.');
-                    }
-                    break;
-
-                case 'tenant':
-                    if (!$user->isTenantAdmin() && !$user->isSuperAdmin() && !$user->isPlatformAdmin()) {
-                        $this->hitRateLimit($request, $email);
-                        if (empty($user->tenant_id)) {
-                            return back()->withInput()->with('error', 'Account is not assigned to an active business tenant. Please contact support.');
-                        }
-                        return back()->withInput()->with('error', 'This portal is restricted to Business Owners and Administrators. Staff and cashiers must log in through the Tenant Employee Portal.');
-                    }
-
-                    // Validate tenant status
-                    $tenant = ($user->tenant_id === 'default-tenant' || empty($user->tenant_id)) ? null : Tenant::find($user->tenant_id);
-                    if ($tenant && !$tenant->isActive()) {
-                        $this->hitRateLimit($request, $email);
-                        return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
-                    }
-                    break;
-
-                case 'tenant-employee':
-                    if (!$user->isTenantEmployee()) {
-                        $this->hitRateLimit($request, $email);
-                        if ($user->tenant_id === 'default-tenant') {
-                            return back()->withInput()->with('error', 'Platform accounts are not authorized to use the Tenant Employee Portal.');
-                        }
-                        if (empty($user->tenant_id)) {
-                            return back()->withInput()->with('error', 'Account is not assigned to an active business tenant. Please contact support.');
-                        }
-                        return back()->withInput()->with('error', 'Business owners and administrators must log in through the Tenant Portal.');
-                    }
-
-                    // Validate tenant status
-                    $tenant = Tenant::find($user->tenant_id);
-                    if (!$tenant) {
-                        $this->hitRateLimit($request, $email);
-                        return back()->withInput()->with('error', 'Your business account was not found. Please contact support.');
-                    }
-                    if (!$tenant->isActive()) {
-                        $this->hitRateLimit($request, $email);
-                        return back()->withInput()->with('error', 'Your business subscription has expired or been suspended.');
-                    }
-                    break;
-            }
-        }
-
-        // Clear rate limiter on successful authentication
-        $this->clearRateLimit($request, $email);
-
-        // 5. Session Setup & Regeneration
-        $activeTenantId = $user->tenant_id ?: 'default-tenant';
-
-        $request->session()->regenerate();
-        session([
-            'user_id'   => $user->id,
-            'user_name' => $user->name,
-            'user_role' => $user->role,
-            'tenant_id' => $activeTenantId,
-            'portal'    => $portal,
-        ]);
-        Auth::login($user);
-
-        $this->logAuthEvent('AUTH_LOGIN_SUCCESS', "User '{$user->name}' ({$user->role}) signed in successfully via [{$portal}] portal.", [
-            'user_id' => $user->id,
-            'email' => $user->email,
-            'role' => $user->role,
-            'tenant_id' => $activeTenantId,
-            'warehouse_id' => $user->warehouse_id,
-            'portal' => $portal,
-        ], $user);
-
-        // 6. Navigation
-        if ($portal === 'super-admin' || $portal === 'super-admin-employee') {
-            session()->forget('url.intended');
-            return redirect()->route('saas.admin.index')->with('success', "Welcome back, {$user->name}!");
-        }
-
-        $intended = session()->pull('url.intended', '/');
-        if (str_contains($intended, 'saas/admin') || str_contains($intended, 'super-admin')) {
-            $intended = '/';
-        }
-        return redirect($intended)->with('success', "Welcome back, {$user->name}!");
+        return $this->webLogin($request);
     }
 
     /**

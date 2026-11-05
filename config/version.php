@@ -11,8 +11,8 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.2',
-    'tag' => 'v1.0.2',
+    'version' => '1.0.3',
+    'tag' => 'v1.0.3',
     'name' => 'Victorious Enterprise POS',
     'released_at' => '2026-11-05',
 
@@ -26,6 +26,20 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.3' => [
+            'version' => '1.0.3',
+            'tag' => 'v1.0.3',
+            'title' => 'Branch Switch Route Hardening, Universal Portal Redirection & Resilient WhatsApp Report Compilation',
+            'date' => '2026-11-05',
+            'highlights' => [
+                'Fixed 405 MethodNotAllowed on /branch/switch: route accepts GET & POST, gracefully redirecting GET requests to the user dashboard.',
+                'Sanitized session intended URLs: action and state endpoints are never retained across authentication redirects.',
+                'Unified legacy portal routes (/tenant/login, /super-admin/login) to seamlessly redirect to the primary multi-identifier login.',
+                'Hardened WhatsApp Daily Report metrics compilation supporting dual timestamp columns (createdAt and created_at).',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.3.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.2' => [
             'version' => '1.0.2',
             'tag' => 'v1.0.2',

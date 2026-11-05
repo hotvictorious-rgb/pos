@@ -198,7 +198,10 @@ class SendDailyWhatsAppReportCommand extends Command
 
         $salesQuery = Sale::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
-            ->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
+            ->where(function ($q) use ($dateStart, $dateEnd, $dateStartIso, $dateEndIso) {
+                $q->whereBetween('createdAt', [$dateStartIso, $dateEndIso])
+                  ->orWhereBetween('created_at', [$dateStart, $dateEnd]);
+            })
             ->whereNotIn('status', ['VOIDED', 'CANCELLED']);
 
         if ($warehouseId !== null) {

@@ -465,4 +465,42 @@ class WhatsAppChatbotAccuracyAndLoginLayoutTest extends TestCase
         $saasJsonRes = $this->getJson('/saas/admin');
         $saasJsonRes->assertStatus(403);
     }
+
+    public function test_branch_switch_handles_get_and_post_gracefully(): void
+    {
+        $owner = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'tenant-switch-test',
+            'name' => 'branch_owner',
+            'email' => 'branch_owner@store.com',
+            'password' => bcrypt('Password123!'),
+            'role' => 'admin',
+        ]);
+
+        $wh = Warehouse::create([
+            'tenant_id' => 'tenant-switch-test',
+            'name' => 'Main Depot',
+            'code' => 'DEPOT-01',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($owner);
+
+        // 1. GET /branch/switch must NEVER throw 405 MethodNotAllowed; must gracefully redirect to dashboard
+        $getRes = $this->get('/branch/switch');
+        $getRes->assertRedirect(route('dashboard'));
+
+        // 2. POST /branch/switch switches active warehouse
+        $postRes = $this->post('/branch/switch', [
+            'warehouse_id' => $wh->id,
+        ]);
+        $postRes->assertSessionHas('active_warehouse_id', $wh->id);
+
+        // 3. GET /tenant/login and /super-admin/login redirect to /login
+        $tenantLoginRes = $this->get('/tenant/login');
+        $tenantLoginRes->assertRedirect(route('login'));
+
+        $superAdminLoginRes = $this->get('/super-admin/login');
+        $superAdminLoginRes->assertRedirect(route('login'));
+    }
 }
