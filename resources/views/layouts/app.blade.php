@@ -1451,9 +1451,12 @@
                     $globalActiveWarehouseId = $globalAuthUser->warehouse_id;
                 } else {
                     $accessibleWarehouses = \App\Models\Warehouse::where('is_active', true)->get();
+                    if ($accessibleWarehouses->isEmpty()) {
+                        $accessibleWarehouses = \App\Models\Warehouse::withoutGlobalScopes()->where('is_active', true)->get();
+                    }
                     $globalActiveWarehouseId = session('active_warehouse_id');
                 }
-                $globalActiveWarehouse = $globalActiveWarehouseId ? \App\Models\Warehouse::find($globalActiveWarehouseId) : null;
+                $globalActiveWarehouse = $globalActiveWarehouseId ? \App\Models\Warehouse::withoutGlobalScopes()->find($globalActiveWarehouseId) : null;
             } else {
                 $accessibleWarehouses = collect();
                 $globalActiveWarehouse = null;
@@ -1635,7 +1638,7 @@
                                 
                                 <div class="branch-dropdown-list">
                                     <!-- Consolidated Option -->
-                                    <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;">
+                                    <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;" data-no-confirm="true">
                                         @csrf
                                         <input type="hidden" name="warehouse_id" value="ALL">
                                         <button type="submit" class="branch-option-btn {{ is_null($globalActiveWarehouseId) ? 'active' : '' }}">
@@ -1654,7 +1657,7 @@
 
                                     <!-- Individual Authorized Branches -->
                                     @foreach($accessibleWarehouses as $wh)
-                                        <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;">
+                                        <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;" data-no-confirm="true">
                                             @csrf
                                             <input type="hidden" name="warehouse_id" value="{{ $wh->id }}">
                                             <button type="submit" class="branch-option-btn {{ (string)$globalActiveWarehouseId === (string)$wh->id ? 'active' : '' }}">

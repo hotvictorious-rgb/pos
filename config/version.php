@@ -11,8 +11,8 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.5',
-    'tag' => 'v1.0.5',
+    'version' => '1.0.6',
+    'tag' => 'v1.0.6',
     'name' => 'Victorious Enterprise POS',
     'released_at' => '2026-11-05',
 
@@ -26,6 +26,22 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.6' => [
+            'version' => '1.0.6',
+            'tag' => 'v1.0.6',
+            'title' => 'Universal Branch Switcher Activation, Immediate Submission Sentinel & Flexible Multi-Identifier Authentication',
+            'date' => '2026-11-05',
+            'highlights' => [
+                'Branch Switcher Submission Sentinel: Added data-no-confirm="true" to branch switcher dropdown forms, resolving form submission interception by CoreUI.',
+                'Stale Query Parameter Stripping: branch switcher automatically strips stale ?warehouse_id=... from referer URLs upon redirect, preventing old query strings from immediately overriding newly selected branch contexts.',
+                'Flexible Multi-Identifier Login: Added prefix and partial username resolution allowing store owners and staff to log in using their username (e.g. "admin") even when registered with full emails.',
+                'Store Staff Authority Boundary Normalization: Resolved false platform employee classification for cashiers and storekeepers under default-tenant, ensuring immediate access to POS and operations.',
+                'Cloudflare Trusted Reverse Proxy: Enabled trusted proxies wildcard in bootstrap/app.php to guarantee accurate HTTPS cookie state, client IP resolution, and zero CSRF token mismatches.',
+                'Elevated Rate Limiting Window: Increased login attempt threshold to 10 attempts per minute to prevent accidental lockouts on minor mistypes.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.6.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.5' => [
             'version' => '1.0.5',
             'tag' => 'v1.0.5',

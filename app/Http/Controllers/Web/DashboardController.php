@@ -379,11 +379,11 @@ class DashboardController extends Controller
                     'warehouse_name' => 'All Branches (Consolidated)',
                 ]);
             }
-            return back()->with('success', '🌐 Switched to All Branches (Consolidated View).');
+            return $this->redirectCleanBranch($request, '🌐 Switched to All Branches (Consolidated View).');
         }
 
         // 3. Multi-Branch Users selecting a specific branch
-        $warehouse = Warehouse::find($targetId);
+        $warehouse = Warehouse::withoutGlobalScopes()->find($targetId);
         if (!$warehouse || !$warehouse->is_active) {
             if ($request->wantsJson()) {
                 return response()->json(['error' => 'Selected branch is invalid or inactive.'], 404);
@@ -409,7 +409,32 @@ class DashboardController extends Controller
             ]);
         }
 
-        return back()->with('success', "🏬 Active branch switched to {$warehouse->name}.");
+        return $this->redirectCleanBranch($request, "🏬 Active branch switched to {$warehouse->name}.");
+    }
+
+    /**
+     * Cleanly redirect back while stripping any stale warehouse_id query parameters from the referer URL.
+     */
+    protected function redirectCleanBranch(Request $request, string $message)
+    {
+        $previousUrl = url()->previous();
+        if ($previousUrl) {
+            $parsed = parse_url($previousUrl);
+            if (isset($parsed['query'])) {
+                parse_str($parsed['query'], $queryParams);
+                if (isset($queryParams['warehouse_id'])) {
+                    unset($queryParams['warehouse_id']);
+                    $newQuery = http_build_query($queryParams);
+                    $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+                    $cleanUrl = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? $request->getHost()) . $port . ($parsed['path'] ?? '/');
+                    if (!empty($newQuery)) {
+                        $cleanUrl .= '?' . $newQuery;
+                    }
+                    return redirect($cleanUrl)->with('success', $message);
+                }
+            }
+        }
+        return back()->with('success', $message);
     }
 }
 

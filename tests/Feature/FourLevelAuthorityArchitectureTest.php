@@ -720,7 +720,7 @@ class FourLevelAuthorityArchitectureTest extends TestCase
             'password' => 'ownersecret',
         ]);
 
-        $loginRes->assertRedirect('/');
+        $loginRes->assertRedirect(route('dashboard'));
         $this->assertEquals($this->tenantA->id, session('tenant_id'));
         $this->assertEquals($this->tenantAdminA->id, session('user_id'));
 

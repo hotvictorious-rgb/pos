@@ -388,4 +388,57 @@ class BranchIsolationDeepAuditTest extends TestCase
         $resDash->assertDontSee('<body class="pos-zen-mode">', false);
         $resDash->assertDontSee('class="btn-pos-home"', false);
     }
+
+    public function test_login_with_username_prefix_and_default_tenant_access(): void
+    {
+        $testUser = User::create([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'warehouse_id' => $this->branch1->id,
+            'name' => 'Shop Cashier User',
+            'email' => 'cashieruser@victoriousmarket.com',
+            'password' => bcrypt('secretpassword123'),
+            'role' => 'cashier',
+            'disabled' => false,
+        ]);
+
+        // 1. Logging in using the email prefix / username 'cashieruser'
+        $loginRes = $this->post(route('login.post'), [
+            'email' => 'cashieruser',
+            'password' => 'secretpassword123',
+        ]);
+
+        $loginRes->assertRedirect(route('pos.index'));
+        $loginRes->assertSessionHas('user_id', $testUser->id);
+
+        // 2. Visiting /pos works without 403 Forbidden
+        $posRes = $this->actingAs($testUser)
+            ->withSession([
+                'user_id' => $testUser->id,
+                'tenant_id' => $this->tenant->id,
+                'warehouse_id' => $this->branch1->id,
+                'active_warehouse_id' => $this->branch1->id,
+            ])
+            ->get(route('pos.index'));
+
+        $posRes->assertStatus(200);
+    }
+
+    public function test_branch_switch_cleans_stale_warehouse_id_from_referer(): void
+    {
+        $response = $this->actingAs($this->admin)
+            ->withSession([
+                'user_id' => $this->admin->id,
+                'tenant_id' => $this->tenant->id,
+                'active_warehouse_id' => $this->branch1->id,
+            ])
+            ->from('http://127.0.0.1:8001/dashboard?warehouse_id=' . $this->branch1->id)
+            ->post(route('branch.switch'), [
+                'warehouse_id' => $this->branch2->id,
+            ]);
+
+        $response->assertSessionHas('active_warehouse_id', $this->branch2->id);
+        // Clean URL does not have stale ?warehouse_id=1
+        $response->assertRedirect('http://127.0.0.1:8001/dashboard');
+    }
 }

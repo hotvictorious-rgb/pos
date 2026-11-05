@@ -337,11 +337,11 @@ class AuthController extends Controller
         $emailKey = Str::transliterate(Str::lower($email) . '|' . $request->ip());
         $ipKey = Str::transliterate('login-ip|' . $request->ip());
 
-        if (RateLimiter::tooManyAttempts($emailKey, 5)) {
+        if (RateLimiter::tooManyAttempts($emailKey, 10)) {
             return RateLimiter::availableIn($emailKey);
         }
 
-        if (RateLimiter::tooManyAttempts($ipKey, 20)) {
+        if (RateLimiter::tooManyAttempts($ipKey, 40)) {
             return RateLimiter::availableIn($ipKey);
         }
 

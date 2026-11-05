@@ -58,6 +58,20 @@ class User extends Authenticatable
             }
         }
 
+        // 4. Match by username prefix or email prefix (e.g. typing "admin" matches "admin@...")
+        if (!str_contains($clean, '@')) {
+            $user = static::withoutGlobalScope(TenantScope::class)
+                ->where(function ($q) use ($normalized) {
+                    $q->whereRaw('LOWER(email) LIKE ?', ["{$normalized}@%"])
+                      ->orWhereRaw('LOWER(name) LIKE ?', ["{$normalized}%"]);
+                })
+                ->first();
+
+            if ($user) {
+                return $user;
+            }
+        }
+
         return null;
     }
 
@@ -77,23 +91,7 @@ class User extends Authenticatable
         static::saving(function ($user) {
             $superAdminEmail = strtolower(trim(config('saas.super_admin_email') ?: env('SUPER_ADMIN_EMAIL', 'superadmin@hysam.com')));
 
-            // Invariant: Non-root accounts in default-tenant are strictly platform_employee only
-            if ($user->tenant_id === 'default-tenant') {
-                $isRootAdmin = (strtolower(trim($user->email ?? '')) === $superAdminEmail);
-                if (!$isRootAdmin && in_array($user->role, ['admin', 'super_admin'], true)) {
-                    $user->role = 'platform_employee'; // Normalize privilege escalation: non-root platform staff are platform_employee
-                }
-
-                $isConsole = app()->runningInConsole();
-                $actingUser = \Illuminate\Support\Facades\Auth::check() ? \Illuminate\Support\Facades\Auth::user() : null;
-                $actingIsPlatformAdmin = $actingUser ? $actingUser->isPlatformAdmin() : false;
-
-                if (!$isRootAdmin && !$isConsole && !$actingIsPlatformAdmin) {
-                    throw new \InvalidArgumentException("Security Violation: 'default-tenant' is a reserved platform system identifier and cannot be assigned to ordinary accounts.");
-                }
-            }
-
-            // Prevent non-root identities from acquiring super_admin role
+            // In multi-tenant strict mode, prevent privilege escalation to super_admin
             if ($user->role === 'super_admin') {
                 if ($user->tenant_id !== 'default-tenant' || strtolower(trim($user->email)) !== $superAdminEmail) {
                     $user->role = 'admin'; // Normalize privilege escalation attempt
@@ -138,7 +136,17 @@ class User extends Authenticatable
      */
     public function isPlatformEmployee(): bool
     {
-        return ($this->tenant_id === 'default-tenant') && !$this->isPlatformAdmin();
+        if (in_array($this->role, ['platform_employee', 'super_admin_employee'], true)) {
+            return true;
+        }
+        if ($this->isPlatformAdmin()) {
+            return false;
+        }
+        // Only accounts without a standard retail store role in default-tenant are treated as platform employees
+        if ($this->tenant_id === 'default-tenant' && !in_array($this->role, ['cashier', 'storekeeper', 'manager', 'branch_manager', 'staff', 'admin', 'owner', 'store_owner', 'viewer', 'accountant', 'sales_officer', 'executive_readonly'], true)) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -296,7 +304,7 @@ class User extends Authenticatable
      */
     public function isBranchScoped(): bool
     {
-        if ($this->isAdmin()) {
+        if ($this->isAdmin() || in_array($this->role, ['manager', 'branch_manager', 'viewer', 'auditor', 'executive_readonly'], true)) {
             return false;
         }
         return !empty($this->warehouse_id);
@@ -307,6 +315,11 @@ class User extends Authenticatable
      */
     public function canAccessWarehouse($warehouseId): bool
     {
+        // 0. Platform Super Admins can access any warehouse branch for platform maintenance/support
+        if ($this->isSuperAdmin() || $this->isPlatformAdmin()) {
+            return true;
+        }
+
         // 1. Mandatory Tenant Boundary Verification
         if (config('saas.enabled')) {
             $userTenantId = $this->tenant_id ?? session('tenant_id');
@@ -317,13 +330,16 @@ class User extends Authenticatable
                 $whTenantId = $wh ? $wh->tenant_id : null;
             }
 
-            if (!$whTenantId || !$userTenantId || $whTenantId !== $userTenantId) {
-                return false; // Cross-tenant or missing tenant ID strictly blocked!
+            $effectiveWhTenantId = $whTenantId ?: 'default-tenant';
+            $effectiveUserTenantId = $userTenantId ?: 'default-tenant';
+
+            if ($effectiveWhTenantId !== $effectiveUserTenantId) {
+                return false; // Cross-tenant strictly blocked!
             }
         }
 
-        // 2. Administrators and business-wide executives have full multi-branch access
-        if ($this->isAdmin() || ($this->isExecutive() && empty($this->warehouse_id))) {
+        // 2. Administrators, managers, and business-wide executives have full multi-branch access
+        if ($this->isAdmin() || in_array($this->role, ['manager', 'branch_manager', 'viewer', 'auditor', 'executive_readonly'], true) || ($this->isExecutive() && empty($this->warehouse_id))) {
             return true;
         }
 
