@@ -753,7 +753,15 @@ class TransactionController extends Controller
             $reversibleSales = $rawRevSales->map(function ($s) {
                 $hasReturns = ($s->returns && $s->returns->isNotEmpty()) || (($s->returns_count ?? 0) > 0);
                 $hasDebtPayments = \App\Models\Payment::where('saleId', $s->id)->where('amount', '>', 0)->where('recordedBy', 'like', '%[DEBT_RECOVERY]%')->exists();
-                $isPartiallyFulfilled = \App\Models\StockReservation::where('sale_id', $s->id)->where('fulfilled_qty', '>', 0)->where('outstanding_qty', '>', 0)->exists();
+                $isPartiallyFulfilled = \App\Models\StockReservation::where('sale_id', $s->id)
+                    ->where(function ($q) {
+                        $q->where('status', 'PARTIALLY_FULFILLED')
+                          ->orWhere(function ($sub) {
+                              $sub->where('fulfilled_qty', '>', 0)
+                                  ->whereRaw('(reserved_qty - fulfilled_qty - cancelled_qty) > 0');
+                          });
+                    })
+                    ->exists();
 
                 $canReverse = !$hasReturns && !$hasDebtPayments && !$isPartiallyFulfilled;
                 $blockReason = null;

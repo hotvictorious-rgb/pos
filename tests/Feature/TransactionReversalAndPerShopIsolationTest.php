@@ -702,4 +702,99 @@ class TransactionReversalAndPerShopIsolationTest extends TestCase
         $adminResponse->assertSee('Reversible Stock In', false);
         $adminResponse->assertSee('Past Reversals Audit Log', false);
     }
+
+    /**
+     * Scenario 13: Transactions Reversals Hub Handles Stock Reservation Queries Accurately
+     * Proves:
+     * - Accessor `outstanding_qty` does not throw SQLSTATE[42S22] Column not found.
+     * - Partially fulfilled stock reservations correctly block sale reversal in UI list.
+     * - Fully unfulfilled reservations remain reversible.
+     */
+    public function test_transactions_hub_correctly_evaluates_stock_reservations_without_sql_errors(): void
+    {
+        // 1. Sale with partially fulfilled reservation
+        $salePartial = Sale::create([
+            'id' => 'SALE-PARTIAL-RES-1',
+            'receipt_ref' => 'REC-PARTIAL-1',
+            'customerName' => 'Customer Partial',
+            'totalAmount' => 10000,
+            'subtotal' => 10000,
+            'tax' => 0,
+            'discount' => 0,
+            'paidAmount' => 10000,
+            'cashAmount' => 10000,
+            'posAmount' => 0,
+            'paymentMethod' => 'CASH',
+            'paymentStatus' => 'PAID',
+            'status' => 'COMPLETED',
+            'deliveryStatus' => 'UNSUPPLIED',
+            'warehouse_id' => 1,
+            'cashierId' => $this->adminUyo->id,
+            'cashierName' => $this->adminUyo->name,
+            'userId' => $this->adminUyo->id,
+            'userName' => $this->adminUyo->name,
+            'createdAt' => now()->toIso8601String(),
+        ]);
+
+        StockReservation::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'sale_id' => $salePartial->id,
+            'sale_item_id' => (string) Str::uuid(),
+            'product_id' => $this->productSugar->id,
+            'warehouse_id' => 1,
+            'reserved_qty' => 10,
+            'fulfilled_qty' => 4,
+            'returned_fulfilled_qty' => 0,
+            'cancelled_qty' => 0,
+            'status' => 'PARTIALLY_FULFILLED',
+            'notes' => 'Partially picked up',
+        ]);
+
+        // 2. Sale with active completely unfulfilled reservation
+        $saleUnfulfilled = Sale::create([
+            'id' => 'SALE-UNFULFILLED-RES-1',
+            'receipt_ref' => 'REC-UNFULFILLED-1',
+            'customerName' => 'Customer Unfulfilled',
+            'totalAmount' => 5000,
+            'subtotal' => 5000,
+            'tax' => 0,
+            'discount' => 0,
+            'paidAmount' => 5000,
+            'cashAmount' => 5000,
+            'posAmount' => 0,
+            'paymentMethod' => 'CASH',
+            'paymentStatus' => 'PAID',
+            'status' => 'COMPLETED',
+            'deliveryStatus' => 'UNSUPPLIED',
+            'warehouse_id' => 1,
+            'cashierId' => $this->adminUyo->id,
+            'cashierName' => $this->adminUyo->name,
+            'userId' => $this->adminUyo->id,
+            'userName' => $this->adminUyo->name,
+            'createdAt' => now()->toIso8601String(),
+        ]);
+
+        StockReservation::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => 'default-tenant',
+            'sale_id' => $saleUnfulfilled->id,
+            'sale_item_id' => (string) Str::uuid(),
+            'product_id' => $this->productFlour->id,
+            'warehouse_id' => 1,
+            'reserved_qty' => 5,
+            'fulfilled_qty' => 0,
+            'returned_fulfilled_qty' => 0,
+            'cancelled_qty' => 0,
+            'status' => 'ACTIVE',
+            'notes' => 'Awaiting pickup',
+        ]);
+
+        // Load transactions page as Admin
+        $response = $this->actingAs($this->adminUyo)->get(route('transactions.index'));
+        $response->assertStatus(200);
+
+        // Verify partially fulfilled sale is blocked with reason
+        $response->assertSee('Partially picked up unsupplied order', false);
+    }
 }

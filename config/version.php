@@ -11,10 +11,10 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.6',
-    'tag' => 'v1.0.6',
+    'version' => '1.0.7',
+    'tag' => 'v1.0.7',
     'name' => 'Victorious Enterprise POS',
-    'released_at' => '2026-11-05',
+    'released_at' => '2026-11-06',
 
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +26,18 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.7' => [
+            'version' => '1.0.7',
+            'tag' => 'v1.0.7',
+            'title' => 'Resolution of Stock Reservation Outstanding Qty Accessor Query in Transactions Hub',
+            'date' => '2026-11-06',
+            'highlights' => [
+                'Fix Transactions Reversals Hub 500 Error: Replaced invalid SQL where query on virtual model accessor outstanding_qty with status checking and valid SQL arithmetic (reserved_qty - fulfilled_qty - cancelled_qty) > 0.',
+                'Unsupplied Orders Reversal Protection: Safely identifies partially fulfilled reservations while allowing fully uncollected unsupplied orders and completed standard transactions to be reviewed and reversed.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.7.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.6' => [
             'version' => '1.0.6',
             'tag' => 'v1.0.6',
