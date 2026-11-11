@@ -11,8 +11,8 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.8',
-    'tag' => 'v1.0.8',
+    'version' => '1.0.9',
+    'tag' => 'v1.0.9',
     'name' => 'Victorious Market POS',
     'released_at' => '2026-11-11',
 
@@ -26,6 +26,20 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.9' => [
+            'version' => '1.0.9',
+            'tag' => 'v1.0.9',
+            'title' => 'Stock Out Engine (Sales + Transfers Out + Deductions), Pure Lean Zero-Buffer Demand & Zero-Reorder Exclusion',
+            'date' => '2026-11-11',
+            'highlights' => [
+                'Unified Stock Out Engine: Integrated all 3 inventory outflow streams: Counter Sales (net of returns), Inter-Branch Transfers Out (dispatched stock to branches), and Non-Sale Deductions (damages, expiry, spoilage, loss adjustments).',
+                'Pure Lean Demand Formula (Zero Buffer): Eliminated arbitrary safety stock cushions. Suggested reorder strictly calculates the exact deficit between next 7-day projected stock out need and current shelf stock: Suggested Reorder = max(0, ceil(Demand_7d - Shelf_Stock)).',
+                'Zero-Reorder Filtered PO Sheet: Strictly and exclusively lists SKUs that actually require procurement (Suggested Reorder > 0). Products with sufficient shelf stock are cleanly omitted from purchase orders.',
+                'Multi-Channel Consistency: Seamlessly aligned Web Reports UI, Native Excel UTF-8 BOM CSV export, and A4 printable PDF purchase order sheets with clear Stock Out breakdown columns.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.9.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.8' => [
             'version' => '1.0.8',
             'tag' => 'v1.0.8',

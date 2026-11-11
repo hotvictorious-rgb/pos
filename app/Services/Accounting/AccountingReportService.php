@@ -14,6 +14,7 @@ use App\Models\SalesReturn;
 use App\Models\StockAdjustment;
 use App\Models\StockLevel;
 use App\Models\Transfer;
+use App\Models\TransferItem;
 use App\Models\User;
 use App\Models\Warehouse;
 use Carbon\Carbon;
@@ -1990,35 +1991,62 @@ class AccountingReportService
             $warehouseId = (int) $user->warehouse_id;
         }
 
-        // 1. Authoritative 30-day sales query
+        // 1. Stream A: Customer Counter Sales (sale_items net of returns)
         $salesQuery = Sale::whereBetween('createdAt', [$startDate->toIso8601String(), $endDate->toIso8601String()])
             ->whereNotIn('status', ['CANCELLED', 'VOIDED']);
-
         if ($warehouseId) {
             $salesQuery->where('warehouse_id', $warehouseId);
         }
         $saleIds = $salesQuery->pluck('id');
 
-        // 2. Aggregate sales per product
         $salesAgg = SaleItem::whereIn('saleId', $saleIds)
             ->selectRaw('productId, productName, code, SUM(quantity) as gross_qty, SUM(totalPrice) as gross_revenue')
             ->groupBy('productId', 'productName', 'code')
             ->get()
             ->keyBy('productId');
 
-        // 3. Aggregate returns per product in same 30-day window
+        // Net out customer returns
         $returnsQuery = SalesReturn::whereBetween('createdAt', [$startDate->toIso8601String(), $endDate->toIso8601String()]);
         if ($warehouseId) {
             $returnsQuery->whereIn('saleId', $saleIds);
         }
-        $returnsAgg = $returnsQuery->selectRaw('productId, SUM(quantity) as ret_qty, SUM(refundAmount) as ret_revenue')
+        $returnsAgg = $returnsQuery->selectRaw('productId, SUM(quantity) as ret_qty')
             ->groupBy('productId')
-            ->get()
-            ->keyBy('productId');
+            ->pluck('ret_qty', 'productId');
 
-        // 4. Products details and multi-branch stock levels
-        $productIds = $salesAgg->keys();
-        $products = Product::whereIn('id', $productIds)
+        // 2. Stream B: Inter-Branch Transfers Out (transfer_items)
+        $transfersQuery = Transfer::whereBetween('created_at', [$startDate, $endDate])
+            ->where('status', '!=', 'CANCELLED');
+        if ($warehouseId) {
+            $transfersQuery->where('source_warehouse_id', $warehouseId);
+        }
+        $transferIds = $transfersQuery->pluck('id');
+
+        $transfersAgg = TransferItem::whereIn('transfer_id', $transferIds)
+            ->selectRaw('product_id, SUM(dispatched_qty) as transfer_qty')
+            ->groupBy('product_id')
+            ->pluck('transfer_qty', 'product_id');
+
+        // 3. Stream C: Non-Sale Deductions / Adjustments (Damages, Expiry, Spoilage, Loss write-offs)
+        $adjustmentsQuery = StockAdjustment::whereBetween('created_at', [$startDate, $endDate])
+            ->whereIn('type', ['DAMAGE', 'EXPIRED', 'LOST', 'DEDUCTION', 'ADJUSTMENT'])
+            ->where('type', '!=', 'FOUND');
+        if ($warehouseId) {
+            $adjustmentsQuery->where('warehouse_id', $warehouseId);
+        }
+        $adjustmentsAgg = $adjustmentsQuery->selectRaw('product_id, SUM(quantity) as deduction_qty')
+            ->groupBy('product_id')
+            ->pluck('deduction_qty', 'product_id');
+
+        // Collect all distinct product IDs across all 3 Stock Out streams
+        $allProductIds = $salesAgg->keys()
+            ->merge($transfersAgg->keys())
+            ->merge($adjustmentsAgg->keys())
+            ->unique()
+            ->filter();
+
+        // Fetch product records and branch physical stock
+        $products = Product::whereIn('id', $allProductIds)
             ->where('archived', false)
             ->with(['stockLevels' => function ($sq) use ($warehouseId) {
                 if ($warehouseId) {
@@ -2030,20 +2058,24 @@ class AccountingReportService
 
         $projectionRows = [];
 
-        foreach ($salesAgg as $pId => $item) {
+        foreach ($allProductIds as $pId) {
             $product = $products->get($pId);
             if (!$product) {
                 continue;
             }
 
-            $ret = $returnsAgg->get($pId);
-            $retQty = $ret ? (int) $ret->ret_qty : 0;
-            $retRev = $ret ? (float) $ret->ret_revenue : 0.0;
+            $salesItem = $salesAgg->get($pId);
+            $grossSales = $salesItem ? (int) $salesItem->gross_qty : 0;
+            $retQty = (int) ($returnsAgg->get($pId) ?? 0);
+            $netSalesQty = max(0, $grossSales - $retQty);
 
-            $netQty30 = max(0, (int) $item->gross_qty - $retQty);
-            $netRev30 = max(0.0, round((float) $item->gross_revenue - $retRev, 2));
+            $transferQty = (int) ($transfersAgg->get($pId) ?? 0);
+            $deductionQty = (int) ($adjustmentsAgg->get($pId) ?? 0);
 
-            if ($netQty30 <= 0) {
+            // TOTAL 30-DAY STOCK OUT (Sales + Transfers Out + Deductions)
+            $totalStockOut30 = $netSalesQty + $transferQty + $deductionQty;
+
+            if ($totalStockOut30 <= 0) {
                 continue;
             }
 
@@ -2051,20 +2083,21 @@ class AccountingReportService
             $physicalStock = (int) $product->stockLevels->sum('physical_stock');
             $physicalStockClamped = max(0, $physicalStock);
 
-            // Daily sales velocity
-            $dailyVelocity = round($netQty30 / 30.0, 3);
+            // Daily Stock Out velocity (average total units exiting per day)
+            $dailyVelocity = round($totalStockOut30 / 30.0, 3);
 
-            // Projected 7-day customer demand
+            // Projected 7-day Stock Out customer and operational demand
             $demand7Days = round($dailyVelocity * 7.0, 2);
 
-            // Product safety stock buffer
-            $buffer = max(2, (int) ($product->minStockLevel ?? 2));
+            // PURE LEAN DEMAND — ZERO BUFFER!
+            // Deficit = Projected 7-Day Outflow Need - Current Shelf Stock
+            $suggestedReorder = max(0, (int) ceil($demand7Days - $physicalStockClamped));
 
-            // Target stock needed to safely cover next 7 days plus buffer
-            $targetNeed = $demand7Days + $buffer;
-
-            // Suggested Reorder Quantity (Clamped >= 0 and ceiling rounded to whole sellable units)
-            $suggestedReorder = max(0, (int) ceil($targetNeed - $physicalStockClamped));
+            // Strictly exclude products that have enough stock (suggestedReorder <= 0).
+            // A purchase order sheet must exclusively contain items that ACTUALLY need to be bought!
+            if ($suggestedReorder <= 0) {
+                continue;
+            }
 
             // Stock runway in days
             if ($dailyVelocity > 0) {
@@ -2086,13 +2119,9 @@ class AccountingReportService
                 $urgency = 'LOW';
                 $urgencyLabel = 'Low (2-5 Days)';
                 $urgencyClass = 'badge-warning';
-            } elseif ($runwayDays <= 10.0) {
-                $urgency = 'ADEQUATE';
-                $urgencyLabel = 'Adequate (6-10 Days)';
-                $urgencyClass = 'badge-success';
             } else {
-                $urgency = 'HEALTHY';
-                $urgencyLabel = 'Healthy (> 10 Days)';
+                $urgency = 'REORDER';
+                $urgencyLabel = 'Reorder Due';
                 $urgencyClass = 'badge-info';
             }
 
@@ -2101,16 +2130,17 @@ class AccountingReportService
 
             $projectionRows[] = [
                 'product_id'        => $product->id,
-                'sku'               => $product->code ?: ($item->code ?? 'N/A'),
+                'sku'               => $product->code ?: ($salesItem->code ?? 'N/A'),
                 'name'              => $product->name,
                 'category'          => $product->category ?? 'General',
                 'size'              => $product->size ?? '',
                 'brand'             => $product->brand ?? '',
-                'net_qty_30'        => $netQty30,
-                'net_rev_30'        => $netRev30,
+                'sales_qty_30'      => $netSalesQty,
+                'transfers_qty_30'  => $transferQty,
+                'deductions_qty_30' => $deductionQty,
+                'total_stock_out_30'=> $totalStockOut30,
                 'daily_velocity'    => $dailyVelocity,
                 'demand_7_days'     => $demand7Days,
-                'safety_buffer'     => $buffer,
                 'physical_stock'    => $physicalStockClamped,
                 'runway_days'       => $runwayDays,
                 'urgency'           => $urgency,
@@ -2122,12 +2152,12 @@ class AccountingReportService
             ];
         }
 
-        // Rank Top 20 descending by 30-day velocity/volume
+        // Rank Top 20 descending by Total 30-Day Stock Out volume
         usort($projectionRows, function ($a, $b) {
-            if ($b['net_qty_30'] === $a['net_qty_30']) {
+            if ($b['total_stock_out_30'] === $a['total_stock_out_30']) {
                 return $b['est_capital'] <=> $a['est_capital'];
             }
-            return $b['net_qty_30'] <=> $a['net_qty_30'];
+            return $b['total_stock_out_30'] <=> $a['total_stock_out_30'];
         });
 
         $top20 = array_slice($projectionRows, 0, 20);

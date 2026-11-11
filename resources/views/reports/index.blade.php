@@ -804,7 +804,7 @@
                         <h3 style="font-size: 1.25rem; font-weight: 800; margin: 0; color: #f8fafc;">Top 20 Weekly Purchase & Reorder Projection</h3>
                     </div>
                     <p style="font-size: 0.82rem; color: #cbd5e1; margin: 0.35rem 0 0 0;">
-                        <strong>Mathematical Engine:</strong> Strictly 30-Day Rolling Velocity (<span style="color: #60a5fa;">{{ $top20Projection['period_label'] ?? 'Trailing 30 Days' }}</span>) projected against real-time physical shelf stock to compute exact 7-day reorder units for <strong style="color: #34d399;">{{ $top20Projection['warehouse_name'] ?? 'All Branches' }}</strong>.
+                        <strong>Stock Out Engine (Pure Lean Demand):</strong> Trailing 30-Day Total Outflow (Sales + Branch Transfers Out + Damage/Expiry Deductions) projected against real-time physical shelf stock to compute exact 7-day reorder units with zero buffer for <strong style="color: #34d399;">{{ $top20Projection['warehouse_name'] ?? 'All Branches' }}</strong>.
                     </p>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -847,15 +847,18 @@
                             <th>SKU</th>
                             <th>Product Name</th>
                             <th>Category</th>
-                            <th style="text-align: center;">30D Sold</th>
-                            <th style="text-align: center;">Daily Velocity</th>
-                            <th style="text-align: center;">7D Demand</th>
+                            <th style="text-align: center; color: #94a3b8;">30D Sales</th>
+                            <th style="text-align: center; color: #94a3b8;">Transfers</th>
+                            <th style="text-align: center; color: #94a3b8;">Deductions</th>
+                            <th style="text-align: center; background: rgba(12, 35, 64, 0.6); color: #60a5fa;">Stock Out (30D)</th>
+                            <th style="text-align: center;">Daily Outflow</th>
+                            <th style="text-align: center;">7D Need</th>
                             <th style="text-align: center;">Shelf Stock</th>
                             <th style="text-align: center;">Runway</th>
                             <th style="text-align: center;">Status</th>
-                            <th style="text-align: center; background: rgba(30, 58, 138, 0.4);">Suggested Reorder</th>
+                            <th style="text-align: center; background: rgba(30, 58, 138, 0.4); color: #93c5fd;">Suggested Reorder</th>
                             <th style="text-align: right;">Unit Price</th>
-                            <th style="text-align: right; background: rgba(6, 78, 59, 0.3);">Est. Capital</th>
+                            <th style="text-align: right; background: rgba(6, 78, 59, 0.3); color: #6ee7b7;">Est. Capital</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -874,7 +877,10 @@
                                 @endif
                             </td>
                             <td style="font-size: 0.78rem; color: var(--text-muted);">{{ $row['category'] }}</td>
-                            <td style="text-align: center; font-weight: 800;">{{ number_format($row['net_qty_30']) }}</td>
+                            <td style="text-align: center; font-size: 0.82rem; color: #cbd5e1;">{{ number_format($row['sales_qty_30']) }}</td>
+                            <td style="text-align: center; font-size: 0.82rem; color: #94a3b8;">{{ number_format($row['transfers_qty_30']) }}</td>
+                            <td style="text-align: center; font-size: 0.82rem; color: #94a3b8;">{{ number_format($row['deductions_qty_30']) }}</td>
+                            <td style="text-align: center; font-weight: 800; color: #60a5fa; background: rgba(12, 35, 64, 0.4);">{{ number_format($row['total_stock_out_30']) }}</td>
                             <td style="text-align: center; font-size: 0.8rem; color: var(--text-muted);">{{ number_format($row['daily_velocity'], 2) }}/d</td>
                             <td style="text-align: center; font-weight: 700; color: #cbd5e1;">{{ number_format($row['demand_7_days'], 1) }}</td>
                             <td style="text-align: center; font-weight: 800; font-size: 0.95rem; color: {{ $row['physical_stock'] <= 0 ? '#f87171' : '#f8fafc' }};">
@@ -914,7 +920,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="13" style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales recorded in the trailing 30 days to project purchase reorders.</td>
+                            <td colspan="16" style="text-align: center; padding: 2rem; color: var(--text-muted);">No products currently require reordering. All active products have sufficient physical shelf stock to safely cover upcoming customer demand.</td>
                         </tr>
                         @endforelse
                     </tbody>
