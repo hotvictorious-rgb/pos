@@ -1903,4 +1903,267 @@ class AccountingReportService
             'rows'                   => $rows,
         ];
     }
+
+    /**
+     * Build Item-by-Item Sales Query joining line items with sales headers, products, branches, and cashiers.
+     */
+    public function buildSaleItemsQuery(array $filters): Builder
+    {
+        $salesQuery = $this->buildSalesQuery($filters);
+        $saleIdsSubquery = (clone $salesQuery)->select('id');
+
+        $query = SaleItem::whereIn('saleId', $saleIdsSubquery)
+            ->with(['sale.warehouse', 'sale.customer', 'product']);
+
+        if (!empty($filters['search'])) {
+            $s = trim($filters['search']);
+            $query->where(function ($sq) use ($s) {
+                $sq->where('productName', 'like', "%{$s}%")
+                   ->orWhere('code', 'like', "%{$s}%")
+                   ->orWhere('productCode', 'like', "%{$s}%")
+                   ->orWhere('saleId', 'like', "%{$s}%")
+                   ->orWhereHas('sale', function ($parent) use ($s) {
+                       $parent->where('receipt_ref', 'like', "%{$s}%")
+                              ->orWhere('customerName', 'like', "%{$s}%")
+                              ->orWhere('userName', 'like', "%{$s}%");
+                   });
+            });
+        }
+
+        if (!empty($filters['category'])) {
+            $cat = $filters['category'];
+            $query->whereHas('product', function ($pq) use ($cat) {
+                $pq->where('category', $cat);
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * Master Itemized Sales Ledger: Line-by-Line breakdown of every product unit sold.
+     */
+    public function getItemizedSalesLedger(array $filters): array
+    {
+        $query = $this->buildSaleItemsQuery($filters);
+        $items = $query->orderBy('id', 'desc')->get();
+
+        $totalUnits = (int) $items->sum('quantity');
+        $totalRevenue = (float) $items->sum('totalPrice');
+        $distinctSkus = $items->pluck('productId')->unique()->count();
+
+        // Calculate top moving SKU in this filtered selection
+        $topItem = $items->groupBy('productId')->map(function ($group) {
+            $first = $group->first();
+            return [
+                'name' => $first->productName,
+                'code' => $first->code ?: ($first->productCode ?: 'N/A'),
+                'units' => (int) $group->sum('quantity'),
+                'revenue' => (float) $group->sum('totalPrice'),
+            ];
+        })->sortByDesc('units')->first();
+
+        return [
+            'items'         => $items,
+            'count'         => $items->count(),
+            'total_units'   => $totalUnits,
+            'total_revenue' => round($totalRevenue, 2),
+            'distinct_skus' => $distinctSkus,
+            'top_item'      => $topItem,
+        ];
+    }
+
+    /**
+     * Top 20 Weekly Purchase & Reorder Projection Hub (Strictly 30-Day Rolling Velocity).
+     * Calculates customer consumption rate over trailing 30 days, projects next 7 days demand,
+     * compares against real-time physical shelf stock, calculates stock runway (days left),
+     * and produces exact reorder quantities and procurement capital estimates.
+     */
+    public function getTop20PurchaseProjection(?int $warehouseId = null): array
+    {
+        $now = Carbon::now('Africa/Lagos');
+        $startDate = $now->copy()->subDays(30)->startOfDay();
+        $endDate = $now->copy()->endOfDay();
+
+        $user = Auth::user();
+        if ($user && $user->isBranchScoped()) {
+            $warehouseId = (int) $user->warehouse_id;
+        }
+
+        // 1. Authoritative 30-day sales query
+        $salesQuery = Sale::whereBetween('createdAt', [$startDate->toIso8601String(), $endDate->toIso8601String()])
+            ->whereNotIn('status', ['CANCELLED', 'VOIDED']);
+
+        if ($warehouseId) {
+            $salesQuery->where('warehouse_id', $warehouseId);
+        }
+        $saleIds = $salesQuery->pluck('id');
+
+        // 2. Aggregate sales per product
+        $salesAgg = SaleItem::whereIn('saleId', $saleIds)
+            ->selectRaw('productId, productName, code, SUM(quantity) as gross_qty, SUM(totalPrice) as gross_revenue')
+            ->groupBy('productId', 'productName', 'code')
+            ->get()
+            ->keyBy('productId');
+
+        // 3. Aggregate returns per product in same 30-day window
+        $returnsQuery = SalesReturn::whereBetween('createdAt', [$startDate->toIso8601String(), $endDate->toIso8601String()]);
+        if ($warehouseId) {
+            $returnsQuery->whereIn('saleId', $saleIds);
+        }
+        $returnsAgg = $returnsQuery->selectRaw('productId, SUM(quantity) as ret_qty, SUM(refundAmount) as ret_revenue')
+            ->groupBy('productId')
+            ->get()
+            ->keyBy('productId');
+
+        // 4. Products details and multi-branch stock levels
+        $productIds = $salesAgg->keys();
+        $products = Product::whereIn('id', $productIds)
+            ->where('archived', false)
+            ->with(['stockLevels' => function ($sq) use ($warehouseId) {
+                if ($warehouseId) {
+                    $sq->where('warehouse_id', $warehouseId);
+                }
+            }])
+            ->get()
+            ->keyBy('id');
+
+        $projectionRows = [];
+
+        foreach ($salesAgg as $pId => $item) {
+            $product = $products->get($pId);
+            if (!$product) {
+                continue;
+            }
+
+            $ret = $returnsAgg->get($pId);
+            $retQty = $ret ? (int) $ret->ret_qty : 0;
+            $retRev = $ret ? (float) $ret->ret_revenue : 0.0;
+
+            $netQty30 = max(0, (int) $item->gross_qty - $retQty);
+            $netRev30 = max(0.0, round((float) $item->gross_revenue - $retRev, 2));
+
+            if ($netQty30 <= 0) {
+                continue;
+            }
+
+            // Real physical stock on ground for this branch (or consolidated)
+            $physicalStock = (int) $product->stockLevels->sum('physical_stock');
+            $physicalStockClamped = max(0, $physicalStock);
+
+            // Daily sales velocity
+            $dailyVelocity = round($netQty30 / 30.0, 3);
+
+            // Projected 7-day customer demand
+            $demand7Days = round($dailyVelocity * 7.0, 2);
+
+            // Product safety stock buffer
+            $buffer = max(2, (int) ($product->minStockLevel ?? 2));
+
+            // Target stock needed to safely cover next 7 days plus buffer
+            $targetNeed = $demand7Days + $buffer;
+
+            // Suggested Reorder Quantity (Clamped >= 0 and ceiling rounded to whole sellable units)
+            $suggestedReorder = max(0, (int) ceil($targetNeed - $physicalStockClamped));
+
+            // Stock runway in days
+            if ($dailyVelocity > 0) {
+                $runwayDays = round($physicalStockClamped / $dailyVelocity, 1);
+            } else {
+                $runwayDays = 999.0;
+            }
+
+            // Stockout urgency classification
+            if ($physicalStockClamped <= 0) {
+                $urgency = 'OUT_OF_STOCK';
+                $urgencyLabel = 'Out of Stock';
+                $urgencyClass = 'badge-danger';
+            } elseif ($runwayDays < 2.0) {
+                $urgency = 'CRITICAL';
+                $urgencyLabel = 'Critical (< 2 Days)';
+                $urgencyClass = 'badge-danger';
+            } elseif ($runwayDays <= 5.0) {
+                $urgency = 'LOW';
+                $urgencyLabel = 'Low (2-5 Days)';
+                $urgencyClass = 'badge-warning';
+            } elseif ($runwayDays <= 10.0) {
+                $urgency = 'ADEQUATE';
+                $urgencyLabel = 'Adequate (6-10 Days)';
+                $urgencyClass = 'badge-success';
+            } else {
+                $urgency = 'HEALTHY';
+                $urgencyLabel = 'Healthy (> 10 Days)';
+                $urgencyClass = 'badge-info';
+            }
+
+            $unitPrice = (float) $product->unitPrice;
+            $estRestockCapital = round($suggestedReorder * $unitPrice, 2);
+
+            $projectionRows[] = [
+                'product_id'        => $product->id,
+                'sku'               => $product->code ?: ($item->code ?? 'N/A'),
+                'name'              => $product->name,
+                'category'          => $product->category ?? 'General',
+                'size'              => $product->size ?? '',
+                'brand'             => $product->brand ?? '',
+                'net_qty_30'        => $netQty30,
+                'net_rev_30'        => $netRev30,
+                'daily_velocity'    => $dailyVelocity,
+                'demand_7_days'     => $demand7Days,
+                'safety_buffer'     => $buffer,
+                'physical_stock'    => $physicalStockClamped,
+                'runway_days'       => $runwayDays,
+                'urgency'           => $urgency,
+                'urgency_label'     => $urgencyLabel,
+                'urgency_class'     => $urgencyClass,
+                'suggested_reorder' => $suggestedReorder,
+                'unit_price'        => $unitPrice,
+                'est_capital'       => $estRestockCapital,
+            ];
+        }
+
+        // Rank Top 20 descending by 30-day velocity/volume
+        usort($projectionRows, function ($a, $b) {
+            if ($b['net_qty_30'] === $a['net_qty_30']) {
+                return $b['est_capital'] <=> $a['est_capital'];
+            }
+            return $b['net_qty_30'] <=> $a['net_qty_30'];
+        });
+
+        $top20 = array_slice($projectionRows, 0, 20);
+
+        for ($i = 0; $i < count($top20); $i++) {
+            $top20[$i]['rank'] = $i + 1;
+        }
+
+        $totalReorderUnits = (int) array_sum(array_column($top20, 'suggested_reorder'));
+        $totalReorderCapital = (float) array_sum(array_column($top20, 'est_capital'));
+        $criticalCount = count(array_filter($top20, fn($r) => in_array($r['urgency'], ['OUT_OF_STOCK', 'CRITICAL'])));
+        $lowCount = count(array_filter($top20, fn($r) => $r['urgency'] === 'LOW'));
+        $healthyCount = count(array_filter($top20, fn($r) => in_array($r['urgency'], ['ADEQUATE', 'HEALTHY'])));
+
+        $warehouseName = 'All Branches (Consolidated)';
+        if ($warehouseId) {
+            $wh = Warehouse::find($warehouseId);
+            if ($wh) {
+                $warehouseName = $wh->name;
+            }
+        }
+
+        return [
+            'items'                 => $top20,
+            'count'                 => count($top20),
+            'total_reorder_units'   => $totalReorderUnits,
+            'total_reorder_capital' => round($totalReorderCapital, 2),
+            'critical_count'        => $criticalCount,
+            'low_count'             => $lowCount,
+            'healthy_count'         => $healthyCount,
+            'warehouse_id'          => $warehouseId,
+            'warehouse_name'        => $warehouseName,
+            'window_days'           => 30,
+            'start_date'            => $startDate->format('M d, Y'),
+            'end_date'              => $endDate->format('M d, Y'),
+            'period_label'          => "Trailing 30 Days (" . $startDate->format('M d') . " - " . $endDate->format('M d, Y') . ")",
+        ];
+    }
 }

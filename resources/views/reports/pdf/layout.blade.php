@@ -193,14 +193,14 @@
             width: 100%;
             overflow-x: auto;
         }
-        table.executive-table {
+        table.executive-table, table.report-table {
             width: 100%;
             border-collapse: collapse;
             border-spacing: 0;
             border: 1px solid #cbd5e1;
             font-size: 10px;
         }
-        table.executive-table th {
+        table.executive-table th, table.report-table th {
             background-color: #0c2340 !important;
             color: #ffffff !important;
             font-weight: 700;
@@ -211,23 +211,36 @@
             white-space: nowrap;
             font-size: 9.5px;
         }
-        table.executive-table td {
+        table.executive-table td, table.report-table td {
             padding: 5px 8px;
             border: 1px solid #e2e8f0;
             vertical-align: middle;
             color: #1e293b;
         }
-        table.executive-table tbody tr:nth-child(even) {
+        table.executive-table tbody tr:nth-child(even), table.report-table tbody tr:nth-child(even) {
             background-color: #f8fafc;
         }
-        table.executive-table tbody tr:hover {
+        table.executive-table tbody tr:hover, table.report-table tbody tr:hover {
             background-color: #f1f5f9;
+        }
+
+        .section-title {
+            font-size: 12px;
+            font-weight: 800;
+            color: #0c2340;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 18px;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 2px solid #0c2340;
         }
 
         /* Alignments */
         .text-left { text-align: left !important; }
         .text-center { text-align: center !important; }
         .text-right { text-align: right !important; }
+        .num { text-align: right !important; }
         .font-mono {
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
             font-weight: 600;
@@ -245,16 +258,17 @@
             letter-spacing: 0.3px;
             white-space: nowrap;
         }
-        .badge-instock { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-        .badge-lowstock { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-        .badge-outstock { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+        .badge-instock, .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+        .badge-lowstock, .badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+        .badge-outstock, .badge-critical, .badge-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+        .badge-info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
         .badge-paid { background: #dcfce7; color: #166534; }
         .badge-partial { background: #fef3c7; color: #92400e; }
         .badge-unpaid { background: #fee2e2; color: #991b1b; }
         .badge-neutral { background: #f1f5f9; color: #475569; }
 
         /* Summary Total Footer Row */
-        table.executive-table tfoot tr td {
+        table.executive-table tfoot tr td, table.report-table tfoot tr td {
             background-color: #f8fafc;
             color: #0c2340;
             font-weight: 800;

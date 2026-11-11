@@ -330,6 +330,8 @@
     <div class="report-tabs">
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repDayBook' ? 'active' : '' }}" onclick="showReport('repDayBook', this)">📅 Daily Day-Book & Shift Hub</button>
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repSales' ? 'active' : '' }}" onclick="showReport('repSales', this)">📊 Sales & Invoices ({{ $sales->count() }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repItemSales' ? 'active' : '' }}" onclick="showReport('repItemSales', this)">🛒 Itemized Sales ({{ $itemSales['count'] ?? 0 }})</button>
+        <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repProjection' ? 'active' : '' }}" onclick="showReport('repProjection', this)" style="border: 1px solid rgba(59, 130, 246, 0.5); background: linear-gradient(135deg, rgba(30, 58, 138, 0.4), rgba(15, 23, 42, 0.6));">🎯 Top 20 Weekly Reorders</button>
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repPending' ? 'active' : '' }}" onclick="showReport('repPending', this)">⏳ Pending Orders ({{ $pendingOrders['total_orders'] ?? 0 }})</button>
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repStock' ? 'active' : '' }}" onclick="showReport('repStock', this)">📦 Multi-Branch Stock ({{ $products->count() }})</button>
         <button class="rep-tab-btn {{ ($currentTab ?? 'repDayBook') === 'repTransfers' ? 'active' : '' }}" onclick="showReport('repTransfers', this)">🚚 Transfers & Waybills ({{ $transfers->count() }})</button>
@@ -679,6 +681,240 @@
                         @empty
                         <tr>
                             <td colspan="10" style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales match your active filters.</td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB: ITEMIZED SALES LEDGER (LINE-BY-LINE) -->
+    <!-- ========================================================================= -->
+    <div id="repItemSales" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repItemSales' ? 'active' : '' }}">
+        <!-- KPI Strip -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #93c5fd; text-transform: uppercase;">Total Units Sold</div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: #60a5fa; margin-top: 0.25rem;">{{ number_format($itemSales['total_units'] ?? 0) }} Units</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">Across {{ number_format($itemSales['count'] ?? 0) }} Line Transactions</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(16,185,129,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #6ee7b7; text-transform: uppercase;">Total Items Sales Revenue</div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: #34d399; margin-top: 0.25rem;">₦{{ number_format($itemSales['total_revenue'] ?? 0, 0) }}</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">Filtered Gross Product Inflow</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(168,85,247,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #c084fc; text-transform: uppercase;">Distinct SKUs Sold</div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: #a855f7; margin-top: 0.25rem;">{{ $itemSales['distinct_skus'] ?? 0 }} SKUs</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">Active Product Variety in Period</div>
+            </div>
+            @if(!empty($itemSales['top_item']))
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #fcd34d; text-transform: uppercase;">Top Moving Product</div>
+                <div style="font-size: 1.15rem; font-weight: 800; color: #fbbf24; margin-top: 0.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ $itemSales['top_item']['name'] }}">{{ $itemSales['top_item']['name'] }}</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">{{ number_format($itemSales['top_item']['units']) }} Units (₦{{ number_format($itemSales['top_item']['revenue'], 0) }})</div>
+            </div>
+            @endif
+        </div>
+
+        <div class="card">
+            <div class="export-bar">
+                <div>
+                    <h3 style="font-size: 1.15rem; font-weight: 800; margin: 0;">Itemized Product Sales Ledger</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0.25rem 0 0 0;">Granular line-by-line breakdown of every product unit sold with invoice, branch, cashier, and customer details</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'item_sales'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem;">📥 Export CSV (Excel)</a>
+                    <a href="{{ route('reports.export.json', array_merge(['type' => 'item_sales'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #93c5fd;">🤖 Export JSON</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'item_sales'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.85rem; color: #f8fafc; background: #0c2340; border: 1px solid #334155;">📑 Print / Export PDF</a>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Date & Time</th>
+                            <th>Branch</th>
+                            <th>Customer</th>
+                            <th>SKU</th>
+                            <th>Product Name</th>
+                            <th>Category</th>
+                            <th style="text-align: center;">Qty</th>
+                            <th style="text-align: right;">Unit Price</th>
+                            <th style="text-align: right;">Line Total</th>
+                            <th>Cashier</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($itemSales['items'] as $it)
+                        @php
+                            $sale = $it->sale;
+                            $sku = $it->code ?: ($it->productCode ?: ($it->product->code ?? 'N/A'));
+                        @endphp
+                        <tr>
+                            <td>
+                                <strong>#{{ substr($it->saleId, 0, 8) }}</strong>
+                                @if(!empty($sale?->receipt_ref))
+                                    <div style="font-size: 0.72rem; color: #a78bfa; font-weight: 700; margin-top: 0.15rem;">Slip: {{ $sale->receipt_ref }}</div>
+                                @endif
+                            </td>
+                            <td style="font-size: 0.75rem; color: var(--text-muted);">
+                                {{ date('d M Y, h:i A', strtotime($sale?->createdAt ?? $it->created_at)) }}
+                            </td>
+                            <td style="font-size: 0.8rem;">{{ $sale?->warehouse?->name ?? 'Main Branch' }}</td>
+                            <td>
+                                <strong>{{ $sale?->customerName ?? ($sale?->customer?->name ?? 'Walk-In') }}</strong>
+                                @if(!empty($sale?->customerPhone))
+                                    <div style="font-size: 0.72rem; color: var(--text-muted);">{{ $sale->customerPhone }}</div>
+                                @endif
+                            </td>
+                            <td><code style="font-size: 0.75rem; color: #38bdf8;">{{ $sku }}</code></td>
+                            <td><strong>{{ $it->productName }}</strong></td>
+                            <td style="font-size: 0.78rem; color: var(--text-muted);">{{ $it->product?->category ?? 'General' }}</td>
+                            <td style="text-align: center; font-weight: 800; font-size: 0.95rem; color: #60a5fa;">{{ $it->quantity }}</td>
+                            <td style="text-align: right; font-size: 0.85rem;">₦{{ number_format($it->unitPrice, 0) }}</td>
+                            <td style="text-align: right; font-weight: 800; color: #4ade80;">₦{{ number_format($it->totalPrice, 0) }}</td>
+                            <td style="font-size: 0.8rem; color: var(--text-muted);">{{ $sale?->userName ?? 'System' }}</td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="11" style="text-align: center; padding: 2rem; color: var(--text-muted);">No item sales records found matching the active filters.</td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB: TOP 20 WEEKLY PURCHASE & REORDER PROJECTION (30-DAY ROLLING) -->
+    <!-- ========================================================================= -->
+    <div id="repProjection" class="report-section {{ ($currentTab ?? 'repDayBook') === 'repProjection' ? 'active' : '' }}">
+        <!-- Algorithm Banner -->
+        <div class="card" style="margin-bottom: 1.25rem; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 58, 138, 0.6)); border: 1px solid rgba(59, 130, 246, 0.4);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                        <span style="font-size: 1.4rem;">🎯</span>
+                        <h3 style="font-size: 1.25rem; font-weight: 800; margin: 0; color: #f8fafc;">Top 20 Weekly Purchase & Reorder Projection</h3>
+                    </div>
+                    <p style="font-size: 0.82rem; color: #cbd5e1; margin: 0.35rem 0 0 0;">
+                        <strong>Mathematical Engine:</strong> Strictly 30-Day Rolling Velocity (<span style="color: #60a5fa;">{{ $top20Projection['period_label'] ?? 'Trailing 30 Days' }}</span>) projected against real-time physical shelf stock to compute exact 7-day reorder units for <strong style="color: #34d399;">{{ $top20Projection['warehouse_name'] ?? 'All Branches' }}</strong>.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <a href="{{ route('reports.export.csv', array_merge(['type' => 'projection'], request()->query())) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.45rem 0.9rem; background: #0284c7; color: #ffffff; border: none; font-weight: 700;">📥 Export Purchase Order (CSV)</a>
+                    <a href="{{ route('reports.export.pdf', array_merge(['type' => 'projection'], request()->query())) }}" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.45rem 0.9rem; background: #0c2340; color: #f8fafc; border: 1px solid #334155; font-weight: 700;">📑 Print Reorder Sheet (PDF)</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4 KPI Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #93c5fd; text-transform: uppercase;">Total Units to Reorder</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: #60a5fa; margin-top: 0.25rem;">+{{ number_format($top20Projection['total_reorder_units'] ?? 0) }} Units</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">Next 7 Days Coverage across Top 20</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(16,185,129,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #6ee7b7; text-transform: uppercase;">Est. Restock Capital Required</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: #34d399; margin-top: 0.25rem;">₦{{ number_format($top20Projection['total_reorder_capital'] ?? 0, 0) }}</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">At Current Selling Price Valuation</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #fca5a5; text-transform: uppercase;">Critical Stockout Risk (&lt;2 Days)</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: #f87171; margin-top: 0.25rem;">{{ $top20Projection['critical_count'] ?? 0 }} SKUs</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">Will Run Out Before Mid-Week</div>
+            </div>
+            <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 1rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #fcd34d; text-transform: uppercase;">Low Stock (2 to 5 Days)</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: #fbbf24; margin-top: 0.25rem;">{{ $top20Projection['low_count'] ?? 0 }} SKUs</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem;">Depleting Within Coming Week</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50px; text-align: center;">Rank</th>
+                            <th>SKU</th>
+                            <th>Product Name</th>
+                            <th>Category</th>
+                            <th style="text-align: center;">30D Sold</th>
+                            <th style="text-align: center;">Daily Velocity</th>
+                            <th style="text-align: center;">7D Demand</th>
+                            <th style="text-align: center;">Shelf Stock</th>
+                            <th style="text-align: center;">Runway</th>
+                            <th style="text-align: center;">Status</th>
+                            <th style="text-align: center; background: rgba(30, 58, 138, 0.4);">Suggested Reorder</th>
+                            <th style="text-align: right;">Unit Price</th>
+                            <th style="text-align: right; background: rgba(6, 78, 59, 0.3);">Est. Capital</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($top20Projection['items'] as $row)
+                        @php
+                            $isCritical = in_array($row['urgency'], ['OUT_OF_STOCK', 'CRITICAL']);
+                            $isReorderNeeded = $row['suggested_reorder'] > 0;
+                        @endphp
+                        <tr style="{{ $isCritical ? 'background: rgba(239, 68, 68, 0.08);' : '' }}">
+                            <td style="text-align: center; font-weight: 800; color: #93c5fd;">#{{ $row['rank'] }}</td>
+                            <td><code style="font-size: 0.75rem; color: #38bdf8;">{{ $row['sku'] }}</code></td>
+                            <td>
+                                <strong>{{ $row['name'] }}</strong>
+                                @if(!empty($row['size']))
+                                    <span style="font-size: 0.75rem; color: var(--text-muted);">({{ $row['size'] }})</span>
+                                @endif
+                            </td>
+                            <td style="font-size: 0.78rem; color: var(--text-muted);">{{ $row['category'] }}</td>
+                            <td style="text-align: center; font-weight: 800;">{{ number_format($row['net_qty_30']) }}</td>
+                            <td style="text-align: center; font-size: 0.8rem; color: var(--text-muted);">{{ number_format($row['daily_velocity'], 2) }}/d</td>
+                            <td style="text-align: center; font-weight: 700; color: #cbd5e1;">{{ number_format($row['demand_7_days'], 1) }}</td>
+                            <td style="text-align: center; font-weight: 800; font-size: 0.95rem; color: {{ $row['physical_stock'] <= 0 ? '#f87171' : '#f8fafc' }};">
+                                {{ number_format($row['physical_stock']) }}
+                            </td>
+                            <td style="text-align: center; font-weight: 700;">
+                                @if($row['runway_days'] >= 900)
+                                    <span style="color: var(--text-muted);">—</span>
+                                @else
+                                    <span style="color: {{ $isCritical ? '#f87171' : '#e2e8f0' }};">{{ number_format($row['runway_days'], 1) }}d</span>
+                                @endif
+                            </td>
+                            <td style="text-align: center;">
+                                @if($row['urgency'] === 'OUT_OF_STOCK')
+                                    <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🔴 OUT OF STOCK</span>
+                                @elseif($row['urgency'] === 'CRITICAL')
+                                    <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🔴 CRITICAL (&lt;2d)</span>
+                                @elseif($row['urgency'] === 'LOW')
+                                    <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4);">🟡 LOW (2-5d)</span>
+                                @elseif($row['urgency'] === 'ADEQUATE')
+                                    <span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4);">🟢 ADEQUATE</span>
+                                @else
+                                    <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">🔵 HEALTHY</span>
+                                @endif
+                            </td>
+                            <td style="text-align: center; font-weight: 800; font-size: 1rem; {{ $isReorderNeeded ? 'background: rgba(59, 130, 246, 0.15); color: #60a5fa;' : 'color: var(--text-muted);' }}">
+                                @if($isReorderNeeded)
+                                    +{{ number_format($row['suggested_reorder']) }}
+                                @else
+                                    0
+                                @endif
+                            </td>
+                            <td style="text-align: right; font-size: 0.85rem;">₦{{ number_format($row['unit_price'], 0) }}</td>
+                            <td style="text-align: right; font-weight: 800; {{ $isReorderNeeded ? 'background: rgba(16, 185, 129, 0.12); color: #4ade80;' : 'color: var(--text-muted);' }}">
+                                ₦{{ number_format($row['est_capital'], 0) }}
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="13" style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales recorded in the trailing 30 days to project purchase reorders.</td>
                         </tr>
                         @endforelse
                     </tbody>

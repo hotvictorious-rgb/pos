@@ -11,10 +11,10 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.7',
-    'tag' => 'v1.0.7',
-    'name' => 'Victorious Enterprise POS',
-    'released_at' => '2026-11-06',
+    'version' => '1.0.8',
+    'tag' => 'v1.0.8',
+    'name' => 'Victorious Market POS',
+    'released_at' => '2026-11-11',
 
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +26,21 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.8' => [
+            'version' => '1.0.8',
+            'tag' => 'v1.0.8',
+            'title' => 'Itemized Sales Velocity Ledger, 30-Day Rolling Top 20 Weekly Reorder Projection & Native Excel UTF-8 BOM',
+            'date' => '2026-11-11',
+            'highlights' => [
+                'Itemized Sales Ledger (repItemSales): Granular line-by-line transaction view and export detailing every single unit sold with invoice #, receipt slip, branch, cashier, customer, SKU, unit price, and line revenue.',
+                'Top 20 Weekly Purchase & Reorder Projection (repProjection): Intelligent forecasting engine strictly using trailing 30-day customer velocity to project next 7-day demand, compare against branch physical shelf stock, determine stock runway (days left), and compute exact purchase quantities.',
+                'Native Microsoft Excel UTF-8 BOM Integration: Prepended \xEF\xBB\xBF to all CSV export streams ensuring immediate opening in Excel without character corruption of the Naira (₦) currency symbol.',
+                'Printable PDF Paper Alignment: Enhanced @media print styles with clean percentage widths, auto-wrapping, and repeating navy headers preventing horizontal clipping on A4 paper.',
+                'Platform Branding Finalization: Standardized Victorious Market POS with official footer "Powered by Victorious Market — Your Trusted Online Market" across all PDF reports and system documents.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.8.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.7' => [
             'version' => '1.0.7',
             'tag' => 'v1.0.7',

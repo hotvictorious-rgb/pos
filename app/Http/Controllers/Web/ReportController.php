@@ -60,6 +60,16 @@ class ReportController extends Controller
             'returns' => 'repReturns',
             'refunds' => 'repReturns',
             'repreturns' => 'repReturns',
+            'items' => 'repItemSales',
+            'item_sales' => 'repItemSales',
+            'items_sold' => 'repItemSales',
+            'itemized' => 'repItemSales',
+            'repitemsales' => 'repItemSales',
+            'projection' => 'repProjection',
+            'reorder' => 'repProjection',
+            'reorder_projection' => 'repProjection',
+            'top20' => 'repProjection',
+            'repprojection' => 'repProjection',
             'exchanges' => 'repExchanges',
             'exchange' => 'repExchanges',
             'repexchanges' => 'repExchanges',
@@ -361,6 +371,12 @@ class ReportController extends Controller
         // 12. Customer Exchanges & Dual-SKU Analytics
         $exchangeReport = $accountingService->getExchangeReport($filters);
 
+        // 13. Itemized Sales Ledger (Line-by-Line Product Movement)
+        $itemSales = $accountingService->getItemizedSalesLedger($filters);
+
+        // 14. Top 20 Weekly Purchase & Reorder Projection (Strictly Trailing 30-Day Rolling Velocity)
+        $top20Projection = $accountingService->getTop20PurchaseProjection($scopedWh);
+
         return view('reports.index', compact(
             'activeTab',
             'currentTab',
@@ -391,6 +407,8 @@ class ReportController extends Controller
             'dailyReport',
             'pendingOrders',
             'exchangeReport',
+            'itemSales',
+            'top20Projection',
             'datePreset',
             'fromDate',
             'toDate',
@@ -413,7 +431,7 @@ class ReportController extends Controller
         $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
         $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
         $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
-        $fileName = "hysam_{$type}_report_" . date('Y_m_d_His') . ".csv";
+        $fileName = "victorious_market_{$type}_report_" . date('Y_m_d_His') . ".csv";
 
         $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         $filters = array_merge(['date_preset' => $request->get('date_preset', 'ALL')], $request->all());
@@ -425,6 +443,8 @@ class ReportController extends Controller
 
         return new StreamedResponse(function () use ($type, $branchWarehouseId, $accountingService, $filters) {
             $handle = fopen('php://output', 'w');
+            // Write UTF-8 Byte Order Mark (BOM) for native Microsoft Excel rendering of Naira symbol (₦)
+            fwrite($handle, "\xEF\xBB\xBF");
 
             if (in_array($type, ['daily_summary', 'day_book', 'daily'])) {
                 $daily = $accountingService->getDailyComprehensiveReport($filters);
@@ -744,6 +764,73 @@ class ReportController extends Controller
                         $r['payment_status'],
                     ]);
                 }
+            } elseif (in_array($type, ['item_sales', 'items', 'items_sold', 'itemized'])) {
+                fputcsv($handle, ['SALE ID', 'RECEIPT SLIP', 'DATE & TIME', 'BRANCH', 'CASHIER', 'CUSTOMER', 'PHONE', 'SKU', 'PRODUCT NAME', 'CATEGORY', 'QUANTITY', 'UNIT PRICE (NGN)', 'LINE TOTAL (NGN)', 'PAYMENT METHOD', 'DELIVERY STATUS']);
+                $itemQuery = $accountingService->buildSaleItemsQuery($filters);
+                $itemQuery->chunk(250, function ($itemsChunk) use ($handle) {
+                    foreach ($itemsChunk as $it) {
+                        fputcsv($handle, [
+                            $it->saleId,
+                            $it->sale->receipt_ref ?? '',
+                            $it->sale->createdAt ?? $it->created_at,
+                            $it->sale->warehouse->name ?? 'Main Branch',
+                            $it->sale->userName ?? 'System',
+                            $it->sale->customerName ?? ($it->sale->customer->name ?? 'Walk-In Customer'),
+                            $it->sale->customerPhone ?? ($it->sale->customer->phone ?? ''),
+                            $it->code ?: ($it->productCode ?: ($it->product->code ?? 'N/A')),
+                            $it->productName,
+                            $it->product->category ?? 'General',
+                            $it->quantity,
+                            $it->unitPrice,
+                            $it->totalPrice,
+                            $it->sale->paymentMethod ?? 'CASH',
+                            $it->sale->deliveryStatus ?? 'SUPPLIED'
+                        ]);
+                    }
+                });
+            } elseif (in_array($type, ['projection', 'top20', 'reorder', 'reorder_projection'])) {
+                $proj = $accountingService->getTop20PurchaseProjection($branchWarehouseId);
+                fputcsv($handle, ['========================================================================================']);
+                fputcsv($handle, ['VICTORIOUS MARKET POS - TOP 20 WEEKLY PURCHASE & REORDER PROJECTION SHEET']);
+                fputcsv($handle, ["Branch: " . $proj['warehouse_name'] . " | Trailing Baseline: " . $proj['period_label'] . " | Timezone: Africa/Lagos (UTC+1)"]);
+                fputcsv($handle, ["Generated At: " . now('Africa/Lagos')->format('Y-m-d H:i:s')]);
+                fputcsv($handle, ["Total Reorder Units Needed: " . $proj['total_reorder_units'] . " Units | Est. Capital Required: NGN " . number_format($proj['total_reorder_capital'], 2)]);
+                fputcsv($handle, ['========================================================================================']);
+                fputcsv($handle, []);
+                fputcsv($handle, [
+                    'RANK',
+                    'SKU',
+                    'PRODUCT NAME',
+                    'CATEGORY',
+                    '30-DAY SALES (UNITS)',
+                    'DAILY VELOCITY (UNITS/DAY)',
+                    'NEXT 7-DAY DEMAND',
+                    'SAFETY BUFFER',
+                    'CURRENT SHELF STOCK',
+                    'RUNWAY (DAYS)',
+                    'URGENCY STATUS',
+                    'SUGGESTED REORDER QTY',
+                    'UNIT SELLING PRICE (NGN)',
+                    'EST RESTOCK CAPITAL (NGN)'
+                ]);
+                foreach ($proj['items'] as $row) {
+                    fputcsv($handle, [
+                        $row['rank'],
+                        $row['sku'],
+                        $row['name'],
+                        $row['category'],
+                        $row['net_qty_30'],
+                        $row['daily_velocity'],
+                        $row['demand_7_days'],
+                        $row['safety_buffer'],
+                        $row['physical_stock'],
+                        $row['runway_days'] >= 900 ? 'No Recent Sales' : $row['runway_days'] . ' Days',
+                        $row['urgency_label'],
+                        $row['suggested_reorder'],
+                        $row['unit_price'],
+                        $row['est_capital']
+                    ]);
+                }
             }
 
             fclose($handle);
@@ -767,7 +854,7 @@ class ReportController extends Controller
         $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
         $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
         $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
-        $fileName = "hysam_{$type}_business_data_" . date('Y_m_d_His') . ".json";
+        $fileName = "victorious_market_{$type}_business_data_" . date('Y_m_d_His') . ".json";
 
         $accountingService = app(\App\Services\Accounting\AccountingReportService::class);
         $filters = array_merge(['date_preset' => $request->get('date_preset', 'ALL')], $request->all());
@@ -889,6 +976,16 @@ class ReportController extends Controller
                 'metadata' => ['report' => 'Pending Orders Carryover & Aging Backlog', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
                 'data' => $accountingService->getPendingOrdersAnalytics($branchWarehouseId, $filters),
             ],
+            'item_sales', 'items', 'items_sold', 'itemized' => [
+                'meta' => ['report' => 'Itemized Sales & Velocity Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'metadata' => ['report' => 'Itemized Sales & Velocity Ledger', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'data' => $accountingService->getItemizedSalesLedger($filters),
+            ],
+            'projection', 'top20', 'reorder', 'reorder_projection' => [
+                'meta' => ['report' => 'Top 20 Weekly Purchase & Reorder Projection (30-Day Rolling)', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'metadata' => ['report' => 'Top 20 Weekly Purchase & Reorder Projection (30-Day Rolling)', 'generated_at' => now()->toIso8601String(), 'currency' => 'NGN'],
+                'data' => $accountingService->getTop20PurchaseProjection($branchWarehouseId),
+            ],
             default => ['error' => 'Invalid report type'],
         };
 
@@ -917,7 +1014,7 @@ class ReportController extends Controller
         $settings = \App\Models\Setting::first();
         $tenantId = $authUser->tenant_id ?? session('tenant_id') ?? 'primary';
         $tenantObj = \App\Models\Tenant::find($tenantId);
-        $businessName = $settings->businessName ?? $tenantObj?->name ?? 'Hysam Ventures';
+        $businessName = $settings->businessName ?? $tenantObj?->name ?? 'Victorious Market POS';
         $currency = $settings->currency ?? 'NGN (₦)';
         $reportFooter = $settings->reportFooter ?? 'Confidential Internal Record • Authorized Multi-Branch Ledger';
 
@@ -1425,6 +1522,54 @@ class ReportController extends Controller
                     'returns' => $returns,
                     'totalReturnedUnits' => $totalReturnedUnits,
                     'totalRefundAmount' => $totalRefundAmount,
+                ]));
+
+            case 'item_sales':
+            case 'items':
+            case 'items_sold':
+            case 'itemized':
+                $itemLedger = $accountingService->getItemizedSalesLedger($filters);
+                $kpiCards = [
+                    ['label' => 'FILTERED ITEM SALES', 'value' => '₦' . number_format($itemLedger['total_revenue'], 2), 'sub' => number_format($itemLedger['total_units']) . ' Total Units Sold'],
+                    ['label' => 'DISTINCT SKUS SOLD', 'value' => number_format($itemLedger['distinct_skus']) . ' SKUs'],
+                    ['label' => 'LINE TRANSACTIONS', 'value' => number_format($itemLedger['count']) . ' Lines'],
+                ];
+                if (!empty($itemLedger['top_item'])) {
+                    $kpiCards[] = [
+                        'label' => 'TOP MOVING ITEM',
+                        'value' => $itemLedger['top_item']['units'] . ' Units',
+                        'sub' => $itemLedger['top_item']['name']
+                    ];
+                }
+
+                return view('reports.pdf.item_sales', array_merge($commonViewData, [
+                    'pageTitle' => 'Itemized Sales & Velocity Ledger',
+                    'reportTitle' => 'Itemized Sales & Velocity Ledger',
+                    'reportSubtitle' => 'Line-by-line breakdown of every product unit sold with branch, cashier, and invoice tracking',
+                    'kpiCards' => $kpiCards,
+                    'items' => $itemLedger['items'],
+                    'totalUnits' => $itemLedger['total_units'],
+                    'totalRevenue' => $itemLedger['total_revenue'],
+                ]));
+
+            case 'projection':
+            case 'top20':
+            case 'reorder':
+            case 'reorder_projection':
+                $proj = $accountingService->getTop20PurchaseProjection($branchWarehouseId);
+                $kpiCards = [
+                    ['label' => 'TOTAL REORDER NEEDED', 'value' => number_format($proj['total_reorder_units']) . ' Units', 'sub' => 'Across Top 20 Fast-Moving SKUs'],
+                    ['label' => 'EST. RESTOCK CAPITAL', 'value' => '₦' . number_format($proj['total_reorder_capital'], 2), 'sub' => 'At Selling Valuation'],
+                    ['label' => 'CRITICAL RISK (<2 DAYS)', 'value' => $proj['critical_count'] . ' SKUs', 'sub' => 'Immediate Stockout Danger'],
+                    ['label' => 'LOW STOCK (2-5 DAYS)', 'value' => $proj['low_count'] . ' SKUs', 'sub' => 'Reorder Recommended'],
+                ];
+
+                return view('reports.pdf.purchase_projection', array_merge($commonViewData, [
+                    'pageTitle' => 'Top 20 Weekly Purchase & Reorder Projection',
+                    'reportTitle' => 'Top 20 Weekly Purchase & Reorder Projection',
+                    'reportSubtitle' => 'Trailing 30-day velocity run rate against current physical shelf inventory to project exact 7-day reorder quantities',
+                    'kpiCards' => $kpiCards,
+                    'projection' => $proj,
                 ]));
 
             case 'daily_closing':
