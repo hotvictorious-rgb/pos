@@ -1,5 +1,13 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    # Redirect all requests to public/ directory
+
+    # 1. Do not rewrite if the requested file directly exists in root (e.g. run_live_migrations.php, overlay-runner.php, robots.txt)
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # 2. Prevent rewrite loop if request is already targeting public/
+    RewriteCond %{REQUEST_URI} !^/public/
+
+    # 3. Rewrite incoming traffic into public/ directory while preserving request method and headers
     RewriteRule ^(.*)$ public/$1 [L]
 </IfModule>

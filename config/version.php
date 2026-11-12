@@ -11,8 +11,8 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.10',
-    'tag' => 'v1.0.10',
+    'version' => '1.0.11',
+    'tag' => 'v1.0.11',
     'name' => 'Victorious Market POS',
     'released_at' => '2026-11-12',
 
@@ -26,6 +26,21 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.11' => [
+            'version' => '1.0.11',
+            'tag' => 'v1.0.11',
+            'title' => 'LiteSpeed & Apache POST Method Preservation, Root Rewrite Loop Prevention, and Authentication Middleware Hardening',
+            'date' => '2026-11-12',
+            'highlights' => [
+                'LiteSpeed & Apache Rewrite Preservation: Hardened root .htaccess with explicit !^/public/ negative condition and physical file existence bypass, stopping LiteSpeed internal sub-request loops that dropped POST requests to GET.',
+                'Method Truncation Prevention: Protected trailing slash normalization in public/.htaccess by exempting POST requests (RewriteCond %{REQUEST_METHOD} !=POST), preventing 301 redirects from downgrading form mutations to GET.',
+                'Clean PHP Handler Architecture: Purged legacy hardcoded ea-php81 handler block from public/.htaccess to ensure LiteSpeed natively invokes cPanel-configured PHP 8.3.',
+                'Public Auth Route Exemption: Removed session tenant gating from EnsureTenantActive middleware on public auth routes (/login, /logout, password recovery) to guarantee login pages never loop on stale tenant contexts.',
+                'Direct Runner Accessibility: Synced run_live_migrations.php and overlay-runner.php into public/ to guarantee seamless browser-accessible migration execution under both root and public/ DocumentRoot configurations.',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.11.zip directly over live site root folder in cPanel File Manager, then run run_live_migrations.php or php artisan optimize:clear.',
+        ],
         'v1.0.10' => [
             'version' => '1.0.10',
             'tag' => 'v1.0.10',

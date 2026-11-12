@@ -124,12 +124,15 @@ class MakeVersionOverlayCommand extends Command
             return !$this->isBlacklisted($relPath) && file_exists(base_path($relPath)) && !is_dir(base_path($relPath));
         });
 
-        // Always ensure VERSION and config/version.php are included
+        // Always ensure VERSION, config/version.php, and root .htaccess are included
         if (file_exists(base_path('VERSION')) && !in_array('VERSION', $filesToPackage)) {
             $filesToPackage[] = 'VERSION';
         }
         if (file_exists(base_path('config/version.php')) && !in_array('config/version.php', $filesToPackage)) {
             $filesToPackage[] = 'config/version.php';
+        }
+        if (file_exists(base_path('.htaccess')) && !in_array('.htaccess', $filesToPackage)) {
+            $filesToPackage[] = '.htaccess';
         }
 
         sort($filesToPackage);
@@ -166,6 +169,7 @@ class MakeVersionOverlayCommand extends Command
         // Add standalone web overlay runner for cPanel environments
         $runnerContent = $this->generateStandaloneRunner();
         $zip->addFromString('overlay-runner.php', $runnerContent);
+        $zip->addFromString('public/overlay-runner.php', $runnerContent);
 
         $zip->close();
 
