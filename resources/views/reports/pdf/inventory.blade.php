@@ -1,21 +1,21 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 32px;">#</th>
-            <th class="text-center" style="width: 75px;">SKU</th>
+            <th class="text-center" style="width: 25px;">#</th>
+            <th class="text-center" style="width: 65px;">SKU</th>
             <th class="text-left">Product Name & Specifications</th>
-            <th class="text-left" style="width: 85px;">Brand</th>
-            <th class="text-left" style="width: 110px;">Category</th>
+            <th class="text-left" style="width: 70px;">Brand</th>
+            <th class="text-left" style="width: 85px;">Category</th>
             @foreach($warehouses as $wh)
-                <th class="text-right" style="width: 90px;">{{ strtoupper($wh->name) }}</th>
+                <th class="text-right" style="min-width: 60px;">{{ strtoupper($wh->name) }}</th>
             @endforeach
-            <th class="text-right" style="width: 95px; background: #07172c !important;">TOTAL STOCK</th>
-            <th class="text-right" style="width: 90px;">UNIT PRICE</th>
-            <th class="text-right" style="width: 105px;">VALUATION (₦)</th>
-            <th class="text-center" style="width: 85px;">HEALTH</th>
+            <th class="text-right" style="min-width: 70px; background: #07172c !important;">TOTAL<br>STOCK</th>
+            <th class="text-right" style="min-width: 70px;">UNIT<br>PRICE</th>
+            <th class="text-right" style="min-width: 80px;">VALUATION<br>(₦)</th>
+            <th class="text-center" style="min-width: 65px;">HEALTH</th>
         </tr>
     </thead>
     <tbody>

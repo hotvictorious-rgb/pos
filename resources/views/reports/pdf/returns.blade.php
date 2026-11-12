@@ -1,18 +1,18 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 35px;">#</th>
-            <th class="text-left" style="width: 110px;">DATE & TIME</th>
-            <th class="text-center" style="width: 95px;">SALE INVOICE</th>
-            <th class="text-left" style="width: 110px;">BRANCH</th>
-            <th class="text-left" style="width: 95px;">CASHIER</th>
-            <th class="text-left" style="width: 120px;">CUSTOMER</th>
+            <th class="text-center" style="width: 22px;">#</th>
+            <th class="text-left" style="width: 75px;">DATE & TIME</th>
+            <th class="text-center" style="width: 65px;">SALE INVOICE</th>
+            <th class="text-left" style="width: 65px;">BRANCH</th>
+            <th class="text-left" style="width: 60px;">CASHIER</th>
+            <th class="text-left" style="width: 80px;">CUSTOMER</th>
             <th class="text-left">ITEMS RETURNED & SKUS</th>
-            <th class="text-right" style="width: 75px;">UNITS</th>
-            <th class="text-right" style="width: 110px;">REFUND (₦)</th>
+            <th class="text-right" style="width: 40px;">UNITS</th>
+            <th class="text-right" style="width: 70px;">REFUND (₦)</th>
             <th class="text-left">REASON & CONDITION</th>
         </tr>
     </thead>

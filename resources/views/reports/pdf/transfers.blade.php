@@ -1,20 +1,20 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 35px;">#</th>
-            <th class="text-center" style="width: 110px;">WAYBILL #</th>
-            <th class="text-left" style="width: 110px;">DISPATCH DATE</th>
-            <th class="text-left" style="width: 130px;">FROM (ORIGIN)</th>
-            <th class="text-left" style="width: 130px;">TO (DESTINATION)</th>
-            <th class="text-left" style="width: 100px;">INITIATED BY</th>
+            <th class="text-center" style="width: 22px;">#</th>
+            <th class="text-center" style="width: 75px;">WAYBILL #</th>
+            <th class="text-left" style="width: 75px;">DISPATCH DATE</th>
+            <th class="text-left" style="width: 85px;">FROM (ORIGIN)</th>
+            <th class="text-left" style="width: 85px;">TO (DESTINATION)</th>
+            <th class="text-left" style="width: 65px;">INITIATED BY</th>
             <th class="text-left">ITEMS & SKUS</th>
-            <th class="text-right" style="width: 80px;">SENT</th>
-            <th class="text-right" style="width: 80px;">RECEIVED</th>
-            <th class="text-right" style="width: 90px;">VARIANCE</th>
-            <th class="text-center" style="width: 90px;">STATUS</th>
+            <th class="text-right" style="width: 45px;">SENT</th>
+            <th class="text-right" style="width: 48px;">RECEIVED</th>
+            <th class="text-right" style="width: 50px;">VARIANCE</th>
+            <th class="text-center" style="width: 65px;">STATUS</th>
         </tr>
     </thead>
     <tbody>

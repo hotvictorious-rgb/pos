@@ -791,7 +791,7 @@
 
         <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 55vh; overflow-y: auto; padding-right: 0.25rem;">
             @foreach($warehouses as $wh)
-            <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;">
+            <form method="POST" action="{{ route('branch.switch') }}" style="margin: 0;" data-no-confirm="true">
                 @csrf
                 <input type="hidden" name="warehouse_id" value="{{ $wh->id }}">
                 <button type="submit" class="branch-modal-choice {{ $activeWarehouse->id === $wh->id ? 'active' : '' }}">

@@ -1,21 +1,21 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 32px;">#</th>
-            <th class="text-center" style="width: 90px;">INVOICE #</th>
-            <th class="text-left" style="width: 105px;">DATE & TIME</th>
-            <th class="text-left" style="width: 85px;">CASHIER</th>
-            <th class="text-left" style="width: 95px;">BRANCH</th>
-            <th class="text-left">CUSTOMER</th>
+            <th class="text-center" style="width: 22px;">#</th>
+            <th class="text-center" style="width: 65px;">INVOICE #</th>
+            <th class="text-left" style="width: 75px;">DATE & TIME</th>
+            <th class="text-left" style="width: 60px;">CASHIER</th>
+            <th class="text-left" style="width: 65px;">BRANCH</th>
+            <th class="text-left" style="width: 85px;">CUSTOMER</th>
             <th class="text-left">ITEMS SUMMARY</th>
-            <th class="text-center" style="width: 75px;">METHOD</th>
-            <th class="text-center" style="width: 80px;">HANDOVER</th>
-            <th class="text-right" style="width: 90px;">TOTAL (₦)</th>
-            <th class="text-right" style="width: 90px;">PAID (₦)</th>
-            <th class="text-right" style="width: 90px;">BALANCE (₦)</th>
+            <th class="text-center" style="width: 55px;">METHOD</th>
+            <th class="text-center" style="width: 65px;">HANDOVER</th>
+            <th class="text-right" style="width: 68px;">TOTAL (₦)</th>
+            <th class="text-right" style="width: 68px;">PAID (₦)</th>
+            <th class="text-right" style="width: 68px;">BALANCE (₦)</th>
         </tr>
     </thead>
     <tbody>

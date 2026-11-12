@@ -11,10 +11,10 @@ return [
     | Versions strictly increment by 0.0.1 for each release update.
     |
     */
-    'version' => '1.0.9',
-    'tag' => 'v1.0.9',
+    'version' => '1.0.10',
+    'tag' => 'v1.0.10',
     'name' => 'Victorious Market POS',
-    'released_at' => '2026-11-11',
+    'released_at' => '2026-11-12',
 
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +26,21 @@ return [
     |
     */
     'overlays' => [
+        'v1.0.10' => [
+            'version' => '1.0.10',
+            'tag' => 'v1.0.10',
+            'title' => 'Universal Branch Context Synchronization, Executive View Exemption & A4 Landscape PDF Auto-Fit Engine',
+            'date' => '2026-11-12',
+            'highlights' => [
+                'Universal Branch Context Synchronization: Refined ReportController to prioritize active session branch over blank filter query parameters, ensuring selected branch never inadvertently reverts to Consolidated.',
+                'Executive Observer Branch Switch Exemption: Exempted /branch/switch from BlockReadOnlyMutations middleware so read-only executive observers can freely navigate branch scopes without mutating data.',
+                'POS Selling Branch Sentinel: Added data-no-confirm="true" to the POS register branch selection modal, resolving CoreUI form confirmation interception.',
+                'A4 Landscape Print Boundary Auto-Fit: Overhauled PDF report layout with flexible table wrapping, compact padding, and natural multi-line header breaks, completely resolving right-edge truncation across all 16-column reorder sheets and multi-branch inventory statements.',
+                'Cross-Report Print Optimization: Hardened @media print rules across all executive statement exports (Reorder Projections, Inventory, Sales Ledgers, Waybill Transfers, Customer Exchanges, and Debtors).',
+            ],
+            'migrations' => [],
+            'instructions' => 'Extract overlay-v1.0.10.zip directly over live site folder in cPanel File Manager, then run php artisan optimize:clear.',
+        ],
         'v1.0.9' => [
             'version' => '1.0.9',
             'tag' => 'v1.0.9',

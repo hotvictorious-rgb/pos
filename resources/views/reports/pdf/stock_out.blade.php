@@ -1,17 +1,17 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 35px;">#</th>
-            <th class="text-left" style="width: 120px;">DATE & TIME</th>
-            <th class="text-left" style="width: 120px;">BRANCH</th>
-            <th class="text-left" style="width: 100px;">LOGGED BY</th>
-            <th class="text-center" style="width: 85px;">SKU</th>
+            <th class="text-center" style="width: 22px;">#</th>
+            <th class="text-left" style="width: 80px;">DATE & TIME</th>
+            <th class="text-left" style="width: 75px;">BRANCH</th>
+            <th class="text-left" style="width: 70px;">LOGGED BY</th>
+            <th class="text-center" style="width: 65px;">SKU</th>
             <th class="text-left">PRODUCT NAME & SPEC</th>
-            <th class="text-right" style="width: 90px;">QTY DEDUCTED</th>
-            <th class="text-center" style="width: 130px;">REASON / TYPE</th>
+            <th class="text-right" style="width: 55px;">QTY DEDUCTED</th>
+            <th class="text-center" style="width: 80px;">REASON / TYPE</th>
             <th class="text-left">EXPLANATORY NOTES</th>
         </tr>
     </thead>

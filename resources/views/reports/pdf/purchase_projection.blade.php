@@ -12,25 +12,25 @@
     </div>
 </div>
 
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 30px;">RANK</th>
-            <th class="text-center" style="width: 70px;">SKU</th>
+            <th class="text-center" style="width: 25px;">RANK</th>
+            <th class="text-center" style="width: 60px;">SKU</th>
             <th class="text-left">PRODUCT NAME</th>
-            <th class="text-left" style="width: 75px;">CATEGORY</th>
-            <th class="text-center" style="width: 50px;">SALES</th>
-            <th class="text-center" style="width: 55px;">TRANSFERS</th>
-            <th class="text-center" style="width: 55px;">DEDUCTIONS</th>
-            <th class="text-center" style="width: 65px; background: #0c2340 !important; color: #60a5fa;">STOCK OUT</th>
-            <th class="text-center" style="width: 55px;">DAILY RATE</th>
-            <th class="text-center" style="width: 55px;">7D NEED</th>
-            <th class="text-center" style="width: 55px;">SHELF STOCK</th>
-            <th class="text-center" style="width: 55px;">RUNWAY</th>
-            <th class="text-center" style="width: 75px;">STATUS</th>
-            <th class="text-center" style="width: 75px; background: #1e3a8a !important; color: #ffffff;">REORDER QTY</th>
-            <th class="text-right" style="width: 75px;">PRICE (₦)</th>
-            <th class="text-right" style="width: 85px; background: #064e3b !important; color: #ffffff;">EST. CAPITAL (₦)</th>
+            <th class="text-left" style="width: 65px;">CATEGORY</th>
+            <th class="text-center" style="width: 45px;">SALES</th>
+            <th class="text-center" style="width: 48px;">TRANSFERS</th>
+            <th class="text-center" style="width: 52px;">DEDUCTIONS</th>
+            <th class="text-center" style="width: 55px; background: #0c2340 !important; color: #60a5fa;">STOCK<br>OUT</th>
+            <th class="text-center" style="width: 48px;">DAILY<br>RATE</th>
+            <th class="text-center" style="width: 45px;">7D<br>NEED</th>
+            <th class="text-center" style="width: 50px;">SHELF<br>STOCK</th>
+            <th class="text-center" style="width: 45px;">RUNWAY</th>
+            <th class="text-center" style="width: 65px;">STATUS</th>
+            <th class="text-center" style="width: 65px; background: #1e3a8a !important; color: #ffffff;">REORDER<br>QTY</th>
+            <th class="text-right" style="width: 65px;">PRICE<br>(₦)</th>
+            <th class="text-right" style="width: 78px; background: #064e3b !important; color: #ffffff;">EST. CAPITAL<br>(₦)</th>
         </tr>
     </thead>
     <tbody>

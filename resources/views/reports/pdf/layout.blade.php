@@ -194,34 +194,54 @@
             overflow-x: auto;
         }
         table.executive-table, table.report-table {
-            width: 100%;
+            width: 100% !important;
             border-collapse: collapse;
             border-spacing: 0;
             border: 1px solid #cbd5e1;
-            font-size: 10px;
+            table-layout: auto;
+            font-size: 9px;
         }
         table.executive-table th, table.report-table th {
             background-color: #0c2340 !important;
             color: #ffffff !important;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 7px 9px;
+            letter-spacing: 0.3px;
+            padding: 5px 6px;
             border: 1px solid #0c2340;
-            white-space: nowrap;
-            font-size: 9.5px;
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.2;
+            font-size: 8.5px;
+            vertical-align: middle;
         }
         table.executive-table td, table.report-table td {
-            padding: 5px 8px;
+            padding: 4px 6px;
             border: 1px solid #e2e8f0;
             vertical-align: middle;
             color: #1e293b;
+            font-size: 8.5px;
+            word-break: break-word;
         }
         table.executive-table tbody tr:nth-child(even), table.report-table tbody tr:nth-child(even) {
             background-color: #f8fafc;
         }
         table.executive-table tbody tr:hover, table.report-table tbody tr:hover {
             background-color: #f1f5f9;
+        }
+
+        /* High-Density Compact Table for Ultra-Wide Reports (10+ Columns) */
+        table.table-compact th {
+            padding: 4px 3px !important;
+            font-size: 7.5px !important;
+            letter-spacing: 0 !important;
+            line-height: 1.15 !important;
+            white-space: normal !important;
+            text-align: center;
+        }
+        table.table-compact td {
+            padding: 2.5px 3px !important;
+            font-size: 7.8px !important;
         }
 
         .section-title {
@@ -295,13 +315,14 @@
             body {
                 background: #ffffff !important;
                 color: #000000 !important;
-                font-size: 9.5px;
+                font-size: 8px !important;
             }
             .no-print-bar {
                 display: none !important;
             }
             .sheet-container {
                 max-width: 100% !important;
+                width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 box-shadow: none !important;
@@ -309,10 +330,21 @@
             }
             @page {
                 size: A4 landscape;
-                margin: 8mm 6mm;
+                margin: 5mm 5mm 5mm 5mm;
             }
-            table.executive-table {
+            table.executive-table, table.report-table {
+                width: 100% !important;
                 page-break-inside: auto;
+            }
+            table.executive-table th, table.report-table th {
+                padding: 4px 4px !important;
+                font-size: 7.8px !important;
+                line-height: 1.15 !important;
+                white-space: normal !important;
+            }
+            table.executive-table td, table.report-table td {
+                padding: 3px 4px !important;
+                font-size: 8px !important;
             }
             table.executive-table thead {
                 display: table-header-group !important; /* Repeats navy header on every page */

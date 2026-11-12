@@ -1,21 +1,21 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 35px;">#</th>
-            <th class="text-center" style="width: 95px;">ORDER #</th>
-            <th class="text-left" style="width: 100px;">ORDER DATE</th>
-            <th class="text-left" style="width: 100px;">BRANCH</th>
-            <th class="text-left" style="width: 130px;">CUSTOMER</th>
-            <th class="text-left" style="width: 100px;">PHONE</th>
+            <th class="text-center" style="width: 22px;">#</th>
+            <th class="text-center" style="width: 65px;">ORDER #</th>
+            <th class="text-left" style="width: 70px;">ORDER DATE</th>
+            <th class="text-left" style="width: 65px;">BRANCH</th>
+            <th class="text-left" style="width: 85px;">CUSTOMER</th>
+            <th class="text-left" style="width: 75px;">PHONE</th>
             <th class="text-left">PENDING GOODS (UNSUPPLIED)</th>
-            <th class="text-right" style="width: 80px;">UNITS</th>
-            <th class="text-right" style="width: 95px;">VALUE (₦)</th>
-            <th class="text-right" style="width: 95px;">PAID (₦)</th>
-            <th class="text-center" style="width: 85px;">PAY STATUS</th>
-            <th class="text-center" style="width: 80px;">DAYS</th>
+            <th class="text-right" style="width: 40px;">UNITS</th>
+            <th class="text-right" style="width: 68px;">VALUE (₦)</th>
+            <th class="text-right" style="width: 68px;">PAID (₦)</th>
+            <th class="text-center" style="width: 65px;">PAY STATUS</th>
+            <th class="text-center" style="width: 45px;">DAYS</th>
         </tr>
     </thead>
     <tbody>

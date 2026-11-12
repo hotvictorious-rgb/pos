@@ -1,18 +1,18 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 35px;">#</th>
+            <th class="text-center" style="width: 25px;">#</th>
             <th class="text-left">Customer Name</th>
-            <th class="text-left" style="width: 120px;">Phone Number</th>
-            <th class="text-left" style="width: 130px;">Primary Branch</th>
-            <th class="text-center" style="width: 120px;">Aging Status</th>
-            <th class="text-center" style="width: 110px;">Oldest Invoice</th>
-            <th class="text-right" style="width: 130px;">Delivered Debt (₦)</th>
-            <th class="text-right" style="width: 140px;">Installment / Unsup (₦)</th>
-            <th class="text-right" style="width: 140px; background: #07172c !important;">TOTAL OWED (₦)</th>
+            <th class="text-left" style="width: 85px;">Phone Number</th>
+            <th class="text-left" style="width: 85px;">Primary Branch</th>
+            <th class="text-center" style="width: 80px;">Aging Status</th>
+            <th class="text-center" style="width: 70px;">Oldest Invoice</th>
+            <th class="text-right" style="width: 85px;">Delivered Debt (₦)</th>
+            <th class="text-right" style="width: 95px;">Installment / Unsup (₦)</th>
+            <th class="text-right" style="width: 95px; background: #07172c !important;">TOTAL OWED (₦)</th>
         </tr>
     </thead>
     <tbody>

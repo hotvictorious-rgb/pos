@@ -178,9 +178,9 @@
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 0.75rem;">🏢 Branch Location</label>
                     <select name="warehouse_id">
-                        <option value="">-- All Branches (Consolidated) --</option>
+                        <option value="ALL" {{ (request('warehouse_id') === 'ALL' || (!request()->filled('warehouse_id') && is_null($effectiveWh))) ? 'selected' : '' }}>-- All Branches (Consolidated) --</option>
                         @foreach($warehouses as $wh)
-                            <option value="{{ $wh->id }}" {{ (request('warehouse_id') == $wh->id || (!request()->has('warehouse_id') && ($effectiveWh ?? session('active_warehouse_id')) == $wh->id)) ? 'selected' : '' }}>
+                            <option value="{{ $wh->id }}" {{ ((string) request('warehouse_id') === (string) $wh->id || (!request()->filled('warehouse_id') && (string) ($effectiveWh ?? session('active_warehouse_id')) === (string) $wh->id)) ? 'selected' : '' }}>
                                 {{ $wh->name }} ({{ $wh->code }})
                             </option>
                         @endforeach

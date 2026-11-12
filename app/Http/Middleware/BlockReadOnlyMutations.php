@@ -17,6 +17,11 @@ class BlockReadOnlyMutations
         $user = Auth::user();
 
         if ($user && $user->role === 'viewer') {
+            // Allow branch switching context updates for view-only executives
+            if ($request->is('branch/switch') || $request->is('*/branch/switch')) {
+                return $next($request);
+            }
+
             // Block all data modification HTTP methods (POST, PUT, PATCH, DELETE)
             if (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'])) {
                 if ($request->ajax() || $request->wantsJson()) {

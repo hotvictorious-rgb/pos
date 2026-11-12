@@ -1,21 +1,21 @@
 @extends('reports.pdf.layout')
 
 @section('content')
-<table class="executive-table">
+<table class="executive-table table-compact">
     <thead>
         <tr>
-            <th class="text-center" style="width: 28px;">#</th>
-            <th class="text-center" style="width: 85px;">INVOICE #</th>
-            <th class="text-left" style="width: 100px;">DATE & TIME</th>
-            <th class="text-left" style="width: 90px;">BRANCH</th>
-            <th class="text-left" style="width: 85px;">CASHIER</th>
-            <th class="text-left" style="width: 110px;">CUSTOMER</th>
-            <th class="text-center" style="width: 75px;">SKU</th>
+            <th class="text-center" style="width: 22px;">#</th>
+            <th class="text-center" style="width: 65px;">INVOICE #</th>
+            <th class="text-left" style="width: 75px;">DATE & TIME</th>
+            <th class="text-left" style="width: 65px;">BRANCH</th>
+            <th class="text-left" style="width: 60px;">CASHIER</th>
+            <th class="text-left" style="width: 80px;">CUSTOMER</th>
+            <th class="text-center" style="width: 60px;">SKU</th>
             <th class="text-left">PRODUCT NAME</th>
-            <th class="text-left" style="width: 80px;">CATEGORY</th>
-            <th class="text-center" style="width: 50px;">QTY</th>
-            <th class="text-right" style="width: 85px;">PRICE (₦)</th>
-            <th class="text-right" style="width: 90px;">TOTAL (₦)</th>
+            <th class="text-left" style="width: 65px;">CATEGORY</th>
+            <th class="text-center" style="width: 35px;">QTY</th>
+            <th class="text-right" style="width: 65px;">PRICE (₦)</th>
+            <th class="text-right" style="width: 70px;">TOTAL (₦)</th>
         </tr>
     </thead>
     <tbody>

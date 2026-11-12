@@ -104,8 +104,10 @@ class BranchSwitchController extends Controller
                 if (isset($queryParams['warehouse_id'])) {
                     unset($queryParams['warehouse_id']);
                     $newQuery = http_build_query($queryParams);
-                    $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
-                    $cleanUrl = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? $request->getHost()) . $port . ($parsed['path'] ?? '/');
+                    $scheme = ($request->isSecure() || $request->header('x-forwarded-proto') === 'https' || ($parsed['scheme'] ?? '') === 'https') ? 'https' : ($parsed['scheme'] ?? 'http');
+                    $host = $parsed['host'] ?? $request->getHost();
+                    $port = (isset($parsed['port']) && !in_array((int)$parsed['port'], [80, 443])) ? ':' . $parsed['port'] : '';
+                    $cleanUrl = $scheme . '://' . $host . $port . ($parsed['path'] ?? '/');
                     if (!empty($newQuery)) {
                         $cleanUrl .= '?' . $newQuery;
                     }

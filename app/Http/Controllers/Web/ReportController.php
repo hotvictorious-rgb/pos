@@ -107,11 +107,13 @@ class ReportController extends Controller
         if ($isBranchScoped) {
             $effectiveWh = (int) $authUser->warehouse_id;
         } else {
-            $effectiveWh = $request->has('warehouse_id') ? $request->warehouse_id : session('active_warehouse_id');
-            if ($effectiveWh === 'ALL' || $effectiveWh === '' || is_null($effectiveWh)) {
+            $rawWh = $request->has('warehouse_id') ? $request->get('warehouse_id') : null;
+            if ($rawWh === 'ALL') {
                 $effectiveWh = null;
+            } elseif (!empty($rawWh)) {
+                $effectiveWh = (int) $rawWh;
             } else {
-                $effectiveWh = (int) $effectiveWh;
+                $effectiveWh = session('active_warehouse_id') ? (int) session('active_warehouse_id') : null;
             }
         }
 
@@ -428,8 +430,14 @@ class ReportController extends Controller
         }
 
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
-        $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
-        $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
+        $rawWh = $request->has('warehouse_id') ? $request->get('warehouse_id') : null;
+        if ($rawWh === 'ALL') {
+            $effectiveWh = null;
+        } elseif (!empty($rawWh)) {
+            $effectiveWh = (int) $rawWh;
+        } else {
+            $effectiveWh = session('active_warehouse_id') ? (int) session('active_warehouse_id') : null;
+        }
         $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
         $fileName = "victorious_market_{$type}_report_" . date('Y_m_d_His') . ".csv";
 
@@ -855,8 +863,14 @@ class ReportController extends Controller
         }
 
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
-        $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
-        $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
+        $rawWh = $request->has('warehouse_id') ? $request->get('warehouse_id') : null;
+        if ($rawWh === 'ALL') {
+            $effectiveWh = null;
+        } elseif (!empty($rawWh)) {
+            $effectiveWh = (int) $rawWh;
+        } else {
+            $effectiveWh = session('active_warehouse_id') ? (int) session('active_warehouse_id') : null;
+        }
         $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
         $fileName = "victorious_market_{$type}_business_data_" . date('Y_m_d_His') . ".json";
 
@@ -1010,8 +1024,14 @@ class ReportController extends Controller
 
         // 1. Strict Tenant & Branch Isolation
         $isBranchScoped = ($authUser && $authUser->isBranchScoped());
-        $rawWh = $request->get('warehouse_id', session('active_warehouse_id'));
-        $effectiveWh = ($rawWh === 'ALL' || $rawWh === '' || is_null($rawWh)) ? null : (int) $rawWh;
+        $rawWh = $request->has('warehouse_id') ? $request->get('warehouse_id') : null;
+        if ($rawWh === 'ALL') {
+            $effectiveWh = null;
+        } elseif (!empty($rawWh)) {
+            $effectiveWh = (int) $rawWh;
+        } else {
+            $effectiveWh = session('active_warehouse_id') ? (int) session('active_warehouse_id') : null;
+        }
         $branchWarehouseId = $isBranchScoped ? (int) $authUser->warehouse_id : $effectiveWh;
 
         // 2. Tenant Dynamic Branding
